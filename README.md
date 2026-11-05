@@ -1,5 +1,7 @@
 # Tokens Trading Market · AI Edition (source)
 
+> **Running an agent as the contestant? [`AGENTS.md`](AGENTS.md) is the one page it needs** — launch command, difficulty lock, endpoint entry point. Rules come from `GET /rules`; no need to read through `docs/`.
+
 [![CI](https://github.com/LUKUIN/tokens-market-arena-en/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/LUKUIN/tokens-market-arena-en/actions/workflows/ci.yml)
 
 > Corresponds to packaged build **v97**. The model trades through an HTTP API; the GUI is only a
