@@ -103,13 +103,19 @@ def _interactive_setup():
         "TM_SLOT", "是否开启全局事件【老虎机】？",
         "整局可投 3 次（每次 1~200000，且不超过当前权益）；"
         "80% 空 / 15% 返还 5 倍 / 5% 返还 10 倍；中奖金额的 -5%~100% 推高目标")
+    assist_on = _ask_special(
+        "TM_ASSIST", "是否开启【外部的怜悯】？（开局前免费）",
+        "开启后参赛者可向观众席求助，整局 3 次；观众席可回复或驳回，"
+        "也可主动发话。局内再开启需支付 50 万现金")
     os.environ["TM_FR"] = "1" if fr_on else "0"
     os.environ["TM_SLOT"] = "1" if slot_on else "0"
+    os.environ["TM_ASSIST"] = "1" if assist_on else "0"
 
     print()
     print("  玩家    %s" % name)
     print("  模式    %s" % EVENTS_TEXT[mode])
-    print("  金融回逆 %s | 老虎机 %s" % ("开" if fr_on else "关", "开" if slot_on else "关"))
+    print("  金融回逆 %s | 老虎机 %s | 外部的怜悯 %s"
+          % ("开" if fr_on else "关", "开" if slot_on else "关", "开" if assist_on else "关"))
     if (_ask("  确认开始？(y/N)：", "n") or "n").lower() != "y":
         print("  已取消。")
         return None
@@ -191,6 +197,13 @@ def _run_ai(interactive=False, port=None):
         return 1
 
     print("  HTTP 接口：http://127.0.0.1:%d  （规则：GET /rules）" % port)
+    if (os.environ.get("TM_ASSIST") or "0") == "1":
+        try:
+            import tm_api
+            tm_api.ENGINE.assist_enable_free("启动时开启")
+            print("  外部的怜悯：已开启（参赛者可向观众席求助，整局 3 次）")
+        except Exception as exc:
+            print("  外部的怜悯：开启失败 %s" % exc)
     # 先把观众席模块读进内存，再封存源码。顺序反过来的话，import 会落在诱饵上，
     # 诱饵一执行就写作弊标记并 exit，整个对局起不来。
     import tm_watch_ai
@@ -303,6 +316,13 @@ def main(argv=None):
         print("  " + "!" * 62)
         print()
         guard_stop = _start_guard(port)
+        if (os.environ.get("TM_ASSIST") or "0") == "1":
+            try:
+                import tm_api
+                tm_api.ENGINE.assist_enable_free("启动时开启")
+                print("  外部的怜悯：已开启（参赛者可向观众席求助，整局 3 次）")
+            except Exception as exc:
+                print("  外部的怜悯：开启失败 %s" % exc)
         try:
             serve(host, port)
         finally:

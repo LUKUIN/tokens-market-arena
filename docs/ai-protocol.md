@@ -286,3 +286,18 @@ curl -X POST http://127.0.0.1:8734/quit
 - 并发请求有 `LOCK` 保护，多线程同时下单只会成功一个
 
 **唯一不能防的是你自己写错逻辑** —— 引擎是确定性的，同样的输入必然得到同样的输出。
+
+### 外部的怜悯（可选，默认关闭）
+
+```bash
+POST /assist/ask      {"text": "..."}                     # 求助，整局 3 次，返回 ticket
+GET  /assist/inbox                                        # 取观众席的话（取后不重复投递）
+POST /assist/enable                                       # 开局后开通，扣 500,000 现金
+GET  /assist/pending                                      # 观众席 GUI 用
+POST /assist/reply    {"ticket": "a1", "text": "..."}     # 观众席回复
+POST /assist/reject   {"ticket": "a1"}                    # 观众席驳回
+POST /assist/say      {"text": "..."}                     # 观众席主动发话
+```
+
+开局前设 `TM_ASSIST=1` 可免费开启。求助不阻塞：`/assist/ask` 立即返回，之后自己轮询
+`/assist/inbox`。

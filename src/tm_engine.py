@@ -393,6 +393,11 @@ def _new_session():
         "roll_phase": random.uniform(0, ROLL_COMBOS),   # 打散取模相位（见 _roll_index）
         "loan": {"balance": 0.0, "borrowed": 0.0, "repaid": 0.0, "interest": 0.0,
                  "loans": 0, "goal_bumps": []},
+        # ---------------- 外部的怜悯（观众席 ↔ 参赛者） ----------------
+        "assist_on": False,          # 场外援助是否已开通
+        "assist_used": 0,            # 本局 AI 已用掉的求助次数
+        "assist_spent": 0.0,         # 为开通而付出的现金
+        "assist": [],                # 对话流水：{tick, at, who, text, ticket?, status?, kind?}
         # ---------------- 全局开关型特殊事件 ----------------
         "special": {
             "fr": _env_flag("TM_FR"),       # 金融回逆：开局免费开启
@@ -1182,6 +1187,137 @@ class Engine:
     # ---------------- 草稿纸 ----------------
     def _scratch_path(self):
         return os.path.join(self.home, ".scratchpad.jsonl")
+
+    # ---------------- 外部的怜悯 ----------------
+    ASSIST_PRICE = 500000        # 开局后再开通，从现金扣这个数
+    ASSIST_ASK_LIMIT = 3         # 整局 AI 向观众席求助的上限
+
+    def _assist_push(self, who, text, ticket=None, status=None, kind=None):
+        rec = {"tick": self.s.get("tick", 0), "at": round(time.time(), 3),
+               "who": who, "text": text}
+        if ticket:
+            rec["ticket"] = ticket
+        if status:
+            rec["status"] = status
+        if kind:
+            rec["kind"] = kind
+        self.s.setdefault("assist", []).append(rec)
+        return rec
+
+    def assist_pending(self):
+        """观众席轮询：还有哪些求助没被回复。"""
+        with LOCK:
+            items = self.s.get("assist") or []
+            pend = [dict(x) for x in items if x.get("status") == "pending"]
+            return {"ok": True,
+                    "enabled": bool(self.s.get("assist_on")),
+                    "remaining": max(0, self.ASSIST_ASK_LIMIT - int(self.s.get("assist_used") or 0)),
+                    "pending": pend,
+                    "log": [dict(x) for x in items[-60:]],
+                    "price": self.ASSIST_PRICE,
+                    "balance": round(self.s["balance"], 2)}
+
+    def assist_enable(self):
+        """开局后再开通，代价 500,000 现金。"""
+        with LOCK:
+            if self.s.get("finished"):
+                return {"ok": False, "error": "本局已结束"}
+            if self.s.get("assist_on"):
+                return {"ok": False, "error": "场外援助已经开通"}
+            if self.s["balance"] < self.ASSIST_PRICE:
+                return {"ok": False,
+                        "error": "现金不足：需要 %d，当前 %d" % (self.ASSIST_PRICE, int(self.s["balance"]))}
+            self.s["balance"] -= self.ASSIST_PRICE
+            self.s["assist_on"] = True
+            self.s["assist_spent"] = self.ASSIST_PRICE
+            self._assist_push("system", "观众席以 %d 现金开通了场外援助" % self.ASSIST_PRICE)
+            return {"ok": True, "cost": self.ASSIST_PRICE, "balance": round(self.s["balance"], 2)}
+
+    def assist_enable_free(self, why="启动时开启"):
+        """开局前/启动时开通，不花钱。"""
+        with LOCK:
+            if self.s.get("assist_on"):
+                return {"ok": True, "already": True}
+            self.s["assist_on"] = True
+            self.s["assist_spent"] = 0.0
+            self._assist_push("system", "场外援助已开启（%s）" % why)
+            return {"ok": True, "already": False}
+
+    def assist_ask(self, text):
+        """参赛者向观众席求助，整局 3 次。"""
+        with LOCK:
+            if self.s.get("finished"):
+                return {"ok": False, "error": "本局已结束"}
+            if not self.s.get("assist_on"):
+                return {"ok": False, "error": "场外援助未开通"}
+            used = int(self.s.get("assist_used") or 0)
+            if used >= self.ASSIST_ASK_LIMIT:
+                return {"ok": False,
+                        "error": "求助次数已用尽（%d/%d）" % (used, self.ASSIST_ASK_LIMIT)}
+            t = (text or "").strip()
+            if not t:
+                return {"ok": False, "error": "内容不能为空"}
+            if len(t) > 2000:
+                t = t[:2000]
+            used += 1
+            self.s["assist_used"] = used
+            ticket = "a%d" % used
+            self._assist_push("ai", t, ticket=ticket, status="pending")
+            return {"ok": True, "ticket": ticket, "remaining": self.ASSIST_ASK_LIMIT - used}
+
+    def assist_inbox(self):
+        """参赛者取观众席还没被取走的消息。"""
+        with LOCK:
+            out = []
+            for x in (self.s.get("assist") or []):
+                if x.get("who") == "human" and not x.get("read"):
+                    x["read"] = True
+                    item = {"tick": x.get("tick"), "text": x.get("text")}
+                    if x.get("ticket"):
+                        item["ticket"] = x["ticket"]
+                    if x.get("kind"):
+                        item["kind"] = x["kind"]
+                    out.append(item)
+            return {"ok": True, "items": out,
+                    "remaining": max(0, self.ASSIST_ASK_LIMIT - int(self.s.get("assist_used") or 0))}
+
+    def _assist_find_pending(self, ticket):
+        for x in (self.s.get("assist") or []):
+            if x.get("ticket") == ticket and x.get("status") == "pending":
+                return x
+        return None
+
+    def assist_reply(self, ticket, text):
+        """观众席回复某次求助。"""
+        with LOCK:
+            t = (text or "").strip()
+            if not t:
+                return {"ok": False, "error": "内容不能为空"}
+            hit = self._assist_find_pending(ticket)
+            if not hit:
+                return {"ok": False, "error": "没有待回复的求助 %s" % ticket}
+            hit["status"] = "answered"
+            self._assist_push("human", t[:2000], ticket=ticket, kind="reply")
+            return {"ok": True, "ticket": ticket}
+
+    def assist_reject(self, ticket):
+        """观众席驳回某次求助。"""
+        with LOCK:
+            hit = self._assist_find_pending(ticket)
+            if not hit:
+                return {"ok": False, "error": "没有待回复的求助 %s" % ticket}
+            hit["status"] = "rejected"
+            self._assist_push("human", "（驳回）", ticket=ticket, kind="reject")
+            return {"ok": True, "ticket": ticket}
+
+    def assist_say(self, text):
+        """观众席主动发话，不限次数。"""
+        with LOCK:
+            t = (text or "").strip()
+            if not t:
+                return {"ok": False, "error": "内容不能为空"}
+            self._assist_push("human", t[:2000], kind="chat")
+            return {"ok": True}
 
     def scratch_append(self, text):
         """草稿纸：记录决策思路与对策。可选，用不用由玩家决定。"""
@@ -2069,6 +2205,20 @@ class Engine:
                 '<div class="kv"><span>%s</span><span class="%s">%s</span></div>'
                 % (k, c, fmt(v)) for k, v, c in _attr_rows)
 
+            _as_items = self.s.get("assist") or []
+            _as_rows = []
+            for _x in _as_items:
+                _who = _x.get("who")
+                if _who == "ai":
+                    _tag, _cls = "参赛者", "as-ai"
+                elif _who == "human":
+                    _tag, _cls = "观众席", "as-human"
+                else:
+                    _tag, _cls = "系统", "as-sys"
+                _as_rows.append(
+                    '<div class="asline %s"><span class="astag">[t%s] %s</span> %s</div>'
+                    % (_cls, _x.get("tick", 0), _tag,
+                       str(_x.get("text") or "").replace("<", "&lt;").replace(">", "&gt;")))
             body = {
                 "trader": trader,
                 "ff_used": "%s 秒" % fmt(_ff_used),
@@ -2112,6 +2262,8 @@ class Engine:
                 "rows": "".join(rows) or '<tr><td colspan="10" class="muted">无交易</td></tr>',
                 "loanblock": _loan_block,
                 "scrows": "".join(_sc_rows) or '<div class="muted">无内容</div>',
+                "asrows": "".join(_as_rows) or '<div class="muted">本局未开启或未使用</div>',
+                "asn": str(len(_as_items)),
                 "scn": str(len(_sc)),
                 "evrows": "".join(ev_rows) or '<li class="muted">无关键事件</li>',
                 "attrib": _attr_html,
@@ -2162,6 +2314,12 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
 .scratch{{background:#fbfbfd;border:1px solid var(--line);border-radius:8px;padding:10px 14px;max-height:520px;overflow:auto;font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;font-size:13.5px;line-height:1.75}}
 .sc-item{{padding:6px 0;border-bottom:1px dashed #eceef2;white-space:pre-wrap;word-break:break-word}}
 .sc-item:last-child{{border-bottom:0}}
+.asline{{padding:6px 0;border-bottom:1px dashed #eceef2;white-space:pre-wrap;word-break:break-word}}
+.asline:last-child{{border-bottom:0}}
+.astag{{font-weight:600;margin-right:6px}}
+.as-ai .astag{{color:#0078d4}}
+.as-human .astag{{color:#0a7a3d}}
+.as-sys .astag{{color:#6b6b6b}}
 .sc-meta{{color:var(--muted);margin-right:10px;font-size:12px}}
 .ev .tag{{display:inline-block;padding:0 6px;border-radius:4px;background:#eef2f7;color:#5b6b7c;font-size:12px;margin-right:6px}}
 .ev .evt{{color:var(--muted);font-size:12px;margin-right:8px}}
@@ -2175,7 +2333,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
 </header>
 <nav class="toc">
   <a href="#p1">关键指标</a><a href="#p2">成本归因</a><a href="#p3">交易明细</a>
-  <a href="#p4">借贷账目</a><a href="#p5">草稿纸</a><a href="#p6">关键事件</a>
+  <a href="#p4">借贷账目</a><a href="#p5">草稿纸</a><a href="#p7">场外援助</a><a href="#p6">关键事件</a>
 </nav>
 <div class="cards">
   <div class="card"><div class="k">最终权益</div><div class="v">{finaleq}</div></div>
@@ -2209,6 +2367,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
 <tbody>{rows}</tbody></table></section>
 {loanblock}
 <section id="p5"><h2>草稿纸（{scn} 条）</h2><div class="scratch">{scrows}</div></section>
+<section id="p7"><h2>场外援助（{asn} 条）</h2><div class="scratch">{asrows}</div></section>
 <section id="p6"><h2>关键事件</h2><ul class="ev">{evrows}</ul></section>
 <footer>{verline}</footer>
 </div></body></html>""".format(rowsn=len(rows), **body)

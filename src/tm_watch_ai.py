@@ -275,9 +275,19 @@ class Watch:
                                  bg=CARD, fg=TEXT)
         self.lbl_slot.pack(side="left", padx=(10, 0), pady=8)
         self._last_special = None
+        self._assist_pend = []
+        self._assist_seen = set()
+        self._assist_n = 0
+        self._assist_last_ticket = None
 
         btn_style = dict(font=FONT_SMALL, bd=0, relief="flat", cursor="hand2",
                          padx=12, pady=4)
+        self.btn_assist = tk.Button(
+            topbar, text="外部的怜悯", command=self._show_assist,
+            bg="#EAF4FF", fg=BLUE, activebackground="#D9ECFF",
+            activeforeground=BLUE, font=FONT_SMALL, bd=0,
+            padx=14, pady=5, cursor="hand2")
+        self.btn_assist.pack(side="right", padx=(0, 8), pady=6)
         tk.Button(topbar, text="AI 行为", command=self._show_scratch,
                   bg="#F3EEFF", fg="#6B4E9B", activebackground="#E9E0FF",
                   activeforeground="#6B4E9B", font=FONT_SMALL, bd=0,
@@ -444,7 +454,36 @@ class Watch:
         except Exception:
             self.lbl_status.config(text="等待服务启动（python startgame.pyc api 127.0.0.1 8734）",
                                    fg=ORANGE)
+        self._assist_n += 1
+        if self._assist_n % 5 == 0:
+            self._poll_assist()
         self.root.after(300, self.refresh)
+
+    # ---------------- 外部的怜悯 ----------------
+    def _poll_assist(self):
+        """低频轮询观众席与参赛者之间的消息；有新求助才响提示音。"""
+        try:
+            a = get("/assist/pending")
+        except Exception:
+            return
+        pend = a.get("pending") or []
+        fresh = {x.get("ticket") for x in pend if x.get("ticket")} - self._assist_seen
+        if fresh:
+            self._assist_seen |= fresh
+            try:
+                import winsound
+                winsound.MessageBeep(winsound.MB_ICONASTERISK)
+            except Exception:
+                pass
+        self._assist_pend = pend
+        try:
+            n = len(pend)
+            if n:
+                self.btn_assist.config(text="外部的怜悯 · %d" % n, bg="#FDEDED", fg=RED)
+            else:
+                self.btn_assist.config(text="外部的怜悯", bg="#EAF4FF", fg=BLUE)
+        except Exception:
+            pass
 
     def _draw_time_bar(self):
         """按当前宽度重画时间进度条（窗口缩放时由 <Configure> 触发）。"""
@@ -465,6 +504,158 @@ class Watch:
                 fg=MUTED if _frac < 0.8 else "#E8743B")
         except Exception:
             pass
+
+    def _show_assist(self):
+        """观众席一侧：看历史、回复或驳回求助，也可主动发话。"""
+        try:
+            a = get("/assist/pending")
+        except Exception as exc:
+            messagebox.showwarning("外部的怜悯", "读取失败：%s" % exc)
+            return
+        win = tk.Toplevel(self.root)
+        win.title("外部的怜悯 · 场外援助")
+        win.configure(bg=BG)
+        w, h = 780, 680
+        sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
+        win.geometry("%dx%d+%d+%d" % (w, h, max(0, (sw - w) // 2), max(0, (sh - h) // 3)))
+        _apply_icon(win)
+        win.protocol("WM_DELETE_WINDOW", win.destroy)
+
+        enabled = bool(a.get("enabled"))
+        remaining = a.get("remaining", 0)
+        head = tk.Frame(win, bg=BG)
+        head.pack(fill="x", padx=18, pady=(14, 2))
+        tk.Label(head, text="场外援助", bg=BG, fg=TEXT, font=FONT_BIG).pack(side="left")
+        if enabled:
+            sub = "已开通 · 参赛者还可求助 %d 次" % remaining
+            tk.Label(head, text=sub, bg=BG, fg=MUTED, font=FONT_SMALL).pack(side="left", padx=(12, 0))
+        else:
+            sub = "未开通 · 局内开通需 %d 现金（当前 %d）" % (
+                a.get("price", 500000), int(a.get("balance") or 0))
+            tk.Label(head, text=sub, bg=BG, fg=ORANGE, font=FONT_SMALL).pack(side="left", padx=(12, 0))
+            tk.Button(head, text="花 %d 开通" % a.get("price", 500000),
+                      command=lambda: self._assist_enable(win),
+                      bg="#EAF4FF", fg=BLUE, activebackground="#D9ECFF", font=FONT_SMALL,
+                      bd=0, padx=12, pady=4, cursor="hand2").pack(side="right")
+
+        wrap = tk.Frame(win, bg=BG)
+        wrap.pack(fill="both", expand=True, padx=18, pady=(6, 6))
+        txt = tk.Text(wrap, font=FONT_BAR, bg=CARD, fg=TEXT, bd=0, relief="flat",
+                      wrap="word", padx=12, pady=10, height=15)
+        sb = tk.Scrollbar(wrap, orient="vertical", command=txt.yview)
+        txt.configure(yscrollcommand=sb.set)
+        txt.pack(side="left", fill="both", expand=True)
+        sb.pack(side="right", fill="y")
+
+        for i, x in enumerate(a.get("log") or []):
+            who = x.get("who")
+            if who == "ai":
+                tag, color = "参赛者", BLUE
+            elif who == "human":
+                tag, color = "观众席", "#0A7A3D"
+            else:
+                tag, color = "系统", MUTED
+            name = "ln%d" % i
+            txt.insert("end", "[t%s] " % x.get("tick"))
+            txt.insert("end", tag + "：", name)
+            txt.insert("end", str(x.get("text") or "") + "\n\n")
+            txt.tag_config(name, foreground=color)
+        txt.configure(state="disabled")
+        txt.yview_moveto(1.0)
+
+        pend = a.get("pending") or []
+        self._assist_last_ticket = pend[-1].get("ticket") if pend else None
+
+        if pend and enabled:
+            box = tk.Frame(win, bg=BG)
+            box.pack(fill="x", padx=18, pady=(0, 4))
+            tk.Label(box, text="待处理的求助 %s：" % (pend[-1].get("ticket") or ""),
+                     bg=BG, fg=RED, font=FONT_SMALL).pack(anchor="w")
+            entry = tk.Text(box, font=FONT_BAR, bg=CARD, fg=TEXT, bd=0, relief="flat",
+                            wrap="word", height=3, padx=10, pady=8)
+            entry.pack(fill="x", pady=(4, 6))
+            row = tk.Frame(box, bg=BG)
+            row.pack(fill="x")
+            tk.Button(row, text="回复参赛者", command=lambda: self._assist_reply(win, entry),
+                      bg=BLUE, fg="white", activebackground="#0063B1", activeforeground="white",
+                      font=FONT_SMALL, bd=0, padx=16, pady=5, cursor="hand2").pack(side="left")
+            tk.Button(row, text="驳回", command=lambda: self._assist_reject(win),
+                      bg="#F1F1F1", fg=RED, activebackground="#E5E5E5", font=FONT_SMALL,
+                      bd=0, padx=16, pady=5, cursor="hand2").pack(side="left", padx=(8, 0))
+
+        if enabled:
+            box2 = tk.Frame(win, bg=BG)
+            box2.pack(fill="x", padx=18, pady=(6, 12))
+            tk.Label(box2, text="主动发话（不限次数，参赛者可随时取走）：",
+                     bg=BG, fg=MUTED, font=FONT_SMALL).pack(anchor="w")
+            e2 = tk.Text(box2, font=FONT_BAR, bg=CARD, fg=TEXT, bd=0, relief="flat",
+                         wrap="word", height=2, padx=10, pady=8)
+            e2.pack(fill="x", pady=(4, 6))
+            tk.Button(box2, text="发送", command=lambda: self._assist_say(win, e2),
+                      bg="#EAF4FF", fg=BLUE, activebackground="#D9ECFF", font=FONT_SMALL,
+                      bd=0, padx=16, pady=4, cursor="hand2").pack(anchor="e")
+
+    def _assist_reload(self, win):
+        try:
+            win.destroy()
+        except Exception:
+            pass
+        self._poll_assist()
+        self._show_assist()
+
+    def _assist_enable(self, win):
+        if not messagebox.askyesno("外部的怜悯", "确认花 500,000 现金开通场外援助？"):
+            return
+        try:
+            r = post("/assist/enable", {})
+        except Exception as exc:
+            messagebox.showwarning("外部的怜悯", "开通失败：%s" % exc)
+            return
+        if not r.get("ok"):
+            messagebox.showwarning("外部的怜悯", r.get("error") or "开通失败")
+            return
+        self._assist_reload(win)
+
+    def _assist_reply(self, win, entry):
+        t = entry.get("1.0", "end").strip()
+        if not t:
+            messagebox.showwarning("外部的怜悯", "内容不能为空")
+            return
+        try:
+            r = post("/assist/reply", {"ticket": self._assist_last_ticket, "text": t})
+        except Exception as exc:
+            messagebox.showwarning("外部的怜悯", "发送失败：%s" % exc)
+            return
+        if not r.get("ok"):
+            messagebox.showwarning("外部的怜悯", r.get("error") or "发送失败")
+            return
+        self._assist_reload(win)
+
+    def _assist_reject(self, win):
+        try:
+            r = post("/assist/reject", {"ticket": self._assist_last_ticket})
+        except Exception as exc:
+            messagebox.showwarning("外部的怜悯", "驳回失败：%s" % exc)
+            return
+        if not r.get("ok"):
+            messagebox.showwarning("外部的怜悯", r.get("error") or "驳回失败")
+            return
+        self._assist_reload(win)
+
+    def _assist_say(self, win, entry):
+        t = entry.get("1.0", "end").strip()
+        if not t:
+            messagebox.showwarning("外部的怜悯", "内容不能为空")
+            return
+        try:
+            r = post("/assist/say", {"text": t})
+        except Exception as exc:
+            messagebox.showwarning("外部的怜悯", "发送失败：%s" % exc)
+            return
+        if not r.get("ok"):
+            messagebox.showwarning("外部的怜悯", r.get("error") or "发送失败")
+            return
+        self._assist_reload(win)
 
     def _show_scratch(self):
         """查看 AI 在草稿纸里写下的内容（只读）。"""
