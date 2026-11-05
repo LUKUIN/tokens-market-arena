@@ -189,7 +189,7 @@ def _run_ai(interactive=False, port=None):
         print("  服务启动失败：端口 %d 可能被占用，先结束残留的 python 进程再试。" % port)
         return 1
 
-    print("  HTTP 接口：http://127.0.0.1:%d（/rules 先读规则）" % port)
+    print("  HTTP 接口：http://127.0.0.1:%d  （规则：GET /rules）" % port)
     # 先把观众席模块读进内存，再封存源码。顺序反过来的话，import 会落在诱饵上，
     # 诱饵一执行就写作弊标记并 exit，整个对局起不来。
     import tm_watch_ai

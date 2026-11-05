@@ -101,6 +101,26 @@ if ($left.Count -gt 0) {
     Write-Host "  复查：所有相关进程均已退出。" -ForegroundColor Green
 }
 
+# ---------- 4b. 先把被封存的源码还原回来 ----------
+# 对局异常中断会留下「源码加密在 %LOCALAPPDATA%\TokensMarketGuard、src/ 里是诱饵」的状态。
+# 不先还原就删 data/，清理完打开 src/ 看到的是 CHEATING DETECTED 诱饵，像是代码被删了。
+$stateFile = Join-Path $root "_guard_vault\guard_state.json"
+if (Test-Path $stateFile) {
+    Write-Host ""
+    Write-Host "  检测到上次对局中断留下的封存，先还原源码 ……" -ForegroundColor Yellow
+    $guardPy = Join-Path $root "guard.py"
+    try {
+        & python $guardPy clean 2>&1 | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+    } catch {
+        Write-Host "  [警告] 调用 guard.py clean 失败：$_" -ForegroundColor Red
+    }
+    if (Test-Path $stateFile) {
+        Write-Host "  [警告] 源码可能仍是诱饵，请手动执行 python guard.py clean" -ForegroundColor Red
+    } else {
+        Write-Host "  源码已还原。" -ForegroundColor Green
+    }
+}
+
 # ---------- 5. 清 data/ 运行时文件（保留 reports） ----------
 $removed = 0
 $keep = @("reports")
@@ -144,7 +164,30 @@ if ($logCount -gt 0) {
     Write-Host ("  已清理根目录 {0} 个临时日志。" -f $logCount) -ForegroundColor Green
 }
 
-# ---------- 5d. 最终状态确认 ----------
+# ---------- 5d. 列出不属于本项目的文件 ----------
+# 项目里多出来的、不是这个仓库的文件会列在这里。只列出、绝不自动删：
+# 自动删未知文件有吃掉真实工作的风险。
+$gitDir = Join-Path $root ".git"
+if (Test-Path $gitDir) {
+    $untracked = @()
+    & git -C $root status --porcelain --untracked-files=all 2>$null | ForEach-Object {
+        if ($_ -match '^[?][?] ') { $untracked += $_.Substring(3).Trim('"') }
+    }
+    if ($untracked.Count -gt 0) {
+        Write-Host ""
+        Write-Host "  以下文件不属于本项目（可能是 Agent 或上一局留下的）：" -ForegroundColor Yellow
+        foreach ($e in ($untracked | Sort-Object)) { Write-Host "    $e" -ForegroundColor DarkYellow }
+        Write-Host "  一个都没删；确认是残留的话请手工删除。" -ForegroundColor DarkGray
+    } else {
+        Write-Host ""
+        Write-Host "  没有多余文件。" -ForegroundColor Green
+    }
+} else {
+    Write-Host ""
+    Write-Host "  不是 git 仓库，跳过多余文件扫描。" -ForegroundColor DarkGray
+}
+
+# ---------- 5e. 最终状态确认 ----------
 Write-Host ""
 Write-Host "  最终状态：" -ForegroundColor Cyan
 $dataLeft = @()
