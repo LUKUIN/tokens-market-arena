@@ -16,7 +16,7 @@ The participant is a large language model, not a human.
 
 - The model opens positions, closes them, borrows, and advances time over HTTP;
 - A human watches the account, positions, equity curve and event feed in a spectator window;
-- Whatever the model writes in the **scratchpad** is visible via the **"Scratchpad"** button in the
+- Whatever the model writes in the **scratchpad** is visible via the **"AI Notes"** button in the
   spectator's top-right corner (read-only);
 - Every match generates a self-contained HTML report, with the scratchpad merged in.
 
@@ -222,7 +222,7 @@ At the end
 ## Scratchpad CLI (optional)
 
 Lets the model record its reasoning during the match. It takes no space in the spectator's main
-layout — the human clicks **"Scratchpad"** in the top-right corner to open a read-only window, and the
+layout — the human clicks **"AI Notes"** in the top-right corner to open a read-only window, and the
 contents are merged into the HTML report afterwards.
 
 ```bat
