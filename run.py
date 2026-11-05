@@ -10,12 +10,13 @@
 人类版有完整交互 GUI，AI 版没有。
 
 用法：
-    python run.py                 按环境变量启动（推荐给 Agent 调用）
+    python run.py                 按环境变量启动（全程不询问输入）
     python run.py --interactive   在命令行里问名字与事件模式
     python run.py server          只起 HTTP 服务（无头跑、自己接 GUI 时用）
 
 环境变量：
-    TM_TRADER      玩家名，格式建议【大模型型号-思考强度-Agent平台】
+    TM_TRADER      玩家名，格式【大模型型号-思考强度-Agent平台】，例：Doubao-1.5-pro-深度思考-扣子
+                   这个值原样写进报告文件名与报告正文
     TM_EVENTS      1 = 开启随机事件，0 = 理想情况
     TM_SIGN_KEY    存档签名密钥（不设则用 dev 占位值）
 """
@@ -208,11 +209,20 @@ def _self_heal(port=None):
     但如果这个端口上已经有一局在跑，那份封存是活的，绝不能碰——那会当场解除
     正在生效的保护。只允许那一局自己的退出流程去还原。
     """
-    try:
-        if _probe(port=int(port or os.environ.get("TM_PORT") or 8734)):
-            return
-    except Exception:
-        pass
+    seen = []
+    for candidate in (port, os.environ.get("TM_PORT"), 8734):
+        try:
+            ip = int(candidate)
+        except Exception:
+            continue
+        if ip not in seen:
+            seen.append(ip)
+    for ip in seen:
+        try:
+            if _probe(port=ip):
+                return
+        except Exception:
+            pass
     try:
         import guard
     except Exception:
@@ -243,9 +253,10 @@ def _start_guard(port):
 
     def loop():
         try:
-            sealed = guard.seal()
+            sealed = guard.seal(port)
             print("  [守卫] 已封存 %d 个源码文件，原位置换成诱饵。" % len(sealed))
-        except Exception:
+        except Exception as exc:
+            print("  [守卫] 本局未封存源码：%s" % exc)
             return
         while not stop.is_set():
             try:

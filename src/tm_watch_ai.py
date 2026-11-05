@@ -151,6 +151,10 @@ FONT_MONO_BIG = ("Consolas", 11, "bold")
 
 # 活动流快捷分类：「黑天鹅」与「流动性枯竭」在引擎里同为 kind="gap"，
 # 靠 "[Liquidity drained]" 文本前缀区分。
+# 流动性事件的前缀（英文版 [Liquidity drained]、中文版【流动性枯竭】，
+# 两种括号都要覆盖——此前只匹配英文，中文事件全被归进「黑天鹅」）
+_LIQ_MARKS = ("[Liquidity drained]", "【流动性枯竭】", "[流动性枯竭]")
+
 LOG_TABS = (
     ("all", "全部"),
     ("gap", "黑天鹅"),
@@ -719,7 +723,7 @@ class Watch:
         k = e.get("kind", "info")
         t = e.get("text", "")
         if k == "gap":
-            return "liq" if "[Liquidity drained]" in t else "gap"
+            return "liq" if any(m in t for m in _LIQ_MARKS) else "gap"
         if k == "news":
             return "news"
         if k in ("open", "close"):
@@ -884,7 +888,6 @@ class Watch:
         except Exception:
             pass
 
-    @staticmethod
     def _kill_all(self):
         if not messagebox.askyesno("结束相关进程", "将立即停止 Tokens 服务并关闭观众席。\n确定吗？"):
             return
