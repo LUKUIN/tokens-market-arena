@@ -125,7 +125,7 @@ def _start_server(host="127.0.0.1", port=8734):
     return False
 
 
-def _run_human():
+def _run_human(port=None):
     setup = _interactive_setup()
     if not setup:
         return 1
@@ -133,8 +133,9 @@ def _run_human():
     os.environ["TM_TRADER"] = trader
     os.environ["TM_EVENTS"] = "1" if events_on else "0"
 
-    if not _start_server():
-        print("  服务启动失败：端口 8734 可能被占用，先结束残留的 python 进程再试。")
+    port = int(port or os.environ.get("TM_PORT") or 8734)
+    if not _start_server(port=port):
+        print("  服务启动失败：端口 %d 可能被占用，先结束残留的 python 进程再试。" % port)
         return 1
 
     # 交互界面：内部会先选分辨率，再走「难度盲盒 → 规则窗 → 主 GUI」
@@ -156,8 +157,10 @@ def main(argv=None):
 
     if mode == "state":
         import json
-        from tm_api import ENGINE
-        print(json.dumps(ENGINE.state(), ensure_ascii=False, indent=1))
+        from tm_engine import Engine
+        home = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "data")
+        # readonly：只读查询不得写 .running、不得累加异常退出计数
+        print(json.dumps(Engine(home, readonly=True).state(), ensure_ascii=False, indent=1))
         return 0
 
     return _run_human()

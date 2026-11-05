@@ -21,7 +21,7 @@ import os
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 from tm_engine import Engine, TICK_SECONDS
 
@@ -69,7 +69,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/rules":
             return self._send(ENGINE.rules())
         if path == "/state":
-            return self._send(ENGINE.state())
+            q = parse_qs(urlparse(self.path).query or "")
+            raw = (q.get("history", ["1"])[0] or "1").strip().lower()
+            with_hist = raw not in ("0", "false", "no", "off")
+            return self._send(ENGINE.state(include_history=with_hist))
         if path == "/prices":
             return self._send(ENGINE.state()["prices"])
         if path == "/roll/state":

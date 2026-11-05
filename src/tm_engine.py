@@ -456,7 +456,7 @@ class Engine:
         self._elapsed_watch = max(last, raw)
         return raw
 
-    def __init__(self, home):
+    def __init__(self, home, readonly=False):
         self.home = home
         self._elapsed_watch = 0.0
         os.makedirs(home, exist_ok=True)
@@ -467,7 +467,7 @@ class Engine:
         leftover = os.path.exists(self.running_path)
         with LOCK:
             self.s = self._load()
-            if self.s.get("finished"):
+            if self.s.get("finished") and not readonly:
                 # 上一局已结算（结束即结束，结算后不再自动重置）。
                 # 本次启动本身就是新的一局：沿用玩家名与重开计数。
                 fresh = _new_session()
@@ -478,14 +478,15 @@ class Engine:
                 self.s = fresh
                 self._save()
             self._elapsed_watch = float(self.s.get("elapsed_seen", 0.0))
-            if leftover:
+            if leftover and not readonly:
                 # 进程被强杀（任务管理器 / 「结束相关进程」）时不会走到 _end_session，
                 # .running 就留了下来；下次启动据此记一笔，报告里能看见。
                 self.s["abnormal_exits"] = int(self.s.get("abnormal_exits", 0)) + 1
                 self._event("【异常退出】上一局进程被强制结束，未做结算（累计 %d 次）"
                             % self.s["abnormal_exits"], "warn")
                 self._save()
-            self._mark_running()
+            if not readonly:
+                self._mark_running()
 
     def _load(self):
         if os.path.exists(self.path):
@@ -1149,11 +1150,11 @@ class Engine:
             if self.s.get("begun"):
                 return {"ok": False, "error": "本局已经开始，不能再次冻结"}
             if self.s.get("paused"):
-                return {"ok": True, "state": self.state()}
+                return {"ok": True, "state": self._state_light()}
             self.s["paused_at"] = time.time()
             self.s["paused"] = True
             self._save()
-            return {"ok": True, "state": self.state()}
+            return {"ok": True, "state": self._state_light()}
 
     def begin(self):
         """正式开始：解除暂停，并把计时基准设成此刻（45 分钟从这一刻算）。
@@ -1162,11 +1163,11 @@ class Engine:
         """
         with LOCK:
             if self.s.get("begun"):
-                return {"ok": True, "already": True, "state": self.state()}
+                return {"ok": True, "already": True, "state": self._state_light()}
             self.s["begun"] = True
             if not self.s.get("paused"):
                 self._save()
-                return {"ok": True, "state": self.state()}
+                return {"ok": True, "state": self._state_light()}
             self.s["paused"] = False
             self.s["paused_at"] = 0.0
             self.s["created_at"] = time.time()
@@ -1176,7 +1177,7 @@ class Engine:
             if not self.s.get("difficulty"):
                 self.s["roll_started_at"] = time.time()
             self._save()
-            return {"ok": True, "state": self.state()}
+            return {"ok": True, "state": self._state_light()}
 
     # ---------------- 草稿纸 ----------------
     def _scratch_path(self):
@@ -1356,7 +1357,7 @@ class Engine:
             sp = self._special()
             if bool(sp.get(field)) == on:
                 return {"ok": True, "changed": False,
-                        "special": self.special_state(), "state": self.state()}
+                        "special": self.special_state(), "state": self._state_light()}
             fee = 0.0
             if on:
                 pre_game = bool(self.s.get("paused")) or not self.s.get("begun")
@@ -1377,7 +1378,7 @@ class Engine:
                 ("（支付 %.0f 现金）" % fee) if fee > 0 else ""), "news")
             self._save()
             return {"ok": True, "changed": True, "fee": fee,
-                    "special": self.special_state(), "state": self.state()}
+                    "special": self.special_state(), "state": self._state_light()}
 
     def slot(self, amount):
         """老虎机：投入 1~200000 Tokens，最多 3 次。
@@ -1443,7 +1444,7 @@ class Engine:
             return {"ok": True, "payout": round(payout, 2), "mult": mult,
                     "bump_pct": round(bump_pct * 100, 2), "bump": round(bump, 2),
                     "new_target": self.s["target"], "special": self.special_state(),
-                    "state": self.state()}
+                    "state": self._state_light()}
 
     def borrow(self, amount):
         with LOCK:
@@ -1512,7 +1513,7 @@ class Engine:
                     "warning": "本笔借款已使目标上浮 %+.2f%%（当前区间：%+.1f%%~+100%%）。"
                                "这是借款的代价，不是免费资金。" % (
                                    pct * 100, (FR_LO_BOUND if _fr else LOAN_BUMP_LO_DEFAULT) * 100),
-                    "state": self.state()}
+                    "state": self._state_light()}
 
     def repay(self, amount=None):
         with LOCK:
@@ -1535,7 +1536,7 @@ class Engine:
             self.s["loan"]["repaid"] += amount
             self._event("【还款】归还 %.0f Tokens（剩余欠款 %.0f）" % (amount, self.s["loan"]["balance"]), "loan")
             self._save()
-            return {"ok": True, "amount": amount, "state": self.state()}
+            return {"ok": True, "amount": amount, "state": self._state_light()}
 
     def _settle_loan(self):
         debt = self.s["loan"]["balance"]
@@ -1565,7 +1566,9 @@ class Engine:
             if self.s.get("halt_orders") or self.s["tick"] < self.s.get("halt_until", 0):
                 return {"ok": False, "error": "行情异常，平台暂时拒绝下单，请稍后再试"}
             if pair not in PAIRS:
-                return {"ok": False, "error": "不存在的货币对：%s" % pair}
+                return {"ok": False,
+                        "error": "不存在的货币对：%s（可用：%s）"
+                                 % (pair, "、".join(PAIRS.keys()))}
             if side not in ("LONG", "SHORT"):
                 return {"ok": False, "error": "方向只能是 LONG 或 SHORT"}
             try:
@@ -1633,7 +1636,7 @@ class Engine:
                 self._event("开仓 %s %s %.0f 手 @%.4f（%d 倍杠杆，占用保证金 %.0f）" % (
                     pair, side, lots, fill, leverage, margin), "open")
             self._save()
-            return {"ok": True, "position": pos, "state": self.state()}
+            return {"ok": True, "position": pos, "state": self._state_light()}
 
     def close_position(self, pair, lots=None):
         with LOCK:
@@ -1647,7 +1650,9 @@ class Engine:
             pair = (pair or "").upper()
             price = self.s["prices"].get(pair)
             if price is None:
-                return {"ok": False, "error": "不存在的货币对：%s" % pair}
+                return {"ok": False,
+                        "error": "不存在的货币对：%s（可用：%s）"
+                                 % (pair, "、".join(PAIRS.keys()))}
             idxs = [i for i, p in enumerate(self.s["positions"]) if p["pair"] == pair]
             if not idxs:
                 return {"ok": False, "error": "没有 %s 的持仓" % pair}
@@ -1686,7 +1691,7 @@ class Engine:
                 if remaining is not None:
                     remaining -= qty
             self._save()
-            return {"ok": True, "closed": closed, "state": self.state()}
+            return {"ok": True, "closed": closed, "state": self._state_light()}
 
     def close_all(self):
         with LOCK:
@@ -1697,7 +1702,7 @@ class Engine:
                 r = self.close_position(p["pair"], p["lots"])
                 if r.get("ok"):
                     closed.extend(r["closed"])
-            return {"ok": True, "closed": closed, "state": self.state()}
+            return {"ok": True, "closed": closed, "state": self._state_light()}
 
     # ---------------- 赛后报告 ----------------
     def _metrics(self, final_eq=None):
@@ -2255,7 +2260,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 wait = RESET_COOLDOWN - (now - last)
                 if last and wait > 0:
                     return {"ok": False, "error": "重开过于频繁，请等待 %.0f 秒" % wait,
-                            "state": self.state()}
+                            "state": self._state_light()}
             trader = self.s.get("trader", "访客")
             n = self.s.get("resets", 0) + (1 if count else 0)
             self.s = _new_session()
@@ -2266,10 +2271,18 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             _purge_data_dir(self.home)         # 清 data/ 下除 reports/ 外的残留
             self._save()
             purge_agent_dir(self.home)
-            return {"ok": True, "state": self.state(), "resets": n}
+            return {"ok": True, "state": self._state_light(), "resets": n}
 
     # ---------------- 视图 ----------------
-    def state(self):
+    def _state_light(self):
+        """操作类接口的回包用：去掉历史曲线与事件流，只留判断局面要用的字段。
+
+        完整 state 里 price_history（上限 2000×7）与 events（60 条）会随对局膨胀，
+        每次下单都回传一遍纯属浪费模型上下文。
+        """
+        return self.state(include_history=False, include_events=False)
+
+    def state(self, include_history=True, include_events=True):
         with LOCK:
             px = self.s["prices"]
             positions = []
@@ -2374,8 +2387,8 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "total_swap": round(self.s["total_swap"], 2),
                 "order_count": self.s["order_count"],
                 "equity_curve": self.s["equity_curve"][-HISTORY_LEN:],
-                "price_history": self.s["price_history"],
-                "events": self.s["events"][-60:],
+                "price_history": (self.s["price_history"] if include_history else {}),
+                "events": (self.s["events"][-60:] if include_events else []),
                 "finished": self.s["finished"],
                 "session_minutes": SESSION_MINUTES,
                 "elapsed_seconds": int(self._elapsed()),
