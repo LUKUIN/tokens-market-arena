@@ -64,9 +64,9 @@ start "" /b python run.py
 curl -X POST http://127.0.0.1:8734/roll/stop
 ```
 
-### 人手动玩（双击）
+### 双击启动
 
-`启动游戏.bat`——同样不问任何问题，只把即将使用的参数打印出来。
+`启动游戏.bat` 只是另一个入口——同样不问任何问题，只把即将使用的参数打印出来，零交互行为和 `python run.py` 完全一致。
 
 ### 只要服务不要窗口
 
@@ -217,7 +217,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File deep-clean.ps1
 
 ```
 TokensMarket-OpenSource-AI-v97/
-├── run.py                  统一入口（ai / --interactive / server / state）
+├── run.py                  统一入口（ai / --interactive 仅演示 / server / state）
 ├── 启动游戏.bat            Windows 双击入口
 ├── 进程深度清理.bat        人工双击用（含 pause）
 ├── deep-clean.ps1          清理本体；AI 请直接调用它（非交互）
