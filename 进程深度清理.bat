@@ -12,7 +12,11 @@ echo         reports 子目录里的历史战报不会被动。
 echo.
 echo   什么时候用：每次运行「一键重置游戏」之后，立刻跑这个。
 echo.
+if /i "%~1"=="-y" goto SKIPPAUSE1
 pause
+:SKIPPAUSE1
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0deep-clean.ps1"
 echo.
+if /i "%~1"=="-y" goto END
 pause
+:END

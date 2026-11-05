@@ -7,6 +7,10 @@
 # 何时用：每次「一键重置游戏」之后立刻跑一遍，确保没有旧进程占着端口或文件。
 #         如果重置时提示「文件被占用」或启动后窗口不出现，也跑一遍。
 
+# AI / 非交互环境：强制 UTF-8 输出，否则中文在 Git Bash 里会乱码
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+try { $OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+
 $ErrorActionPreference = "SilentlyContinue"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $dataDir = Join-Path $root "src\data"

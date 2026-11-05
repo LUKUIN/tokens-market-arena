@@ -138,9 +138,15 @@ python src/scratchpad.py            连续输入模式（Ctrl+C 退出）
 
 对局结束、或启动异常（端口被占、窗口不出现）时运行：
 
+```bash
+cd "D:/DeepSeek Harness WorkSpace/TokensMarket-OpenSource-AI-v97"
+powershell -NoProfile -ExecutionPolicy Bypass -File deep-clean.ps1
 ```
-双击  进程深度清理.bat
-```
+
+> **由 AI 或脚本调用时请用上面这条命令**，不要直接跑 `进程深度清理.bat`：
+> 它内部有两个 `pause`（管道或重定向喂 stdin 会卡住），而且用 GBK 输出（UTF-8 终端下是乱码）。
+> `deep-clean.ps1` 是同一套逻辑的非交互版本，已强制 UTF-8 输出；**退出码 0 即成功**。
+> 人工双击 `进程深度清理.bat` 仍然可用（加 `-y` 参数则跳过暂停）。
 
 它做两件事：
 
@@ -157,8 +163,8 @@ python src/scratchpad.py            连续输入模式（Ctrl+C 退出）
 TokensMarket-OpenSource-AI-v97/
 ├── run.py                  统一入口（ai / --interactive / server / state）
 ├── 启动游戏.bat            Windows 双击入口
-├── 进程深度清理.bat        结束后清理进程与数据
-├── deep-clean.ps1          清理脚本本体
+├── 进程深度清理.bat        人工双击用（含 pause）
+├── deep-clean.ps1          清理本体；AI 请直接调用它（非交互）
 ├── src/
 │   ├── tm_engine.py        引擎（纯逻辑）
 │   ├── tm_api.py           HTTP 接口
