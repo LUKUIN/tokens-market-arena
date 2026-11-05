@@ -72,7 +72,7 @@ python run.py server 127.0.0.1 8734
 | 端点 | 返回 |
 |---|---|
 | `/health` | `{ok, tick, equity, finished}` |
-| `/rules` | 完整规则文本 + 参数（含 36 种随机事件说明） |
+| `/rules` | 完整规则文本 + 参数（含 35 种随机事件说明） |
 | `/state` | 账户、持仓、贷款、行情、历史、难度、快进状态 |
 | `/prices` | 报价表 |
 | `/roll/state` | 盲盒倒计时与当前定格结果 |

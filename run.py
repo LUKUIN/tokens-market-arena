@@ -40,7 +40,7 @@ DISCLAIMER = """
 """
 
 EVENTS_TEXT = {
-    "1": "已开启随机事件（36 种临时事件会随时打断行情）",
+    "1": "已开启随机事件（35 种临时事件会随时打断行情）",
     "0": "理想情况（只保留黑天鹅跳空，行情更干净）",
 }
 
@@ -86,10 +86,30 @@ def _interactive_setup():
         if mode not in ("0", "1"):
             mode = "0"
 
+    def _ask_special(env_key, title, detail):
+        v = os.environ.get(env_key)
+        if v in ("0", "1"):
+            return v == "1"
+        print()
+        print("  %s" % title)
+        print("    %s" % detail)
+        return (_ask("  开启？(y/N)：", "n") or "n").lower() == "y"
+
+    fr_on = _ask_special(
+        "TM_FR", "是否开启全局事件【金融回逆】？",
+        "整局借款上限 2 次；目标上浮区间 -20%~100%；局内再开启需支付 30 万现金")
+    slot_on = _ask_special(
+        "TM_SLOT", "是否开启全局事件【老虎机】？",
+        "整局可投 3 次（每次 1~100000，且不超过当前权益）；"
+        "70% 空 / 25% 10 倍 / 5% 20 倍；中奖金额的 1%~50% 推高目标")
+    os.environ["TM_FR"] = "1" if fr_on else "0"
+    os.environ["TM_SLOT"] = "1" if slot_on else "0"
+
     print()
     print("  玩家    %s" % name)
     print("  模式    %s" % EVENTS_TEXT[mode])
-    if _ask("  确认开始？(y/N)：", "n").lower() != "y":
+    print("  金融回逆 %s | 老虎机 %s" % ("开" if fr_on else "关", "开" if slot_on else "关"))
+    if (_ask("  确认开始？(y/N)：", "n") or "n").lower() != "y":
         print("  已取消。")
         return None
     return name, mode == "1"

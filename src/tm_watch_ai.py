@@ -14,6 +14,7 @@ import socket
 import sys
 import tkinter as tk
 import time
+import tkinter.font as tkfont
 from tkinter import ttk, messagebox
 import urllib.request
 
@@ -245,6 +246,18 @@ class Watch:
         tk.Label(topbar, text="只读观战终端", font=FONT_SMALL, bg=CARD, fg=MUTED).pack(
             side="left", pady=8)
 
+        # 两个全局开关型事件的状态：开启=紫色粗体；未开启=黑色粗体+删除线
+        self._f_on = tkfont.Font(root=root, family=FONT[0], size=10, weight="bold")
+        self._f_off = tkfont.Font(root=root, family=FONT[0], size=10, weight="bold",
+                                  overstrike=1)
+        self.lbl_fr = tk.Label(topbar, text="金融回逆", font=self._f_off,
+                               bg=CARD, fg=TEXT)
+        self.lbl_fr.pack(side="left", padx=(16, 0), pady=8)
+        self.lbl_slot = tk.Label(topbar, text="老虎机", font=self._f_off,
+                                 bg=CARD, fg=TEXT)
+        self.lbl_slot.pack(side="left", padx=(10, 0), pady=8)
+        self._last_special = None
+
         btn_style = dict(font=FONT_SMALL, bd=0, relief="flat", cursor="hand2",
                          padx=12, pady=4)
         tk.Button(topbar, text="AI 行为", command=self._show_scratch,
@@ -392,7 +405,7 @@ class Watch:
             st = get("/state")
             self._render(st)
         except Exception:
-            self.lbl_status.config(text="等待服务启动（python run.py）",
+            self.lbl_status.config(text="等待服务启动（python startgame.pyc api 127.0.0.1 8734）",
                                    fg=ORANGE)
         self.root.after(300, self.refresh)
 
@@ -485,6 +498,18 @@ class Watch:
             self.root.title(_bt + " | 金融回逆 剩余 %d 秒" % int(_lbr + 0.999))
         elif _bt:
             self.root.title(_bt)
+        # 全局开关状态（只在变化时重设字体，避免每次刷新都动控件）
+        sp = st.get("special") or {}
+        _sig = (bool(sp.get("fr")), bool(sp.get("slot")))
+        if self._last_special != _sig:
+            self._last_special = _sig
+            _fr_on, _slot_on = _sig
+            _purple = "#7B3FB8"
+            self.lbl_fr.config(font=self._f_on if _fr_on else self._f_off,
+                               fg=_purple if _fr_on else TEXT)
+            self.lbl_slot.config(font=self._f_on if _slot_on else self._f_off,
+                                 fg=_purple if _slot_on else TEXT)
+
         eq, pnl = st["equity"], st["pnl"]
         up = pnl >= 0
         self.lbl_equity.config(text="{:,.0f}".format(eq), fg=GREEN if up else RED)

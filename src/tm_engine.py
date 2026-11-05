@@ -20,9 +20,6 @@ import time
 # ---- 存档完整性签名 ----
 # 注意：密钥随字节码一起分发，目标是拦住「直接改 JSON」这类零门槛作弊，
 # 不承诺抵抗反编译。任何对 session.json 的手工修改都会在加载时被识别。
-# 存档防篡改签名密钥。
-# 开源版改为从环境变量读取：本地自用可以在 .env 或系统环境里设一个自己的值；
-# 公开仓库里不能写死 —— 密钥一旦公开，任何人都能伪造合法签名。
 _SIGN_KEY = (os.environ.get("TM_SIGN_KEY") or "dev-only-change-me").encode("utf-8")
 
 
@@ -78,6 +75,17 @@ def _env_events():
         v = (os.environ.get("TM_EVENTS") or "").strip().lower()
         _EVENTS_CACHE = v not in ("0", "n", "no", "off", "关", "否")
     return _EVENTS_CACHE
+
+
+_SPECIAL_CACHE = {}
+
+
+def _env_flag(name, default=False):
+    """开局开关：TM_FR / TM_SLOT。未设置视为关闭。"""
+    if name not in _SPECIAL_CACHE:
+        v = (os.environ.get(name) or "").strip().lower()
+        _SPECIAL_CACHE[name] = default if not v else v in ("1", "y", "yes", "on", "开", "是")
+    return _SPECIAL_CACHE[name]
 
 
 def _pick_news_rate():
@@ -140,8 +148,7 @@ NEWS_TABLE = [
     ("有人爆仓",       5, "flavor", None),
     ("平台公告",       5, "flavor", None),
     # --- 稀有：借贷政策类 ---
-    # 借款上浮区间临时放宽到 -20%~+100%：可能减免目标，抽中即消耗（96 tick = 8 分钟）
-    ("金融回逆",       2, "mod", ("loan_bump_lo", -0.20, 96)),
+    # 注意：【金融回逆】已升级为开局全局开关（见 special 段），不再进入随机事件池。
 ]
 
 FLAVOR_LINES = {
@@ -174,6 +181,19 @@ MOD_DEFAULT = {
     "loan_bump_lo": 0.01,   # 【金融回逆】借款上浮下限（默认 +1%，事件期间可到 -20%）
 }
 
+
+# ---------------- 全局开关型特殊事件 ----------------
+FR_MAX_LOANS = 2              # 金融回逆开启后，整局最多借款次数
+FR_LO_BOUND = -0.20           # 金融回逆开启时，借款上浮区间下限
+LOAN_BUMP_LO_DEFAULT = 0.01   # 未开启时的下限（+1%）
+SPECIAL_FEE = 300_000.0       # 局内开启任一全局事件的代价（权益/现金）
+SLOT_MAX_PLAYS = 3            # 老虎机整局次数
+SLOT_MIN_STAKE = 1.0          # 单次投入下限
+SLOT_MAX_STAKE = 100_000.0    # 单次投入上限
+SLOT_P_LOSE = 0.70            # 70% 无所得
+SLOT_P_X10 = 0.25             # 25% 返还 10 倍
+SLOT_WIN_LO = 0.01            # 中奖返还金额推高目标的比例下限
+SLOT_WIN_HI = 0.50            # ……上限
 
 STARTER_CASH = 1_000_000.0
 LOTS_SIZE = 1000.0
@@ -346,6 +366,17 @@ def _new_session():
         "roll_phase": random.uniform(0, ROLL_COMBOS),   # 打散取模相位（见 _roll_index）
         "loan": {"balance": 0.0, "borrowed": 0.0, "repaid": 0.0, "interest": 0.0,
                  "loans": 0, "goal_bumps": []},
+        # ---------------- 全局开关型特殊事件 ----------------
+        "special": {
+            "fr": _env_flag("TM_FR"),       # 金融回逆：开局免费开启
+            "slot": _env_flag("TM_SLOT"),   # 老虎机：开局免费开启
+            "fr_loans": 0,                  # 开启后已借款次数（上限 FR_MAX_LOANS）
+            "fr_paid": 0.0,                 # 局内开启累计支付
+            "slot_paid": 0.0,
+            "slot_plays": 0,                # 老虎机已用次数
+            "slot_win": 0.0,                # 老虎机累计返还（用于目标上浮）
+            "slot_history": [],
+        },
         "finished": False,
         "paused": False,
         "paused_at": 0.0,
@@ -1234,6 +1265,132 @@ class Engine:
             self._save()
             return {"ok": True, "state": st, "ff": self.ff_plan()}
 
+    # ---------------- 全局开关型特殊事件 ----------------
+    def _special(self):
+        return self.s.setdefault("special", {})
+
+    def special_state(self):
+        sp = self._special()
+        fr = bool(sp.get("fr"))
+        slot = bool(sp.get("slot"))
+        return {
+            "fr": fr,
+            "slot": slot,
+            "fr_loans": int(sp.get("fr_loans", 0)),
+            "fr_left": max(0, FR_MAX_LOANS - int(sp.get("fr_loans", 0))) if fr else None,
+            "slot_plays": int(sp.get("slot_plays", 0)),
+            "slot_left": max(0, SLOT_MAX_PLAYS - int(sp.get("slot_plays", 0))) if slot else None,
+            "slot_win": round(float(sp.get("slot_win", 0.0)), 2),
+            "fr_paid": round(float(sp.get("fr_paid", 0.0)), 2),
+            "slot_paid": round(float(sp.get("slot_paid", 0.0)), 2),
+            "fr_lo_pct": (FR_LO_BOUND if fr else LOAN_BUMP_LO_DEFAULT) * 100,
+            "slot_win_range": [SLOT_WIN_LO * 100, SLOT_WIN_HI * 100],
+        }
+
+    def set_special(self, name, on):
+        """开局全局开关：金融回逆 / 老虎机。
+
+        开局（尚未 begin 或仍处于 paused）免费；游戏进行中再打开需支付 SPECIAL_FEE 现金。
+        关闭永远免费；重复设置同一状态不收费。
+        """
+        with LOCK:
+            if self.s.get("finished"):
+                return {"ok": False, "error": "本局已结束"}
+            key = (name or "").strip().lower()
+            if key in ("fr", "金融回逆", "financial_reversal"):
+                field = "fr"
+            elif key in ("slot", "老虎机", "slot_machine"):
+                field = "slot"
+            else:
+                return {"ok": False, "error": "未知的全局事件：%s（可用：fr / slot）" % name}
+            on = bool(on)
+            sp = self._special()
+            if bool(sp.get(field)) == on:
+                return {"ok": True, "changed": False,
+                        "special": self.special_state(), "state": self.state()}
+            fee = 0.0
+            if on:
+                pre_game = bool(self.s.get("paused")) or not self.s.get("begun")
+                if not pre_game:
+                    fee = SPECIAL_FEE
+                    if self.s["balance"] < fee:
+                        return {"ok": False,
+                                "error": "开启失败：局内开启需要支付 %.0f 现金，当前现金 %.0f 不足"
+                                         % (fee, self.s["balance"])}
+                    self.s["balance"] -= fee
+                    sp["%s_paid" % field] = float(sp.get("%s_paid" % field, 0.0)) + fee
+            sp[field] = on
+            if field == "fr":
+                self.s.get("mods", {}).pop("loan_bump_lo", None)
+            label = "金融回逆" if field == "fr" else "老虎机"
+            self._event("【全局事件】%s 已%s%s" % (
+                label, "开启" if on else "关闭",
+                ("（支付 %.0f 现金）" % fee) if fee > 0 else ""), "news")
+            self._save()
+            return {"ok": True, "changed": True, "fee": fee,
+                    "special": self.special_state(), "state": self.state()}
+
+    def slot(self, amount):
+        """老虎机：投入 1~100000 Tokens，最多 3 次。
+
+        70% 无所得；25% 返还 10 倍；5% 返还 20 倍。
+        返还金额进入现金；同时目标按返还金额的 1%~50% 上浮（中奖的代价）。
+        """
+        with LOCK:
+            if self.s.get("finished"):
+                return {"ok": False, "error": "本局已结束"}
+            sp = self._special()
+            if not sp.get("slot"):
+                return {"ok": False, "error": "本局未开启【老虎机】"}
+            played = int(sp.get("slot_plays", 0))
+            if played >= SLOT_MAX_PLAYS:
+                return {"ok": False,
+                        "error": "【老虎机】本局次数已用完（%d/%d），拒绝执行" % (played, SLOT_MAX_PLAYS)}
+            try:
+                stake = float(amount)
+            except (TypeError, ValueError, OverflowError):
+                return {"ok": False, "error": "投入金额必须是数字"}
+            if not math.isfinite(stake):
+                return {"ok": False, "error": "投入金额必须是有限数值"}
+            if stake < SLOT_MIN_STAKE or stake > SLOT_MAX_STAKE:
+                return {"ok": False,
+                        "error": "投入金额必须在 %.0f ~ %.0f 之间" % (SLOT_MIN_STAKE, SLOT_MAX_STAKE)}
+            eq = self.equity()
+            if stake > eq:
+                return {"ok": False, "error": "投入不能超过当前权益（%.2f）" % eq}
+            self.s["balance"] -= stake
+            sp["slot_plays"] = played + 1
+            r = random.random()
+            if r < SLOT_P_LOSE:
+                mult, payout = 0, 0.0
+            elif r < SLOT_P_LOSE + SLOT_P_X10:
+                mult, payout = 10, stake * 10
+            else:
+                mult, payout = 20, stake * 20
+            bump = 0.0
+            bump_pct = 0.0
+            if payout > 0:
+                self.s["balance"] += payout
+                sp["slot_win"] = float(sp.get("slot_win", 0.0)) + payout
+                bump_pct = random.uniform(SLOT_WIN_LO, SLOT_WIN_HI)
+                bump = payout * bump_pct
+                self.s["target"] = self.s.get("target", TARGET_EQUITY) + bump
+                self.s["target_bonus"] = self.s.get("target_bonus", 0.0) + bump
+            rec = {"tick": self.s["tick"], "stake": round(stake, 2), "mult": mult,
+                   "payout": round(payout, 2), "bump_pct": round(bump_pct * 100, 2),
+                   "bump": round(bump, 2)}
+            sp.setdefault("slot_history", []).append(rec)
+            if payout > 0:
+                self._event("【老虎机】投入 %.0f → %d 倍中奖，返还 %.0f；目标上浮 %+.2f%%（%+.0f）→ 新目标 %.0f"
+                            % (stake, mult, payout, bump_pct * 100, bump, self.s["target"]), "news")
+            else:
+                self._event("【老虎机】投入 %.0f → 无所得" % stake, "news")
+            self._save()
+            return {"ok": True, "payout": round(payout, 2), "mult": mult,
+                    "bump_pct": round(bump_pct * 100, 2), "bump": round(bump, 2),
+                    "new_target": self.s["target"], "special": self.special_state(),
+                    "state": self.state()}
+
     def borrow(self, amount):
         with LOCK:
             if self.s.get("finished"):
@@ -1248,9 +1405,17 @@ class Engine:
                 return {"ok": False, "error": "金额必须大于 0"}
             if amount > self.loan_limit():
                 return {"ok": False, "error": "超出可借额度：最多 %.0f" % self.loan_limit()}
+            _sp = self._special()
+            _fr = bool(_sp.get("fr"))
+            if _fr:
+                _used = int(_sp.get("fr_loans", 0))
+                if _used >= FR_MAX_LOANS:
+                    return {"ok": False,
+                            "error": "【金融回逆】本局借款次数已用完（%d/%d），拒绝执行"
+                                     % (_used, FR_MAX_LOANS)}
             # 上浮比例借款时才抽定：这是借款的代价，借前不预告。
-            # 平时下限 +1%；【金融回逆】生效期间下限放低到 -20%（可能减免目标）
-            _lo = float(self._mod("loan_bump_lo"))
+            # 未开启【金融回逆】：下限 +1%%；开启后：下限 -20%%（可能减免目标）
+            _lo = FR_LO_BOUND if _fr else LOAN_BUMP_LO_DEFAULT
             pct = random.uniform(_lo, 1.00)
             bump = amount * pct
             _relief = pct < 0
@@ -1262,11 +1427,15 @@ class Engine:
             self.s["loan"]["balance"] += amount
             self.s["loan"]["borrowed"] += amount
             self.s["loan"]["loans"] += 1
+            if _fr:
+                _sp["fr_loans"] = int(_sp.get("fr_loans", 0)) + 1
             if _relief:
-                # 减免只送一次：用掉就把 【金融回逆】 提前结束
+                # 旧版随机事件残留清理（减免只送一次的语义已由开关接管）
                 self.s.get("mods", {}).pop("loan_bump_lo", None)
-            self._event("【借款】借入 %.0f Tokens（第 %d 笔，当前欠款 %.0f）；目标上浮 +%.0f（+%.1f%%）→ 新目标 %.0f" % (
-                amount, self.s["loan"]["loans"], self.s["loan"]["balance"],
+            self._event("【借款】借入 %.0f Tokens（第 %d 笔%s，当前欠款 %.0f）；目标上浮 %+.0f（%+.1f%%）→ 新目标 %.0f" % (
+                amount, self.s["loan"]["loans"],
+                ("，金融回逆 %d/%d" % (_sp.get("fr_loans", 0), FR_MAX_LOANS)) if _fr else "",
+                self.s["loan"]["balance"],
                 bump, pct * 100, self.s["target"]), "loan")
             # 只有把所持 Tokens 补回 0 以上，倒计时才终止；补不平就继续倒数到结束。
             # 借款同时增加现金与欠款，净值不变——它买的是继续下注的保证金，不是抹掉亏损。
@@ -1280,7 +1449,7 @@ class Engine:
                     "new_target": self.s["target"],
                     "warning": "本笔借款已使目标上浮 %+.2f%%（当前区间：%+.1f%%~+100%%）。"
                                "这是借款的代价，不是免费资金。" % (
-                                   pct * 100, float(self._mod("loan_bump_lo")) * 100),
+                                   pct * 100, (FR_LO_BOUND if _fr else LOAN_BUMP_LO_DEFAULT) * 100),
                     "state": self.state()}
 
     def repay(self, amount=None):
@@ -1392,7 +1561,9 @@ class Engine:
                 "tick": self.s["tick"], "type": "open", "pair": pair, "side": side,
                 "lots": lots, "leverage": leverage, "fill": round(fill, 6),
                 "notional": round(notional, 2), "margin": round(margin, 2),
-                "fee": round(fee, 2), "slip": round(slip, 6)})
+                "fee": round(fee, 2), "slip": round(slip, 6),
+                "slip_cost": round(gross * slip, 2),
+                "spread_cost": round(gross * half, 2)})
             if merged:
                 self._event("加仓 %s %s %.0f 手 @%.4f（累计 %.0f 手，均价 %.4f，占用保证金 %.0f）" % (
                     pair, side, lots, fill, pos["lots"], pos["entry"], pos["margin"]), "open")
@@ -1441,6 +1612,8 @@ class Engine:
                     "tick": self.s["tick"], "type": "close", "pair": pair, "side": p["side"],
                     "lots": qty, "fill": round(fill, 6), "pnl": round(pnl, 2),
                     "fee": round(fee, 2), "slip": round(slip, 6),
+                    "slip_cost": round(qty * LOTS_SIZE * price * slip, 2),
+                    "spread_cost": round(qty * LOTS_SIZE * price * half, 2),
                     "entry": p["entry"], "leverage": p["leverage"]})
                 self._event("平仓 %s %s %.0f 手 @%.4f，盈亏 %+.0f" % (pair, p["side"], qty, fill, pnl), "close")
                 if remaining is not None:
@@ -1498,6 +1671,9 @@ class Engine:
             "fees": self.s.get("total_fees", 0.0), "swap": self.s.get("total_swap", 0.0),
             "margin_calls": self.s.get("margin_calls", 0),
             "orders": self.s.get("order_count", 0),
+            "slip_cost": sum(float(t.get("slip_cost") or 0.0) for t in self.s.get("trades", [])),
+            "spread_cost": sum(float(t.get("spread_cost") or 0.0) for t in self.s.get("trades", [])),
+            "trades_all": len(self.s.get("trades", [])),
         }
 
     def _curve_svg(self, curve, w=880, h=300):
@@ -1704,20 +1880,26 @@ class Engine:
             _all_trades = self.s.get("trades", [])
             for t in _all_trades:
                 if t.get("type") == "open":
-                    rows.append('<tr><td>%s</td><td>开</td><td>%s</td><td>%s</td><td>%.0f 手 / %dx</td><td>-</td></tr>' % (
-                        t.get("tick"), t.get("pair"), "多" if t.get("side") == "LONG" else "空",
-                        t.get("lots", 0), t.get("leverage", 1)))
+                    rows.append('<tr><td>%s</td><td>开</td><td>%s</td><td>%s</td><td>%.0f</td>'
+                                '<td>%d×</td><td>%.4f</td><td>%.0f</td><td class="muted">%.0f</td><td>-</td></tr>' % (
+                                    t.get("tick"), t.get("pair"), "多" if t.get("side") == "LONG" else "空",
+                                    t.get("lots", 0), t.get("leverage", 1),
+                                    float(t.get("fill") or 0), float(t.get("margin") or 0),
+                                    float(t.get("fee") or 0)))
                 else:
                     cls = "up" if t.get("pnl", 0) >= 0 else "down"
-                    rows.append('<tr><td>%s</td><td>平</td><td>%s</td><td>%s</td><td>%.0f 手</td>'
-                                '<td class="%s">%+.0f</td></tr>' % (
+                    rows.append('<tr><td>%s</td><td>平</td><td>%s</td><td>%s</td><td>%.0f</td>'
+                                '<td class="muted">—</td><td>%.4f</td><td class="muted">—</td>'
+                                '<td class="muted">%.0f</td><td class="%s">%+.0f</td></tr>' % (
                                     t.get("tick"), t.get("pair"), "多" if t.get("side") == "LONG" else "空",
-                                    t.get("lots", 0), cls, t.get("pnl", 0)))
+                                    t.get("lots", 0), float(t.get("fill") or 0),
+                                    float(t.get("fee") or 0), cls, t.get("pnl", 0)))
 
             ev_rows = []
             _KIND_CN = {"gap": "跳空", "loan": "借款", "margin_call": "追保",
                         "blowup": "爆仓", "end": "结算", "open": "开仓",
-                        "close": "平仓", "warn": "警告", "ok": "事件", "info": "提示"}
+                        "close": "平仓", "warn": "警告", "ok": "事件", "info": "提示",
+                        "stopout": "强平", "news": "事件"}
             for e in self.s.get("events", []):
                 _k = e.get("kind") or "info"
                 ev_rows.append('<li class="ev-%s"><span class="tag">%s</span> '
@@ -1770,6 +1952,26 @@ class Engine:
             _ff_used = float(self.s.get("ff_used") or 0.0)
             _ff_txt = (" + ".join("%d′" % (x // 60) for x in _ffr) if _ffr
                        else "未使用")
+            # ---------- 成本归因：把净盈亏拆成可核对的五项 ----------
+            _slip_c = float(m.get("slip_cost") or 0.0)
+            _spread_c = float(m.get("spread_cost") or 0.0)
+            _fees_c = float(m.get("fees") or 0.0)
+            _swap_c = float(m.get("swap") or 0.0)
+            _slot_win = float((self.s.get("special") or {}).get("slot_win") or 0.0)
+            _gross = float(pnl) + _slip_c + _spread_c + _fees_c + _swap_c - _slot_win
+            _attr_rows = [
+                ("方向与跳空（毛盈亏）", _gross, ""),
+                ("└ 滑点成本", -_slip_c, "down" if _slip_c > 0 else ""),
+                ("└ 点差成本", -_spread_c, "down" if _spread_c > 0 else ""),
+                ("└ 手续费", -_fees_c, "down" if _fees_c > 0 else ""),
+                ("└ 隔夜利息", -_swap_c, "down" if _swap_c > 0 else ""),
+                ("老虎机返还", _slot_win, "up" if _slot_win > 0 else ""),
+                ("净盈亏", float(pnl), "up" if pnl >= 0 else "down"),
+            ]
+            _attr_html = "".join(
+                '<div class="kv"><span>%s</span><span class="%s">%s</span></div>'
+                % (k, c, fmt(v)) for k, v, c in _attr_rows)
+
             body = {
                 "trader": trader,
                 "ff_used": "%s 秒" % fmt(_ff_used),
@@ -1806,11 +2008,12 @@ class Engine:
                 "mcall": str(m["margin_calls"]),
         "abn": str(int(self.s.get("abnormal_exits", 0))),
                 "borrowed_txt": fmt(self.s["loan"]["borrowed"]),
-                "rows": "".join(rows) or '<tr><td colspan="6" class="muted">无交易</td></tr>',
+                "rows": "".join(rows) or '<tr><td colspan="10" class="muted">无交易</td></tr>',
                 "loanblock": _loan_block,
                 "scrows": "".join(_sc_rows) or '<div class="muted">无内容</div>',
                 "scn": str(len(_sc)),
                 "evrows": "".join(ev_rows) or '<li class="muted">无关键事件</li>',
+                "attrib": _attr_html,
             }
 
             html = """<!DOCTYPE html>
@@ -1887,8 +2090,10 @@ footer{{text-align:center;color:var(--muted);font-size:12px;padding-top:8px}}
   <div class="kv"><span>异常退出</span><span>{abn} 次</span></div>
   <div class="kv"><span>累计借款</span><span>{borrowed_txt}</span></div>
 </div></section>
+<section><h2>成本归因</h2><div class="kvbox">{attrib}</div>
+<div class="note">净盈亏 = 毛盈亏 − 滑点 − 点差 − 手续费 − 隔夜利息 + 老虎机返还。毛盈亏含方向判断与跳空冲击，是「不看成本时本该赚/亏多少」。</div></section>
 <section><h2>交易明细（共 {rowsn} 条）</h2>
-<table><thead><tr><th>tick</th><th>动作</th><th>品种</th><th>方向/手数</th><th>成交</th><th>盈亏</th></tr></thead>
+<table><thead><tr><th>tick</th><th>动作</th><th>品种</th><th>方向</th><th>手数</th><th>杠杆</th><th>成交价</th><th>保证金</th><th>手续费</th><th>盈亏</th></tr></thead>
 <tbody>{rows}</tbody></table></section>
 {loanblock}
 <section><h2>草稿纸（{scn} 条）</h2><div class="scratch">{scrows}</div></section>
@@ -2043,6 +2248,7 @@ footer{{text-align:center;color:var(--muted);font-size:12px;padding-top:8px}}
                                        - self.s["loan"]["balance"]), 2),
                     "rate_pct": LOAN_RATE_PER_TICK * 100,
                 },
+                "special": self.special_state(),
                 "blowups": self.s["blowups"],
                 "margin_calls": self.s["margin_calls"],
                 "total_fees": round(self.s["total_fees"], 2),
@@ -2067,9 +2273,15 @@ footer{{text-align:center;color:var(--muted);font-size:12px;padding-top:8px}}
             "初始资金": STARTER_CASH,
             "目标": "把权益做到 %.0f Tokens（每借一笔，目标会按该笔金额的随机 1%%~100%% 上浮）" % TARGET_EQUITY,
             "手数": "1 手 = %.0f 单位基础货币" % LOTS_SIZE,
-            "金融回逆": ("随机事件之一：触发后 8 分钟内，借款的目标上浮区间从 +1%%~+100%% "
-                        "放宽到 -20%%~+100%%（可能减免目标）；抽中负数立即失效，只会送一次"
+            "金融回逆": ("开局全局开关（非随机事件）：开启后整局借款上限 %d 次，"
+                        "目标上浮区间从 +1%%~+100%% 放宽到 -20%%~+100%%（可能减免目标）；"
+                        "开局免费，局内再开启需支付 %.0f 现金" % (FR_MAX_LOANS, SPECIAL_FEE)
                         ).replace("%%", "%"),
+            "老虎机": ("开局全局开关：开启后整局可投 %d 次，单次 1~100000 且不超过当前权益；"
+                       "70%% 无所得 / 25%% 返还 10 倍 / 5%% 返还 20 倍；"
+                       "中奖金额进入现金，同时目标按返还金额的 1%%~50%% 上浮；"
+                       "开局免费，局内再开启需支付 %.0f 现金" % (SLOT_MAX_PLAYS, SPECIAL_FEE)
+                       ).replace("%%", "%"),
             "杠杆": "可选 %d - %d 倍" % (MIN_LEVERAGE, MAX_LEVERAGE),
             "点差": {s: "%.3f%%" % (cfg["spread"] * 100) for s, cfg in PAIRS.items()},
             "隔夜利息": {s: "%.4f%%/tick" % (cfg["swap"] * 100) for s, cfg in PAIRS.items()},
