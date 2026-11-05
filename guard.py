@@ -24,7 +24,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 VAULT = os.path.join(HERE, "_guard_vault")
 FLAG = os.path.join(VAULT, "CHEAT_FLAG")
 STATE = os.path.join(VAULT, "guard_state.json")
-SOURCES = ["run.py"]
+SOURCES = []
 SOURCES += [os.path.join("src", n) for n in
             ("tm_engine.py", "tm_api.py", "tm_watch_ai.py", "scratchpad.py")]
 
@@ -205,3 +205,15 @@ def main(argv):
 
 if __name__ == "__main__":
     sys.exit(main(None))
+
+def restore_if_sealed(quiet=True):
+    """If a previous match left the sources sealed, restore them now.
+
+    Safe to call at any time: it does nothing when no vault exists.
+    """
+    if not os.path.isdir(VAULT):
+        return 0
+    n = unseal()
+    if n and not quiet:
+        print("  [GUARD] previous match left the sources sealed; restored %d file(s)." % n)
+    return n

@@ -181,10 +181,12 @@ python guard.py stop                 # 结束守卫并还原源码
 
 双击 `启动游戏.bat` 时会自动启动守卫，对局结束后自动还原并退出。
 
-- 封存期间 `run.py` 与 `src/*.py` 被移到 `_guard_vault/`，原位置换成写着 `CHEATING DETECTED` 的诱饵
+- 封存期间 `src/*.py` 被移到 `_guard_vault/`，原位置换成写着 `CHEATING DETECTED` 的诱饵
 - 只读诱饵：看到警告，但这局仍算可疑（报告会标注）
 - 执行 / `import` 诱饵：落下 `CHEAT_FLAG`，守卫立刻 `POST /shutdown` 终止对局
 - 清理：`deep-clean.ps1` 会把守卫进程一起杀掉，并先还原源码
+
+`run.py` 本身不封存，它启动时会自检：如果上一次对局异常中断、源码还封着，会自动还原再继续。
 
 > 注意：守卫只防「读源码」这一种作弊。它不能阻止模型凭接口数据做推理——那是被鼓励的。
 
