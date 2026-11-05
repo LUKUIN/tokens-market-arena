@@ -68,8 +68,26 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 
 ### Double-click launcher
 
-`Start Game.bat` is just another entry point — it asks nothing either, and only prints the values
+`Start Match.bat` is just another entry point — it asks nothing either, and only prints the values
 it is about to use. Same zero-prompt behaviour as `python run.py`.
+
+### Spectator only (when no window appeared)
+
+`Spectator.bat` opens **only** the read-only window. Use it when a match is already running but you
+cannot see it: an agent started it with `run.py server`, the Tk window failed to open, or the window
+was closed by accident.
+
+```
+python run.py spectator                 # window only, default port
+python run.py spectator 127.0.0.1 8734  # explicit host and port
+```
+
+If something already answers on that port, it **attaches and changes nothing** — no server, no
+guard, no sealing. That is deliberate: sealing here would encrypt the decoys that are currently in
+`src/` into a fresh vault, and the real sources could never be restored from it. If nothing is
+running, it starts a server first so you still get a window to look at.
+
+Closing the window does **not** end the match. Settle it with `/quit` or the "End processes" button.
 
 ### Server only, no window
 
@@ -237,7 +255,9 @@ python guard.py status               # sealed? cheat flag present?
 python guard.py stop                 # stop the guard and decrypt the sources back
 ```
 
-`Start Game.bat` starts the guard automatically and restores everything when the match ends.
+`run.py` seals on start and restores on exit; `Start Match.bat` is only a launcher for it. Do not
+run `guard.py start` alongside a match — two guards seal twice, and the second seal encrypts whatever
+is in `src/` by then, which is already the decoy.
 
 What sealing actually does:
 
@@ -296,8 +316,9 @@ It does two things:
 ```
 TokensMarket-OpenSource-AI-v97/
 ├── run.py                  entry point (ai / --interactive demo / server / state)
-├── Start Game.bat            zero-prompt launcher; same behaviour as python run.py
-├── DeepClean Process.bat        interactive cleanup for humans (contains pause)
+├── Start Match.bat          zero-prompt launcher; same behaviour as python run.py
+├── Spectator.bat            window only; attaches to a running match, or starts one
+├── DeepClean Process.bat    interactive cleanup for humans (contains pause)
 ├── deep-clean.ps1          cleanup implementation; agents should call this directly
 ├── src/
 │   ├── tm_engine.py        engine (pure logic)

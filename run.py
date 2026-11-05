@@ -114,6 +114,41 @@ def _interactive_setup():
     return name, mode == "1"
 
 
+def _probe(host="127.0.0.1", port=8734, timeout=1.0):
+    """Is a match already answering on this port?"""
+    import urllib.request
+    try:
+        urllib.request.urlopen("http://%s:%d/health" % (host, port), timeout=timeout).read()
+        return True
+    except Exception:
+        return False
+
+
+def _run_spectator(host="127.0.0.1", port=8734):
+    """Open a spectator window, attaching to a running match when there is one.
+
+    Attaching must have no side effects: no server, no guard, no sealing. Sealing on
+    attach would re-encrypt decoys over a live vault and destroy the real sources.
+    """
+    existing = _probe(host, port)
+    if existing:
+        print("  Attaching to the match already running on %s:%d." % (host, port))
+    else:
+        if not _start_server(host, port):
+            print("  Failed to start the service on %s:%d." % (host, port))
+            return 1
+        print("  HTTP API: http://%s:%d (no match was running; the server was started here)" % (host, port))
+    import tm_watch_ai
+    guard_stop = None if existing else _start_guard(port)
+    print("  Launching the read-only spectator stand...")
+    try:
+        tm_watch_ai.main()
+    finally:
+        if guard_stop is not None:
+            guard_stop.set()
+    return 0
+
+
 def _start_server(host="127.0.0.1", port=8734):
     import threading
     from tm_api import serve
@@ -208,8 +243,18 @@ def _start_guard(port):
     return stop
 
 
-def _self_heal():
-    """A crashed match may have left the sources sealed. Restore them before importing."""
+def _self_heal(port=None):
+    """A crashed match may have left the sources sealed. Restore them before importing.
+
+    But if something already answers on this port, its seal is LIVE: touching it would
+    lift the protection of a running match. Only that match's own exit path may restore
+    its sources, which is why this check comes first.
+    """
+    try:
+        if _probe(port=int(port or os.environ.get("TM_PORT") or 8734)):
+            return
+    except Exception:
+        pass
     try:
         import guard
     except Exception:
@@ -229,23 +274,17 @@ def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     mode = argv[0].lower() if argv else "auto"
 
+    if mode == "spectator":
+        host = argv[1] if len(argv) > 1 else "127.0.0.1"
+        port = int(argv[2]) if len(argv) > 2 else 8734
+        return _run_spectator(host, port)
+
     if mode == "server":
         from tm_api import serve
         host = argv[1] if len(argv) > 1 else "127.0.0.1"
         port = int(argv[2]) if len(argv) > 2 else 8734
         if "--spectator" in argv:
-            if not _start_server(host, port):
-                print("  Failed to start the service on %s:%d." % (host, port))
-                return 1
-            print("  HTTP API: http://%s:%d" % (host, port))
-            import tm_watch_ai
-            guard_stop = _start_guard(port)
-            print("  Launching the read-only spectator stand...")
-            try:
-                tm_watch_ai.main()
-            finally:
-                guard_stop.set()
-            return 0
+            return _run_spectator(host, port)
         print()
         print("  " + "!" * 62)
         print("  WARNING: server mode creates NO spectator window.")

@@ -60,8 +60,11 @@ def _decrypt(key, blob):
 FLAG = os.path.join(VAULT, "CHEAT_FLAG")
 STATE = os.path.join(VAULT, "guard_state.json")
 SOURCES = []
+# Only modules that carry game parameters get sealed. tm_watch_ai.py is pure UI
+# (it talks to /state over HTTP and never imports the engine), so leaving it readable
+# costs nothing and lets a second spectator process attach to a live match.
 SOURCES += [os.path.join("src", n) for n in
-            ("tm_engine.py", "tm_api.py", "tm_watch_ai.py", "scratchpad.py")]
+            ("tm_engine.py", "tm_api.py", "scratchpad.py")]
 
 DECOY = r'''# ==========================================================================
 #  CHEATING DETECTED

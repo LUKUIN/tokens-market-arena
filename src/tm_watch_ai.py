@@ -623,7 +623,7 @@ class Watch:
             # A margin call is a live emergency; it outranks notices like "unnamed start"
             state_txt = "Margin call · %d ticks left" % st["margin_call_remain"]
         elif st.get("unnamed"):
-            state_txt = "Unnamed launch · please use Start Game.bat"
+            state_txt = "Unnamed launch · please use Start Match.bat"
         elif ml is not None and ml < 50:
             state_txt = "Margin level critical"
         elif st["blowups"] > 0 and ml is None:

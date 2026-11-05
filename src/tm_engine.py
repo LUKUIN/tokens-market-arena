@@ -282,7 +282,7 @@ _TRADER_CACHE = None
 
 
 def _env_trader():
-    """Environment variables injected by Start Game.bat at startup.
+    """Environment variables injected by Start Match.bat at startup.
 
     Returns (name, unnamed). Unnamed means the launcher was skipped, so the player may have bypassed the start flow.
     """

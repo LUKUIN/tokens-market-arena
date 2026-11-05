@@ -34,10 +34,10 @@ echo   Finance Reversal %TM_FR%    Slot Machine %TM_SLOT%
 echo   GUI is a read-only spectator; there is no investment panel.
 echo.
 if not defined TM_PORT set "TM_PORT=8734"
-rem Source guard: seals the sources while the match runs, restores them afterwards.
-start "" /min python guard.py start --port %TM_PORT%
+rem run.py seals the sources itself and restores them on exit. Do NOT start guard.py
+rem here as well: a second seal encrypts whatever is in src/ at that moment, which is
+rem already the decoy, and the real sources can never be restored from that vault.
 python run.py
-python guard.py clean
 echo.
 echo   [EXITED] Server and spectator are closed.
 pause
