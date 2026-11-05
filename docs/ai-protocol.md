@@ -318,7 +318,6 @@ POST /assist/enable                                       # enable mid-match for
 GET  /assist/pending                                      # the spectator GUI polls this
 POST /assist/reply    {"ticket": "a1", "text": "..."}     # spectators answer
 POST /assist/reject   {"ticket": "a1"}                    # spectators decline
-POST /assist/say      {"text": "..."}                     # spectators speak unprompted
 ```
 
 Set `TM_ASSIST=1` before starting to enable it for free. Asking does not block: `/assist/ask`

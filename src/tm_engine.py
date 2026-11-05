@@ -1308,15 +1308,6 @@ class Engine:
             self._assist_push("human", "(rejected)", ticket=ticket, kind="reject")
             return {"ok": True, "ticket": ticket}
 
-    def assist_say(self, text):
-        """Spectators speak unprompted; no limit."""
-        with LOCK:
-            t = (text or "").strip()
-            if not t:
-                return {"ok": False, "error": "text is required"}
-            self._assist_push("human", t[:2000], kind="chat")
-            return {"ok": True}
-
     def scratch_append(self, text):
         """Scratchpad: record your reasoning and countermeasures. Optional — the player decides whether to use it."""
         with LOCK:

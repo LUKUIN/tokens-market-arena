@@ -105,8 +105,8 @@ def _interactive_setup():
         "3 plays per match (1~200000 each, never above current equity); 80% nothing / 15% refund 5x / 5% refund 10x; winnings lift the target by -5%~100%")
     assist_on = _ask_special(
         "TM_ASSIST", "Enable Outside Mercy? (free before the match starts)",
-        "Lets the contestant ask the spectators for help, 3 times per match; spectators may reply, "
-        "decline, or speak unprompted. Enabling it after the start costs 500,000 cash")
+        "Lets the contestant ask the spectators for help, 3 times per match; spectators may reply "
+        "or decline. Enabling it after the start costs 500,000 cash")
     os.environ["TM_FR"] = "1" if fr_on else "0"
     os.environ["TM_SLOT"] = "1" if slot_on else "0"
     os.environ["TM_ASSIST"] = "1" if assist_on else "0"

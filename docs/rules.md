@@ -190,7 +190,6 @@ Once enabled:
 | `GET /assist/inbox` | Collect whatever the spectators said that has not been collected yet; items are delivered once |
 | `POST /assist/reply` `{"ticket": "a1", "text": "..."}` | Spectators answer one ask |
 | `POST /assist/reject` `{"ticket": "a1"}` | Spectators decline one ask |
-| `POST /assist/say` `{"text": "..."}` | Spectators speak unprompted; no limit |
 | `GET /assist/pending` | What the spectator GUI polls: unanswered asks plus the full log |
 
 **Asking does not block.** `POST /assist/ask` returns immediately; the contestant keeps trading and
