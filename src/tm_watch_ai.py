@@ -392,7 +392,7 @@ class Watch:
             st = get("/state")
             self._render(st)
         except Exception:
-            self.lbl_status.config(text="等待服务启动（python startgame.pyc api 127.0.0.1 8734）",
+            self.lbl_status.config(text="等待服务启动（python run.py）",
                                    fg=ORANGE)
         self.root.after(300, self.refresh)
 
