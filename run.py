@@ -154,9 +154,11 @@ def _run_ai(interactive=False, port=None):
         return 1
 
     print("  HTTP API: http://127.0.0.1:%d (read /rules first)" % port)
+    # Load the spectator module before the guard seals the sources: the other way
+    # round, the import lands on a decoy, the decoy drops a cheat flag and exits.
+    import tm_watch_ai
     guard_stop = _start_guard(port)
     print("  Launching the read-only spectator stand...")
-    import tm_watch_ai
     try:
         tm_watch_ai.main()
     finally:
@@ -236,9 +238,9 @@ def main(argv=None):
                 print("  Failed to start the service on %s:%d." % (host, port))
                 return 1
             print("  HTTP API: http://%s:%d" % (host, port))
+            import tm_watch_ai
             guard_stop = _start_guard(port)
             print("  Launching the read-only spectator stand...")
-            import tm_watch_ai
             try:
                 tm_watch_ai.main()
             finally:

@@ -12,16 +12,51 @@ Usage:
     python guard.py status
     python guard.py clean        # stop + restore, safe to run any time
 """
+import hashlib
+import hmac
 import io
 import json
 import os
 import shutil
 import sys
+import tempfile
 import time
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 VAULT = os.path.join(HERE, "_guard_vault")
+# 加密箱放在项目目录之外，避免和源码同处一棵树里被顺手打包拷走
+GUARD_ROOT = os.path.join(
+    os.environ.get("LOCALAPPDATA") or os.environ.get("TEMP") or tempfile.gettempdir(),
+    "TokensMarketGuard")
+MAGIC = b"TMG1"
+
+
+def _keystream(key, nonce, n):
+    """SHA-256 计数器流：标准库就能拼出的 CTR 流密码，只为防顺手读，不是密码学边界。"""
+    buf = bytearray()
+    i = 0
+    while len(buf) < n:
+        buf += hashlib.sha256(key + nonce + i.to_bytes(8, "big")).digest()
+        i += 1
+    return bytes(buf[:n])
+
+
+def _encrypt(key, data):
+    nonce = os.urandom(16)
+    ks = _keystream(key, nonce, len(data))
+    ct = bytes(a ^ b for a, b in zip(data, ks))
+    tag = hmac.new(key, nonce + ct, hashlib.sha256).digest()
+    return MAGIC + nonce + tag + ct
+
+
+def _decrypt(key, blob):
+    if not blob.startswith(MAGIC):
+        raise ValueError("not a sealed blob")
+    nonce, tag, ct = blob[4:20], blob[20:52], blob[52:]
+    if not hmac.compare_digest(tag, hmac.new(key, nonce + ct, hashlib.sha256).digest()):
+        raise ValueError("integrity check failed")
+    return bytes(a ^ b for a, b in zip(ct, _keystream(key, nonce, len(ct))))
 FLAG = os.path.join(VAULT, "CHEAT_FLAG")
 STATE = os.path.join(VAULT, "guard_state.json")
 SOURCES = []
@@ -76,33 +111,74 @@ def _post(port, path, timeout=2.0):
 
 
 def seal():
-    """Move sources into the vault and drop decoys in their place."""
+    """Encrypt the sources into a vault outside the project, then drop decoys."""
     os.makedirs(VAULT, exist_ok=True)
-    sealed = []
+    os.makedirs(GUARD_ROOT, exist_ok=True)
+    session = os.urandom(8).hex()
+    box = os.path.join(GUARD_ROOT, session)
+    os.makedirs(box, exist_ok=True)
+    key = os.urandom(32)
+    with open(os.path.join(box, "_k"), "wb") as f:
+        f.write(key)
+    sealed, mapping = [], {}
     for rel in SOURCES:
         src = os.path.join(HERE, rel)
         if not os.path.isfile(src):
             continue
-        dst = os.path.join(VAULT, rel.replace(os.sep, "__"))
-        shutil.copy2(src, dst)
+        with open(src, "rb") as f:
+            data = f.read()
+        name = os.urandom(8).hex() + ".bin"
+        with open(os.path.join(box, name), "wb") as f:
+            f.write(_encrypt(key, data))
+        mapping[name] = rel
         with io.open(src, "w", encoding="utf-8", newline="\n") as f:
             f.write(DECOY)
         sealed.append(rel)
-    state = {"sealed": sealed, "started": time.time()}
+    state = {"sealed": sealed, "started": time.time(), "box": session, "map": mapping}
     with io.open(STATE, "w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False, indent=1)
     return sealed
 
 
 def unseal():
-    """Restore the real sources and remove the vault flags."""
+    """Decrypt the real sources back into place, then drop the vault flags."""
     out = []
+    state = {}
+    try:
+        if os.path.isfile(STATE):
+            with io.open(STATE, encoding="utf-8") as f:
+                state = json.load(f) or {}
+    except Exception:
+        state = {}
+    session = state.get("box")
+    if session:
+        box = os.path.join(GUARD_ROOT, session)
+        keypath = os.path.join(box, "_k")
+        if os.path.isfile(keypath):
+            with open(keypath, "rb") as f:
+                key = f.read()
+            for name, rel in (state.get("map") or {}).items():
+                p = os.path.join(box, name)
+                if not os.path.isfile(p):
+                    continue
+                try:
+                    with open(p, "rb") as f:
+                        data = _decrypt(key, f.read())
+                except Exception as exc:
+                    print("  [GUARD] cannot restore %s: %s" % (rel, exc))
+                    continue
+                with open(os.path.join(HERE, rel), "wb") as f:
+                    f.write(data)
+                out.append(rel)
+            shutil.rmtree(box, ignore_errors=True)
+    # 向后兼容：旧版本把明文放在项目内的 _guard_vault/src__*.py
     for rel in SOURCES:
-        src = os.path.join(HERE, rel)
-        dst = os.path.join(VAULT, rel.replace(os.sep, "__"))
-        if os.path.isfile(dst):
-            shutil.copy2(dst, src)
-            os.remove(dst)
+        if rel in out:
+            continue
+        legacy = os.path.join(VAULT, rel.replace(os.sep, "__"))
+        if os.path.isfile(legacy):
+            shutil.copy2(legacy, os.path.join(HERE, rel))
+            os.remove(legacy)
             out.append(rel)
     try:
         if os.path.isfile(FLAG):
@@ -215,8 +291,8 @@ def restore_if_sealed(quiet=True):
         return 0
     n = unseal()
     if n and not quiet:
-        print("  [GUARD] previous match left the sources sealed; restored %d file(s)." % n)
-    return n
+        print("  [GUARD] previous match left the sources sealed; restored %d file(s)." % len(n))
+    return len(n)
 
 def cheated():
     """True when a decoy was executed during this match."""

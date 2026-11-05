@@ -228,27 +228,44 @@ mid-match loses nothing. Cleared on settle/reset. You may skip it entirely — t
 
 ## Source guard (anti-cheat)
 
-While a match runs the sources are sealed; reading them gives you a decoy, executing one ends the match.
+While a match runs the sources are **encrypted** into a vault outside the project and replaced by
+decoys; reading them gives you a decoy, executing one ends the match.
 
 ```bash
-python guard.py start --port 8734    # seal the sources and start watching
+python guard.py start --port 8734    # encrypt the sources and start watching
 python guard.py status               # sealed? cheat flag present?
-python guard.py stop                 # stop the guard and restore the sources
+python guard.py stop                 # stop the guard and decrypt the sources back
 ```
 
 `Start Game.bat` starts the guard automatically and restores everything when the match ends.
 
-- While sealed, `src/*.py` live in `_guard_vault/`; decoys carrying a
-  `CHEATING DETECTED` notice take their place
-- Reading a decoy shows the warning (still suspicious — the report notes it)
+What sealing actually does:
+
+- The four source files are encrypted with a one-off random key (SHA-256 counter-mode keystream
+  plus an HMAC tag, standard library only) and written to
+  `%LOCALAPPDATA%\TokensMarketGuard\<random directory>\` under random file names
+- The key is stored beside them as `_k`; each `src/*.py` is replaced by a 967-byte decoy carrying
+  a `CHEATING DETECTED` notice
+- The project's own `_guard_vault/` keeps only a `guard_state.json` naming the sealed files — **no
+  plaintext source is left inside the project tree**
 - Executing or importing a decoy drops `CHEAT_FLAG`; the guard then `POST /shutdown` immediately
-- Cleanup: `deep-clean.ps1` kills the guard too, and restores the sources first
+- Cleanup: `deep-clean.ps1` kills the guard too, and decrypts the sources first
 
-`run.py` itself is never sealed; on startup it checks whether a previous match left the sources
-sealed and restores them automatically.
+`run.py` loads the spectator module before sealing (the other order imports a decoy), and any seal
+left behind by a crashed match is decrypted and restored on the next start.
 
-> The guard only blocks "reading the sources". It cannot stop a model from reasoning over API data —
-> that is the point of the exercise.
+> **This is not a cryptographic boundary.** The key and the ciphertext both sit on this machine, so
+> an agent willing to read `guard.py` and implement the decryption can still recover the sources.
+> Encryption turns "`cat src/tm_engine.py` shows every parameter" into "somebody has to write a
+> decryptor first" — it raises the cost, it does not make cheating impossible.
+
+> **Real enforcement is layer 4: no filesystem access.** A serious competition should be launched by
+> the organiser inside a controlled container or VM, with the agent given only
+> `http://127.0.0.1:8734`. An open-source drop hands the sources to the player's own machine, so that
+> layer is out of reach here — design this guard to raise the cost of cheating, and do not advertise
+> it as making cheating impossible.
+
+> The guard does not stop a model from reasoning over API data — that is the point of the exercise.
 
 ## Deep process cleanup
 
