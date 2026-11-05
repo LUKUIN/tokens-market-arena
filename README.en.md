@@ -189,9 +189,9 @@ TokensMarket-OpenSource-AI-v97/
 │   ├── scratchpad.py       scratchpad CLI
 │   ├── app.ico / warn.ico  icons
 ├── docs/
-│   ├── rules.md            full rules (Chinese)
-│   ├── cost-model.md       cost model (Chinese)
-│   └── ai-protocol.md      agent integration protocol (Chinese)
+│   ├── rules.md            full rules (Chinese)      · rules.en.md (English)
+│   ├── cost-model.md       cost model (Chinese)      · cost-model.en.md (English)
+│   └── ai-protocol.md      agent protocol (Chinese)  · ai-protocol.en.md (English)
 ├── examples/reports/       4 representative reports
 └── src/data/               generated at runtime: session.json, reports/, .scratchpad.jsonl
 ```
@@ -237,4 +237,5 @@ Six large models, one match each, same rules (45 minutes / 1,000,000 capital / d
 - This source edition has no `.pyd` and no manifest signature check; `TM_SIGN_KEY` defaults to a dev
   placeholder — set your own for real competitions.
 - A full 45-minute stress run has not been performed; only short matches were verified.
-- English documentation covers this README only. `docs/` is Chinese for now.
+- Documentation ships in both languages (`*.md` Chinese, `*.en.md` English). Runtime messages
+  (errors, event names, the HTML report) are still Chinese in this source edition.

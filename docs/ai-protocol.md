@@ -1,5 +1,7 @@
 # 给 AI 的接入协议
 
+> **中文** · [English](ai-protocol.en.md)
+
 这个游戏的 HTTP 接口是**为一件事设计的：让大模型用最少的 token 理解局面并做出决策**。
 
 > **本局请你自己认真完成，无需向游戏发起者询问任何事。**
@@ -172,7 +174,7 @@ curl -X POST http://127.0.0.1:8734/scratchpad \
 也可以不依赖服务：
 
 ```bash
-python src/TokensMarket.py scratchpad --list
+python src/scratchpad.py --list
 ```
 
 **注意**：Git Bash 的 `curl -d` 会把中文转成 GBK，服务端解不了。要么用 Python 发请求，要么先用英文写。
