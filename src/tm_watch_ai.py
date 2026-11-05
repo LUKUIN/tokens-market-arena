@@ -511,13 +511,9 @@ class Watch:
             tk.Label(head, text="enabled \u00b7 %d asks left" % a.get("remaining", 0),
                      bg=BG, fg=MUTED, font=FONT_SMALL).pack(side="left", padx=(12, 0))
         else:
-            tk.Label(head, text="not enabled \u00b7 %d cash to enable (have %d)"
-                     % (a.get("price", 500000), int(a.get("balance") or 0)),
+            tk.Label(head, text="not enabled · the contestant may spend %d cash to enable"
+                     % a.get("price", 500000),
                      bg=BG, fg=ORANGE, font=FONT_SMALL).pack(side="left", padx=(12, 0))
-            tk.Button(head, text="Enable for %d" % a.get("price", 500000),
-                      command=lambda: self._assist_enable(win),
-                      bg="#EAF4FF", fg=BLUE, activebackground="#D9ECFF", font=FONT_SMALL,
-                      bd=0, padx=12, pady=4, cursor="hand2").pack(side="right")
 
         wrap = tk.Frame(win, bg=BG)
         wrap.pack(fill="both", expand=True, padx=18, pady=(6, 6))
@@ -571,19 +567,6 @@ class Watch:
             pass
         self._poll_assist()
         self._show_assist()
-
-    def _assist_enable(self, win):
-        if not messagebox.askyesno("Outside Mercy", "Enable assistance for 500,000 cash?"):
-            return
-        try:
-            r = post("/assist/enable", {})
-        except Exception as exc:
-            messagebox.showwarning("Outside Mercy", "Failed: %s" % exc)
-            return
-        if not r.get("ok"):
-            messagebox.showwarning("Outside Mercy", r.get("error") or "Failed")
-            return
-        self._assist_reload(win)
 
     def _assist_reply(self, win, entry):
         t = entry.get("1.0", "end").strip()

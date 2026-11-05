@@ -181,6 +181,7 @@ A two-way channel between the contestant and the spectators. Off by default.
 - **Before the match**: `set TM_ASSIST=1`, or pick "yes" in the interactive prompt. Free.
 - **After the start**: `POST /assist/enable`, which deducts **500,000** cash. Refused when cash
   is short.
+- The spectator window has no enable control: whether to enable this is the contestant's decision alone.
 
 Once enabled:
 
