@@ -66,20 +66,22 @@
 ## 一、启动流程
 
 ```bash
-# 1. 清掉上一局残留（有对局在跑时不要这么做）
-#    data/session.json、.running、.seal、.watch.pid、.rules_ack 删掉即可
+# 1. 清掉上一局残留（有对局在跑时绝对不要做）
+#    首选：python guard.py clean      （同时还原被守卫封存的源码）
+#    手工：删 src/data/session.json、.running、.seal、.watch.pid、.rules_ack，
+#          并清掉 src/data/ 下除 reports/ 以外的运行时文件
 
 # 2. 非交互启动（不读 stdin，适合后台）
 set TM_TRADER=MyAgent
 set TM_EVENTS=1        # 随机事件
 set TM_FR=1            # 金融回逆（整局借款 2 次，目标区间 -20%~100%）
 set TM_SLOT=0          # 老虎机（整局 3 次，80% 空 / 15% 5 倍 / 5% 10 倍）
-python run.py ai
+python run.py
 ```
 
-> **问答顺序是固定的**：玩家名 → 随机事件 → 老虎机/金融回逆 → 起服务 → 30 秒难度盲盒。
-> 两个全局开关在「随机事件」之后、「抽难度」之前决定。
-> 四个变量都给了才完全不问；缺哪个 `run.py` 就会交互问哪个（`input()` 读到 EOF 时取默认值「关」）。
+> **全程不会提问。** 所有配置都来自环境变量，没设置的用默认值
+> （`TM_TRADER=访客`、`TM_EVENTS=0`、`TM_FR=0`、`TM_SLOT=0`）。
+> 启动顺序：起服务 → 30 秒难度盲盒 → 计时开始。两个全局开关在起服务之前读入。
 
 启动后：
 
