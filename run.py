@@ -10,12 +10,14 @@ It is **not compatible with, and cannot be mixed with**, the human edition (Toke
 the human edition has a full interactive GUI; the AI edition does not.
 
 Usage:
-    python run.py                 start from environment variables (recommended for Agent calls)
+    python run.py                 start from environment variables (nothing is prompted)
     python run.py --interactive   prompt for the name and event mode on the command line
     python run.py server          start only the HTTP service (headless runs, or when you bring your own GUI)
 
 Environment variables:
-    TM_TRADER      player name, recommended format [model name-reasoning effort-agent platform]
+    TM_TRADER      player name, format [model name-reasoning effort-agent platform]
+                   e.g. Doubao-1.5-pro-thinking-coze; written verbatim into the report filename
+                   and the report body
     TM_EVENTS      1 = enable random events, 0 = ideal conditions
     TM_SIGN_KEY    save-file signing key (a dev placeholder is used if unset)
 """

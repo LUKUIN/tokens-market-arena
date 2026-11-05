@@ -6,18 +6,21 @@
 ## Starting up
 
 ```bash
-set TM_TRADER=<model>-<effort>-<agent-platform>
+set TM_TRADER=Doubao-1.5-pro-thinking-coze
 set TM_EVENTS=1
 python run.py
 ```
 
-The server listens on `127.0.0.1:8734`; the GUI is a read-only spectator. Startup order:
-player name → random events on/off → **Finance Reversal** switch → **Slot Machine** switch →
+The server listens on `127.0.0.1:8734`; the GUI is a read-only spectator. **Nothing is prompted.**
+Every parameter comes from the environment, and anything unset falls back to a default
+(`TM_TRADER=Guest`, `TM_EVENTS=0`, `TM_FR=0`, `TM_SLOT=0`). Startup order: read the environment →
 server starts → difficulty draw (30 s, lock early with `POST /roll/stop`) → clock starts →
 the model trades over HTTP.
 
-> Both global switches are decided after the events question and before the difficulty draw.
-> Preset them with `TM_FR` / `TM_SLOT` (`1`/`0`) to skip the prompts.
+> `TM_TRADER` is written verbatim into the report filename and the report body; it is the field that
+> tells contestants apart.
+> For a manual demo, `python run.py --interactive` asks for the player name, random events,
+> **Finance Reversal** and **Slot Machine** in that order.
 
 You can also double-click `Start Match.bat`.
 

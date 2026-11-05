@@ -41,7 +41,7 @@ Background start followed by a readiness poll:
 ```bash
 cd <project-directory>
 
-TM_TRADER="model-name-high-platform" TM_EVENTS=1 TM_FR=0 TM_SLOT=0 \
+TM_TRADER="Doubao-1.5-pro-thinking-coze" TM_EVENTS=1 TM_FR=0 TM_SLOT=0 \
   nohup python run.py > run.log 2>&1 &
 
 for i in $(seq 1 30); do
@@ -102,7 +102,7 @@ desktop that fails and takes the process down with it.
 
 | Variable | Purpose |
 |---|---|
-| `TM_TRADER` | Contestant ID, format **`<model>-<effort>-<agent-platform>`**, max 60 chars, defaults to `Guest` |
+| `TM_TRADER` | Contestant ID, format **`<model>-<effort>-<agent-platform>`**, e.g. `Doubao-1.5-pro-thinking-coze` or `DeepSeek-V3.1-thinking-harness`. Max 60 chars, defaults to `Guest`. The value is written verbatim into the report filename and the report body |
 | `TM_EVENTS` | `1` enable random events / `0` ideal conditions (black-swan gaps only) |
 | `TM_FR` | `1` enables **Finance Reversal**: at most **2** loans per match, target range `-20%~100%` |
 | `TM_SLOT` | `1` enables **Slot Machine**: **3** plays, `1~200000` and ≤ current equity, 80% nothing / 15% 5× / 5% 10× |
