@@ -78,6 +78,22 @@ def _env_events():
 
 
 _SPECIAL_CACHE = {}
+_SEED_ENV = (os.environ.get("TM_SEED") or "").strip()
+if _SEED_ENV:
+    try:
+        random.seed(int(_SEED_ENV))
+    except Exception:
+        pass
+
+
+def _new_seed():
+    """本局随机种子：优先 TM_SEED，否则随机生成——写进报告即可复现。"""
+    if _SEED_ENV:
+        try:
+            return int(_SEED_ENV)
+        except Exception:
+            pass
+    return random.getrandbits(32)
 
 
 def _env_flag(name, default=False):
@@ -322,6 +338,7 @@ def _new_session():
         "version": 2,
         "created_at": time.time(),
         "session_id": os.urandom(8).hex(),
+        "seed": _new_seed(),
         "tick": 0,
         "balance": STARTER_CASH,
         "genesis": STARTER_CASH,
@@ -597,7 +614,9 @@ class Engine:
             idx = self._roll_index()
             gap_i = idx % len(GAP_LEVELS)
             liq_i = idx // len(GAP_LEVELS)
-            self.s["difficulty"] = {"gap": gap_i, "liq": liq_i, "at": time.time()}
+            self.s["difficulty"] = {"gap": gap_i, "liq": liq_i, "at": time.time(),
+                                    "gap_pct": GAP_LEVELS[gap_i][1],
+                                    "liq_depth": LIQ_LEVELS[liq_i][1]}
             # 定档后把各品种深度重置到新档位的基础值。
             # 否则它们还停在 LIQUIDITY 常量（8M）上，随机游走要很久才能爬到
             # 新 base 附近 —— 「充裕」档开局会一直按 8M 算滑点，等于难度没生效。
@@ -1422,7 +1441,9 @@ class Engine:
             self.s["target"] = self.s.get("target", TARGET_EQUITY) + bump
             self.s["target_bonus"] = self.s.get("target_bonus", 0.0) + bump
             self.s["loan"]["goal_bumps"].append({
-                "amount": round(amount, 2), "pct": round(pct * 100, 2), "bump": round(bump, 2)})
+                "amount": round(amount, 2), "pct": round(pct * 100, 2),
+                "bump": round(bump, 2), "tick": self.s.get("tick", 0),
+                "at": time.time()})
             self.s["balance"] += amount
             self.s["loan"]["balance"] += amount
             self.s["loan"]["borrowed"] += amount
@@ -1830,6 +1851,18 @@ class Engine:
         return ('<svg viewBox="0 0 %d %d" class="curve" xmlns="http://www.w3.org/2000/svg">%s</svg>'
                 % (w, h, "".join(parts)))
 
+    def _manifest_version(self):
+        """报告的版本行：优先读 manifest.json，读不到就退回内部版本号。"""
+        try:
+            for p in (os.path.join(os.path.dirname(self.home), "manifest.json"),
+                      os.path.join(self.home, "manifest.json")):
+                if os.path.exists(p):
+                    with open(p, encoding="utf-8") as fh:
+                        return "manifest v%d" % int(json.load(fh).get("version"))
+        except Exception:
+            pass
+        return "引擎内部版本 %d" % int(self.s.get("version", 0))
+
     def _write_report(self, reason, final_eq, abnormal=False):
         """生成赛后报告（仅 HTML）。任何异常都不影响游戏流程。"""
         try:
@@ -1924,13 +1957,22 @@ class Engine:
                     _rows_loan.append('<div class="kv"><span>结算归还</span><span>%s</span></div>' % fmt(_lset.get("paid", 0)))
                     _rows_loan.append('<div class="kv"><span>结算后现金</span><span>%s</span></div>' % fmt(_lset.get("cash_after", 0)))
                 _rows_loan.append('<div class="kv"><span>当前欠款</span><span>%s</span></div>' % fmt(_ldebt))
-                _loan_block = ('<section><h2>借贷账目</h2><div class="kvbox">%s</div>'
+                _bumps = _loan.get("goal_bumps") or []
+                if _bumps:
+                    _rows_loan.append(
+                        '<div class="kv" style="grid-column:1/-1"><span>逐笔借款（目标上浮）</span>'
+                        '<span>%s</span></div>' % " ｜ ".join(
+                            "t%s 借 %s（%+.1f%% → %+.0f）" % (
+                                b.get("tick", "—"), fmt(b.get("amount", 0)),
+                                float(b.get("pct") or 0), float(b.get("bump") or 0))
+                            for b in _bumps))
+                _loan_block = ('<section id="p4"><h2>借贷账目</h2><div class="kvbox">%s</div>'
                                '<div class="note">净值 = 现金 − 欠款。借款时现金增加、欠款同步增加，'
                                '净值不变；结算时现金扣除欠款，欠款归零，净值仍不变。</div></section>'
                                % "".join(_rows_loan))
             else:
                 # 没借过也保留区块，明确告诉读者「这局没有借贷」
-                _loan_block = ('<section><h2>借贷账目</h2>'
+                _loan_block = ('<section id="p4"><h2>借贷账目</h2>'
                                '<div class="kvbox"><div class="kv"><span>本局未借款</span>'
                                '<span>—</span></div></div></section>')
 
@@ -1942,11 +1984,15 @@ class Engine:
                                    ("%.0f 秒" % float(_x.get("elapsed") or 0)),
                                    str(_x.get("text", "")).replace("<", "&lt;").replace(">", "&gt;")))
             _d = self.s.get("difficulty") or {}
-            try:
-                _dl_gap = GAP_LEVELS[int(_d["gap"])][0] if _d else ""
-                _dl_liq = LIQ_LEVELS[int(_d["liq"])][0] if _d else ""
-            except Exception:
-                _dl_gap = _dl_liq = ""
+            _dl_gap = _dl_liq = ""
+            if _d:
+                try:
+                    _gp = float(_d.get("gap_pct") or GAP_LEVELS[int(_d["gap"])][1])
+                    _ld = float(_d.get("liq_depth") or LIQ_LEVELS[int(_d["liq"])][1])
+                    _dl_gap = "%s（%.2f%%/tick）" % (GAP_LEVELS[int(_d["gap"])][0], _gp * 100)
+                    _dl_liq = "%s（%.0f 万深度）" % (LIQ_LEVELS[int(_d["liq"])][0], _ld / 10000.0)
+                except Exception:
+                    _dl_gap = _dl_liq = ""
             # 快进使用情况
             _ffr = [int(x) for x in (self.s.get("ff_records") or [])]
             _ff_used = float(self.s.get("ff_used") or 0.0)
@@ -2000,6 +2046,10 @@ class Engine:
                 "mdd": "%.2f" % (m["mdd"] * 100),
                 "sharpe": "%.2f" % m["sharpe"],
                 "trades_n": str(m["trades_n"]),
+                "trades_all": str(m.get("trades_all", 0)),
+                "verline": "Tokens 交易市场 · %s · 本报告由系统自动生成" % self._manifest_version(),
+                "seedline": "随机种子 %s · 复现方式：TM_SEED=%s 重开一局" % (
+                    self.s.get("seed") or "—", self.s.get("seed") or "—"),
                 "winrate": "%.1f" % (m["win_rate"] * 100),
                 "best": fmt(m["best"]) if m["best"] is not None else "—",
                 "worst": fmt(m["worst"]) if m["worst"] is not None else "—",
@@ -2018,6 +2068,7 @@ class Engine:
 
             html = """<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>赛后报告 - {trader} - {now}</title>
 <style>
 :root{{--bg:#f6f7f9;--card:#fff;--line:#e4e6eb;--ink:#1d2129;--muted:#86909c;--up:#0d9458;--down:#d93025}}
@@ -2053,6 +2104,10 @@ ul.ev li{{padding:4px 0;border-bottom:1px solid #f2f3f5}}
 footer{{text-align:center;color:var(--muted);font-size:12px;padding-top:8px}}
 .kvbox{{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:2px 24px;background:#fbfbfd;border:1px solid var(--line);border-radius:8px;padding:12px 16px;margin-bottom:10px}}
 .note{{color:var(--muted);font-size:12.5px;line-height:1.7;padding:0 2px}}
+.toc{{display:flex;flex-wrap:wrap;gap:6px 14px;margin:-6px 0 16px;padding:10px 16px;
+background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:12.5px}}
+.toc a{{color:#0b6bcb;text-decoration:none}}
+.toc a:hover{{text-decoration:underline}}
 .scratch{{background:#fbfbfd;border:1px solid var(--line);border-radius:8px;padding:10px 14px;max-height:520px;overflow:auto;font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;font-size:13.5px;line-height:1.75}}
 .sc-item{{padding:6px 0;border-bottom:1px dashed #eceef2;white-space:pre-wrap;word-break:break-word}}
 .sc-item:last-child{{border-bottom:0}}
@@ -2063,9 +2118,14 @@ footer{{text-align:center;color:var(--muted);font-size:12px;padding-top:8px}}
 <header>
   <h1>Tokens 交易市场 · 赛后报告<span class="badge {hitcls}">{verdict}</span></h1>
   <div class="sub">玩家 {trader}（{mode}） · 用时 {dur} · 结束原因 {reason} · 生成于 {now}</div>
+  <div class="sub">{seedline}</div>
   {diffline}
   {flagline}
 </header>
+<nav class="toc">
+  <a href="#p1">关键指标</a><a href="#p2">成本归因</a><a href="#p3">交易明细</a>
+  <a href="#p4">借贷账目</a><a href="#p5">草稿纸</a><a href="#p6">关键事件</a>
+</nav>
 <div class="cards">
   <div class="card"><div class="k">最终权益</div><div class="v">{finaleq}</div></div>
   <div class="card"><div class="k">盈亏</div><div class="v {pnlcls}">{pnl}（{pnlpct}%）</div></div>
@@ -2073,14 +2133,15 @@ footer{{text-align:center;color:var(--muted);font-size:12px;padding-top:8px}}
   <div class="card"><div class="k">评级</div><div class="v">{ring}</div></div>
 </div>
 <section><h2>权益曲线</h2>{svg}</section>
-<section><h2>关键指标</h2><div class="grid2">
+<section id="p1"><h2>关键指标</h2><div class="grid2">
   <div class="kv"><span>黑天鹅频率</span><span>{gap_lv}</span></div>
   <div class="kv"><span>流动性枯竭程度</span><span>{liq_lv}</span></div>
   <div class="kv"><span>快进使用</span><span>{ff_records}（{ff_count} 次，{ff_used}）</span></div>
   <div class="kv"><span>快进剩余额度</span><span>{ff_remain}</span></div>
   <div class="kv"><span>最大回撤</span><span>{mdd}%</span></div>
   <div class="kv"><span>夏普比率</span><span>{sharpe}</span></div>
-  <div class="kv"><span>交易笔数</span><span>{trades_n}</span></div>
+  <div class="kv"><span>平仓笔数</span><span>{trades_n}</span></div>
+  <div class="kv"><span>委托笔数（含开仓）</span><span>{trades_all}</span></div>
   <div class="kv"><span>胜率</span><span>{winrate}%</span></div>
   <div class="kv"><span>最大单笔盈利</span><span class="up">{best}</span></div>
   <div class="kv"><span>最大单笔亏损</span><span class="down">{worst}</span></div>
@@ -2090,15 +2151,15 @@ footer{{text-align:center;color:var(--muted);font-size:12px;padding-top:8px}}
   <div class="kv"><span>异常退出</span><span>{abn} 次</span></div>
   <div class="kv"><span>累计借款</span><span>{borrowed_txt}</span></div>
 </div></section>
-<section><h2>成本归因</h2><div class="kvbox">{attrib}</div>
+<section id="p2"><h2>成本归因</h2><div class="kvbox">{attrib}</div>
 <div class="note">净盈亏 = 毛盈亏 − 滑点 − 点差 − 手续费 − 隔夜利息 + 老虎机返还。毛盈亏含方向判断与跳空冲击，是「不看成本时本该赚/亏多少」。</div></section>
-<section><h2>交易明细（共 {rowsn} 条）</h2>
+<section id="p3"><h2>交易明细（共 {rowsn} 条）</h2>
 <table><thead><tr><th>tick</th><th>动作</th><th>品种</th><th>方向</th><th>手数</th><th>杠杆</th><th>成交价</th><th>保证金</th><th>手续费</th><th>盈亏</th></tr></thead>
 <tbody>{rows}</tbody></table></section>
 {loanblock}
-<section><h2>草稿纸（{scn} 条）</h2><div class="scratch">{scrows}</div></section>
-<section><h2>关键事件</h2><ul class="ev">{evrows}</ul></section>
-<footer>Tokens 交易市场 · 引擎 v18 · 本报告由系统自动生成</footer>
+<section id="p5"><h2>草稿纸（{scn} 条）</h2><div class="scratch">{scrows}</div></section>
+<section id="p6"><h2>关键事件</h2><ul class="ev">{evrows}</ul></section>
+<footer>{verline}</footer>
 </div></body></html>""".format(rowsn=len(rows), **body)
 
             outdir = os.path.join(self.home, "reports")
@@ -2108,7 +2169,17 @@ footer{{text-align:center;color:var(--muted);font-size:12px;padding-top:8px}}
             with open(hp, "w", encoding="utf-8") as f:
                 f.write(html)
             return hp
-        except Exception:
+        except Exception as exc:
+            # 静默失败曾导致「报告没生成但没人知道」，这里留一份可查的痕迹
+            try:
+                import traceback
+                _log = os.path.join(self.home, "reports", ".last_error.txt")
+                os.makedirs(os.path.dirname(_log), exist_ok=True)
+                with open(_log, "a", encoding="utf-8") as fh:
+                    fh.write(("[%s] %s" + chr(10) + "%s" + chr(10) + chr(10)) % (
+                        now.strftime("%Y-%m-%d %H:%M:%S"), exc, traceback.format_exc()))
+            except Exception:
+                pass
             return None
 
     def abnormal_exit_report(self, reason="非正常退出"):
@@ -2249,6 +2320,7 @@ footer{{text-align:center;color:var(--muted);font-size:12px;padding-top:8px}}
                     "rate_pct": LOAN_RATE_PER_TICK * 100,
                 },
                 "special": self.special_state(),
+                "seed": self.s.get("seed"),
                 "blowups": self.s["blowups"],
                 "margin_calls": self.s["margin_calls"],
                 "total_fees": round(self.s["total_fees"], 2),
