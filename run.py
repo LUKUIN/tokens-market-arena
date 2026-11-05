@@ -155,9 +155,11 @@ def _run_ai(interactive=False, port=None):
         return 1
 
     print("  HTTP 接口：http://127.0.0.1:%d（/rules 先读规则）" % port)
+    # 先把观众席模块读进内存，再封存源码。顺序反过来的话，import 会落在诱饵上，
+    # 诱饵一执行就写作弊标记并 exit，整个对局起不来。
+    import tm_watch_ai
     guard_stop = _start_guard(port)
     print("  正在拉起只读观众席……")
-    import tm_watch_ai
     try:
         tm_watch_ai.main()
     finally:
@@ -236,9 +238,9 @@ def main(argv=None):
                 print("  服务启动失败：%s:%d" % (host, port))
                 return 1
             print("  HTTP 接口：http://%s:%d" % (host, port))
+            import tm_watch_ai
             guard_stop = _start_guard(port)
             print("  正在拉起只读观众席……")
-            import tm_watch_ai
             try:
                 tm_watch_ai.main()
             finally:
