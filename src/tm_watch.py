@@ -1402,7 +1402,7 @@ class Watch:
         return True
 
     def _open_slot(self):
-        """老虎机：投入 1~100000 Tokens（不超过当前权益），整局 3 次。"""
+        """老虎机：投入 1~200000 Tokens（不超过当前权益），整局 3 次。"""
         st = self.st or {}
         sp = st.get("special") or {}
         if not sp.get("slot"):
@@ -1427,12 +1427,12 @@ class Watch:
         tk.Label(win, text="剩余 %s 次 · 当前权益 %s" % (
             left if left is not None else "—", "{:,.0f}".format(eq)),
             font=FONT_SMALL, bg=BG, fg=MUTED).pack(anchor="w", padx=20)
-        tk.Label(win, text="投入金额（1 ~ 100,000，且不超过当前权益）",
+        tk.Label(win, text="投入金额（1 ~ 200,000，且不超过当前权益）",
                  font=FONT_SMALL, bg=BG, fg=MUTED).pack(anchor="w", padx=20, pady=(14, 4))
         var = tk.StringVar(value="10000")
         ent = tk.Entry(win, textvariable=var, font=FONT, justify="right")
         ent.pack(fill="x", padx=20)
-        tip = tk.Label(win, text="70% 无所得 · 25% 返还 10 倍 · 5% 返还 20 倍",
+        tip = tk.Label(win, text="80% 无所得 · 15% 返还 5 倍 · 5% 返还 10 倍",
                        font=FONT_TINY, bg=BG, fg=MUTED)
         tip.pack(anchor="w", padx=20, pady=(6, 0))
 

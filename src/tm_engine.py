@@ -159,10 +159,14 @@ NEWS_TABLE = [
     ("做市商回归",     3, "mod", ("spread_mult", 0.30, 12)),
     ("黑天鹅静默",     3, "mod", ("gap_mult", 0.0, 15)),
     ("流动性盛宴",     3, "mod", ("vol_mult", 0.5, 20)),
-    # --- 氛围（无数值影响）---
-    ("论坛传言",       6, "flavor", None),
-    ("有人爆仓",       5, "flavor", None),
-    ("平台公告",       5, "flavor", None),
+    # --- 平台限制（暂时禁用某项操作）---
+    ("风控审查",       3, "halt_loan",  60),   # 5 分钟禁借（负现金自救窗口例外）
+    ("交易所维护",     1, "halt_close", 1),    # 1 tick 禁平仓（强平不受影响）
+    ("老虎机维护",     2, "halt_slot",  96),   # 8 分钟禁投注
+    # --- 原「氛围」三条已改造为有数值影响 ---
+    ("论坛传言",       6, "pair_rand", (0.003, 0.008)),
+    ("有人爆仓",       5, "mod", ("spread_mult", 2.5, 5)),
+    ("平台公告",       5, "mod", ("fee_mult", 1.5, 10)),
     # --- 稀有：借贷政策类 ---
     # 注意：【金融回逆】已升级为开局全局开关（见 special 段），不再进入随机事件池。
 ]
@@ -205,11 +209,14 @@ LOAN_BUMP_LO_DEFAULT = 0.01   # 未开启时的下限（+1%）
 SPECIAL_FEE = 300_000.0       # 局内开启任一全局事件的代价（权益/现金）
 SLOT_MAX_PLAYS = 3            # 老虎机整局次数
 SLOT_MIN_STAKE = 1.0          # 单次投入下限
-SLOT_MAX_STAKE = 100_000.0    # 单次投入上限
-SLOT_P_LOSE = 0.70            # 70% 无所得
-SLOT_P_X10 = 0.25             # 25% 返还 10 倍
-SLOT_WIN_LO = 0.01            # 中奖返还金额推高目标的比例下限
-SLOT_WIN_HI = 0.50            # ……上限
+SLOT_MAX_STAKE = 200_000.0    # 单次投入上限
+# 期望返还 = 0.15×5 + 0.05×10 = 1.25 倍投入。
+# 配合「中奖金额推高目标」的惩罚，投满三次的中位结果是亏光投入。
+SLOT_P_LOSE = 0.80            # 80% 无所得
+SLOT_P_X5 = 0.15              # 15% 返还 5 倍
+SLOT_P_X10 = 0.05             # 5% 返还 10 倍
+SLOT_WIN_LO = -0.05           # 中奖返还金额推高目标的比例下限（可为负 = 目标反而降低）
+SLOT_WIN_HI = 1.00            # ……上限（最坏情况目标翻倍）
 
 STARTER_CASH = 1_000_000.0
 LOTS_SIZE = 1000.0
@@ -364,6 +371,9 @@ def _new_session():
         "news_rate": _pick_news_rate() if events_on else 0.0,
         "last_news_name": None,
         "halt_orders": False,
+        "halt_loan_until": 0,    # 风控审查：到该 tick 之前禁止借款（负现金自救窗口例外）
+        "halt_close_until": 0,   # 交易所维护：到该 tick 之前禁止平仓（爆仓强平不受影响）
+        "halt_slot_until": 0,    # 老虎机维护：到该 tick 之前禁止投注
         "halt_until": 0,        # 熔断停市：到该 tick 之前都不能下单
         "clock_cheat": False,
         "elapsed_seen": 0.0,
@@ -859,6 +869,26 @@ class Engine:
                 self._shock(sym, g)
                 self._gap_pairs.add(sym)
             self._event("【天灾】%s → 全品种同时跳空 %.0f%%~%.0f%%" % (name, lo * 100, hi * 100), "gap")
+        elif kind == "halt_loan":
+            n = int(params)
+            self.s["halt_loan_until"] = self.s["tick"] + n
+            self._event(
+                "【风控】%s → 未来 %d 个 tick（%.0f 分钟）暂停放贷；"
+                "现金为负时的 60 秒自救窗口不受影响" % (
+                    name, n, n * TICK_SECONDS / 60.0), "warn")
+        elif kind == "halt_close":
+            n = int(params)
+            self.s["halt_close_until"] = self.s["tick"] + n
+            self._event(
+                "【平台】%s → 未来 %d 个 tick（%.1f 分钟）暂停主动平仓；"
+                "保证金不足的强制平仓不受影响" % (
+                    name, n, n * TICK_SECONDS / 60.0), "warn")
+        elif kind == "halt_slot":
+            n = int(params)
+            self.s["halt_slot_until"] = self.s["tick"] + n
+            self._event(
+                "【平台】%s → 未来 %d 个 tick（%.0f 分钟）暂停老虎机投注" % (
+                    name, n, n * TICK_SECONDS / 60.0), "warn")
         elif kind == "flavor":
             self._event("【%s】%s" % (name, random.choice(FLAVOR_LINES[name])), "info")
 
@@ -1350,10 +1380,11 @@ class Engine:
                     "special": self.special_state(), "state": self.state()}
 
     def slot(self, amount):
-        """老虎机：投入 1~100000 Tokens，最多 3 次。
+        """老虎机：投入 1~200000 Tokens，最多 3 次。
 
-        70% 无所得；25% 返还 10 倍；5% 返还 20 倍。
-        返还金额进入现金；同时目标按返还金额的 1%~50% 上浮（中奖的代价）。
+        80% 无所得；15% 返还 5 倍；5% 返还 10 倍（期望返还 1.25 倍）。
+        返还金额进入现金；同时目标按返还金额的 -5%~100% 上浮（中奖的代价，
+        最坏情况目标翻倍，等于白赢）。
         """
         with LOCK:
             if self.s.get("finished"):
@@ -1361,6 +1392,10 @@ class Engine:
             sp = self._special()
             if not sp.get("slot"):
                 return {"ok": False, "error": "本局未开启【老虎机】"}
+            if self.s["tick"] < self.s.get("halt_slot_until", 0):
+                return {"ok": False,
+                        "error": "老虎机维护中，还剩 %d 个 tick" % (
+                            int(self.s.get("halt_slot_until", 0)) - self.s["tick"])}
             played = int(sp.get("slot_plays", 0))
             if played >= SLOT_MAX_PLAYS:
                 return {"ok": False,
@@ -1382,10 +1417,10 @@ class Engine:
             r = random.random()
             if r < SLOT_P_LOSE:
                 mult, payout = 0, 0.0
-            elif r < SLOT_P_LOSE + SLOT_P_X10:
-                mult, payout = 10, stake * 10
+            elif r < SLOT_P_LOSE + SLOT_P_X5:
+                mult, payout = 5, stake * 5
             else:
-                mult, payout = 20, stake * 20
+                mult, payout = 10, stake * 10
             bump = 0.0
             bump_pct = 0.0
             if payout > 0:
@@ -1414,6 +1449,12 @@ class Engine:
         with LOCK:
             if self.s.get("finished"):
                 return {"ok": False, "error": "本局已结束"}
+            # 风控审查：正常状态借不到，但现金为负的自救窗口（60 秒）不受影响
+            if (self.s["tick"] < self.s.get("halt_loan_until", 0)
+                    and float(self.s.get("balance") or 0) >= 0):
+                return {"ok": False,
+                        "error": "风控审查中，暂停放贷（还剩 %d 个 tick）" % (
+                            int(self.s.get("halt_loan_until", 0)) - self.s["tick"])}
             try:
                 amount = float(amount)
             except (TypeError, ValueError, OverflowError):
@@ -1598,6 +1639,11 @@ class Engine:
         with LOCK:
             if self.s.get("finished"):
                 return {"ok": False, "error": "本局已结束"}
+            # 交易所维护：无法主动平仓；爆仓强平走 _blowup()，不受此限制
+            if self.s["tick"] < self.s.get("halt_close_until", 0):
+                return {"ok": False,
+                        "error": "交易所维护中，暂停平仓（还剩 %d 个 tick）" % (
+                            int(self.s.get("halt_close_until", 0)) - self.s["tick"])}
             pair = (pair or "").upper()
             price = self.s["prices"].get(pair)
             if price is None:
@@ -2350,10 +2396,11 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                         "目标上浮区间从 +1%%~+100%% 放宽到 -20%%~+100%%（可能减免目标）；"
                         "开局免费，局内再开启需支付 %.0f 现金" % (FR_MAX_LOANS, SPECIAL_FEE)
                         ).replace("%%", "%"),
-            "老虎机": ("开局全局开关：开启后整局可投 %d 次，单次 1~100000 且不超过当前权益；"
-                       "70%% 无所得 / 25%% 返还 10 倍 / 5%% 返还 20 倍；"
-                       "中奖金额进入现金，同时目标按返还金额的 1%%~50%% 上浮；"
-                       "开局免费，局内再开启需支付 %.0f 现金" % (SLOT_MAX_PLAYS, SPECIAL_FEE)
+            "老虎机": ("开局全局开关：开启后整局可投 %d 次，单次 1~%.0f 且不超过当前权益；"
+                       "80%% 无所得 / 15%% 返还 5 倍 / 5%% 返还 10 倍（期望返还 1.25 倍）；"
+                       "中奖金额进入现金，同时目标按返还金额的 -5%%~100%% 上浮（最坏情况目标翻倍）；"
+                       "开局免费，局内再开启需支付 %.0f 现金" % (
+                           SLOT_MAX_PLAYS, SLOT_MAX_STAKE, SPECIAL_FEE)
                        ).replace("%%", "%"),
             "杠杆": "可选 %d - %d 倍" % (MIN_LEVERAGE, MAX_LEVERAGE),
             "点差": {s: "%.3f%%" % (cfg["spread"] * 100) for s, cfg in PAIRS.items()},
