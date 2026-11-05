@@ -60,8 +60,10 @@ def _decrypt(key, blob):
 FLAG = os.path.join(VAULT, "CHEAT_FLAG")
 STATE = os.path.join(VAULT, "guard_state.json")
 SOURCES = []
+# 只封「含游戏参数」的模块。tm_watch_ai.py 是纯 UI（只经 HTTP 读 /state，不 import 引擎），
+# 留着它能读，对局进行中才能再起一个观众席进程。
 SOURCES += [os.path.join("src", n) for n in
-            ("tm_engine.py", "tm_api.py", "tm_watch_ai.py", "scratchpad.py")]
+            ("tm_engine.py", "tm_api.py", "scratchpad.py")]
 
 DECOY = r'''# ==========================================================================
 #  CHEATING DETECTED

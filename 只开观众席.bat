@@ -1,0 +1,43 @@
+@echo off
+chcp 936 >nul
+cd /d "%~dp0"
+title Tokens 交易市场 - 只开观众席
+where python >nul 2>nul
+if errorlevel 1 (
+    echo.
+    echo   [错误] 没有找到 python 命令。
+    echo   先安装 Python 3.10 或更高版本，安装时勾选 "Add python.exe to PATH"。
+    echo.
+    pause
+    exit /b 1
+)
+
+rem ------------------------------------------------------------------
+rem 只打开只读观众席窗口，不启动新的一局。
+rem
+rem 用在「对局已经在跑，但窗口没出来」的时候：
+rem   - Agent 用了 "python run.py server" 启动，本来就没有窗口
+rem   - Tk 窗口没弹出来，或者被误关了
+rem
+rem 如果端口上已经有一局在应答，本脚本只挂窗口，别的什么都不做：
+rem 不起服务、不起守卫、不封存源码。挂载一旦去封存，就会把诱饵加密进新箱子，
+rem 真源码再也还原不回来。
+rem 如果端口上没有对局，它会先把服务起起来，保证你能看到东西。
+rem
+rem 关掉这个窗口不会结束对局。要结算就用 /quit，或点窗口里的「结束相关进程」。
+rem ------------------------------------------------------------------
+if not defined TM_PORT set "TM_PORT=8734"
+
+echo.
+echo   ==========================================
+echo      Tokens 交易市场 - 观众席
+echo   ==========================================
+echo   端口         %TM_PORT%
+echo   只读窗口     不能下单、不能快进
+echo.
+
+python run.py spectator 127.0.0.1 %TM_PORT%
+
+echo.
+echo   [已退出] 观众席已关闭，对局不受影响。
+pause

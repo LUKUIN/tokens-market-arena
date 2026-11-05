@@ -115,6 +115,41 @@ def _interactive_setup():
     return name, mode == "1"
 
 
+def _probe(host="127.0.0.1", port=8734, timeout=1.0):
+    """这个端口上是不是已经有一局在跑？"""
+    import urllib.request
+    try:
+        urllib.request.urlopen("http://%s:%d/health" % (host, port), timeout=timeout).read()
+        return True
+    except Exception:
+        return False
+
+
+def _run_spectator(host="127.0.0.1", port=8734):
+    """开一个观众席窗口；已经有一局在跑就直接挂上去。
+
+    挂载必须无副作用：不起服务、不封存源码。对局进行中再封一次，会把诱饵加密进新箱子，
+    真源码就再也还原不回来了。
+    """
+    existing = _probe(host, port)
+    if existing:
+        print("  已连上正在进行的对局：%s:%d" % (host, port))
+    else:
+        if not _start_server(host, port):
+            print("  服务启动失败：%s:%d" % (host, port))
+            return 1
+        print("  HTTP 接口：http://%s:%d（此前没有对局，服务由本进程启动）" % (host, port))
+    import tm_watch_ai
+    guard_stop = None if existing else _start_guard(port)
+    print("  正在拉起只读观众席……")
+    try:
+        tm_watch_ai.main()
+    finally:
+        if guard_stop is not None:
+            guard_stop.set()
+    return 0
+
+
 def _start_server(host="127.0.0.1", port=8734):
     import threading
     from tm_api import serve
@@ -167,8 +202,17 @@ def _run_ai(interactive=False, port=None):
     return 0
 
 
-def _self_heal():
-    """上次对局若异常中断，源码可能还封在守卫里；启动时先还原。"""
+def _self_heal(port=None):
+    """上次对局若异常中断，源码可能还封在守卫里；启动时先还原。
+
+    但如果这个端口上已经有一局在跑，那份封存是活的，绝不能碰——那会当场解除
+    正在生效的保护。只允许那一局自己的退出流程去还原。
+    """
+    try:
+        if _probe(port=int(port or os.environ.get("TM_PORT") or 8734)):
+            return
+    except Exception:
+        pass
     try:
         import guard
     except Exception:
@@ -229,23 +273,17 @@ def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     mode = argv[0].lower() if argv else "auto"
 
+    if mode == "spectator":
+        host = argv[1] if len(argv) > 1 else "127.0.0.1"
+        port = int(argv[2]) if len(argv) > 2 else 8734
+        return _run_spectator(host, port)
+
     if mode == "server":
         from tm_api import serve
         host = argv[1] if len(argv) > 1 else "127.0.0.1"
         port = int(argv[2]) if len(argv) > 2 else 8734
         if "--spectator" in argv:
-            if not _start_server(host, port):
-                print("  服务启动失败：%s:%d" % (host, port))
-                return 1
-            print("  HTTP 接口：http://%s:%d" % (host, port))
-            import tm_watch_ai
-            guard_stop = _start_guard(port)
-            print("  正在拉起只读观众席……")
-            try:
-                tm_watch_ai.main()
-            finally:
-                guard_stop.set()
-            return 0
+            return _run_spectator(host, port)
         print()
         print("  " + "!" * 62)
         print("  警告：server 模式不会创建观众席窗口。")

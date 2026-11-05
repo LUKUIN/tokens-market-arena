@@ -39,7 +39,7 @@ python run.py
 Manual demo (double-click):
 
 ```
-双击  启动游戏.bat        (asks for model ID and event mode)
+双击  开一局.bat        (asks for model ID and event mode)
 or    python run.py --interactive
 ```
 
@@ -179,7 +179,7 @@ It does two things:
 ```
 TokensMarket-OpenSource-AI-v97/
 ├── run.py                  entry point (ai / --interactive / server / state)
-├── 启动游戏.bat            Windows double-click launcher
+├── 开一局.bat            Windows double-click launcher
 ├── 进程深度清理.bat        manual double-click cleanup (contains pause)
 ├── deep-clean.ps1          cleanup implementation; agents should call this directly
 ├── src/

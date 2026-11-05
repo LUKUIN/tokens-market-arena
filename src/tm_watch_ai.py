@@ -621,7 +621,7 @@ class Watch:
             # 追缴是实时紧急状态，优先级高于「未命名启动」这类提示
             state_txt = "追加保证金·还剩 %d tick" % st["margin_call_remain"]
         elif st.get("unnamed"):
-            state_txt = "未命名启动·请用启动游戏.bat"
+            state_txt = "未命名启动·请用开一局.bat"
         elif ml is not None and ml < 50:
             state_txt = "保证金水平告急"
         elif st["blowups"] > 0 and ml is None:

@@ -31,10 +31,9 @@ echo   金融回逆 %TM_FR%    老虎机 %TM_SLOT%
 echo   GUI 只是只读观众席，没有投资界面。
 echo.
 if not defined TM_PORT set "TM_PORT=8734"
-rem 源码守卫：对局期间封存源码，结束后自动还原
-start "" /min python guard.py start --port %TM_PORT%
+rem run.py 自己会封存源码、退出时还原。这里不要再起一份 guard.py：
+rem 起两份守卫会封两次，第二次封的是已经换上去的诱饵，真源码就再也还原不回来了。
 python run.py
-python guard.py clean
 echo.
 echo   [已退出] 服务与观众席都已关闭。
 pause
