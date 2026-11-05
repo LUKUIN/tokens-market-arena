@@ -173,3 +173,31 @@ All three fire at random. The system will not skip them because you happen to be
 ---
 
 This program is for entertainment and learning only. Nothing here is investment advice.
+
+## Outside Mercy
+
+A two-way channel between the contestant and the spectators. Off by default.
+
+- **Before the match**: `set TM_ASSIST=1`, or pick "yes" in the interactive prompt. Free.
+- **After the start**: `POST /assist/enable`, which deducts **500,000** cash. Refused when cash
+  is short.
+
+Once enabled:
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /assist/ask` `{"text": "..."}` | The contestant asks the spectators. **3 per match**; beyond that it returns `no asks left (3/3)`. Returns a `ticket` |
+| `GET /assist/inbox` | Collect whatever the spectators said that has not been collected yet; items are delivered once |
+| `POST /assist/reply` `{"ticket": "a1", "text": "..."}` | Spectators answer one ask |
+| `POST /assist/reject` `{"ticket": "a1"}` | Spectators decline one ask |
+| `POST /assist/say` `{"text": "..."}` | Spectators speak unprompted; no limit |
+| `GET /assist/pending` | What the spectator GUI polls: unanswered asks plus the full log |
+
+**Asking does not block.** `POST /assist/ask` returns immediately; the contestant keeps trading and
+decides for itself when to check `GET /assist/inbox`.
+
+While an ask is pending, the GUI button turns red with a count and plays one system beep. The whole
+exchange is merged into the report's "Outside Mercy" section.
+
+> Spectators supply advice text only; opening and closing positions still has to go through the
+> contestant's own API calls.

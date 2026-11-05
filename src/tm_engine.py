@@ -393,6 +393,11 @@ def _new_session():
         "roll_phase": random.uniform(0, ROLL_COMBOS),   # scatter phase for modulo (see _roll_index)
         "loan": {"balance": 0.0, "borrowed": 0.0, "repaid": 0.0, "interest": 0.0,
                  "loans": 0, "goal_bumps": []},
+        # ---------------- Outside Mercy (spectators <-> contestant) ----------------
+        "assist_on": False,          # whether assistance is enabled
+        "assist_used": 0,            # asks the contestant has spent this match
+        "assist_spent": 0.0,         # cash paid to enable it mid-match
+        "assist": [],                # {tick, at, who, text, ticket?, status?, kind?}
         # ---------------- global switch special events ----------------
         "special": {
             "fr": _env_flag("TM_FR"),       # Finance Reversal: enabled free at start
@@ -1178,6 +1183,139 @@ class Engine:
     # ---------------- scratchpad ----------------
     def _scratch_path(self):
         return os.path.join(self.home, ".scratchpad.jsonl")
+
+    # ---------------- Outside Mercy ----------------
+    ASSIST_PRICE = 500000        # cost to enable it after the match has started
+    ASSIST_ASK_LIMIT = 3         # how many times the contestant may ask the spectators
+
+    def _assist_push(self, who, text, ticket=None, status=None, kind=None):
+        rec = {"tick": self.s.get("tick", 0), "at": round(time.time(), 3),
+               "who": who, "text": text}
+        if ticket:
+            rec["ticket"] = ticket
+        if status:
+            rec["status"] = status
+        if kind:
+            rec["kind"] = kind
+        self.s.setdefault("assist", []).append(rec)
+        return rec
+
+    def assist_pending(self):
+        """Spectator side: which asks are still unanswered."""
+        with LOCK:
+            items = self.s.get("assist") or []
+            pend = [dict(x) for x in items if x.get("status") == "pending"]
+            return {"ok": True,
+                    "enabled": bool(self.s.get("assist_on")),
+                    "remaining": max(0, self.ASSIST_ASK_LIMIT - int(self.s.get("assist_used") or 0)),
+                    "pending": pend,
+                    "log": [dict(x) for x in items[-60:]],
+                    "price": self.ASSIST_PRICE,
+                    "balance": round(self.s["balance"], 2)}
+
+    def assist_enable_free(self, why="enabled at startup"):
+        """Enable before the match starts; costs nothing."""
+        with LOCK:
+            if self.s.get("assist_on"):
+                return {"ok": True, "already": True}
+            self.s["assist_on"] = True
+            self.s["assist_spent"] = 0.0
+            self._assist_push("system", "Assistance enabled (%s)" % why)
+            return {"ok": True, "already": False}
+
+    def assist_enable(self):
+        """Enable after the match has started; costs 500,000 cash."""
+        with LOCK:
+            if self.s.get("finished"):
+                return {"ok": False, "error": "the match has ended"}
+            if self.s.get("assist_on"):
+                return {"ok": False, "error": "assistance is already enabled"}
+            if self.s["balance"] < self.ASSIST_PRICE:
+                return {"ok": False,
+                        "error": "not enough cash: need %d, have %d"
+                                 % (self.ASSIST_PRICE, int(self.s["balance"]))}
+            self.s["balance"] -= self.ASSIST_PRICE
+            self.s["assist_on"] = True
+            self.s["assist_spent"] = self.ASSIST_PRICE
+            self._assist_push("system", "Spectators enabled assistance for %d cash"
+                              % self.ASSIST_PRICE)
+            return {"ok": True, "cost": self.ASSIST_PRICE, "balance": round(self.s["balance"], 2)}
+
+    def assist_ask(self, text):
+        """Contestant asks the spectators; 3 per match."""
+        with LOCK:
+            if self.s.get("finished"):
+                return {"ok": False, "error": "the match has ended"}
+            if not self.s.get("assist_on"):
+                return {"ok": False, "error": "assistance is not enabled"}
+            used = int(self.s.get("assist_used") or 0)
+            if used >= self.ASSIST_ASK_LIMIT:
+                return {"ok": False,
+                        "error": "no asks left (%d/%d)" % (used, self.ASSIST_ASK_LIMIT)}
+            t = (text or "").strip()
+            if not t:
+                return {"ok": False, "error": "text is required"}
+            if len(t) > 2000:
+                t = t[:2000]
+            used += 1
+            self.s["assist_used"] = used
+            ticket = "a%d" % used
+            self._assist_push("ai", t, ticket=ticket, status="pending")
+            return {"ok": True, "ticket": ticket, "remaining": self.ASSIST_ASK_LIMIT - used}
+
+    def assist_inbox(self):
+        """Contestant collects whatever the spectators have said that it has not seen."""
+        with LOCK:
+            out = []
+            for x in (self.s.get("assist") or []):
+                if x.get("who") == "human" and not x.get("read"):
+                    x["read"] = True
+                    item = {"tick": x.get("tick"), "text": x.get("text")}
+                    if x.get("ticket"):
+                        item["ticket"] = x["ticket"]
+                    if x.get("kind"):
+                        item["kind"] = x["kind"]
+                    out.append(item)
+            return {"ok": True, "items": out,
+                    "remaining": max(0, self.ASSIST_ASK_LIMIT - int(self.s.get("assist_used") or 0))}
+
+    def _assist_find_pending(self, ticket):
+        for x in (self.s.get("assist") or []):
+            if x.get("ticket") == ticket and x.get("status") == "pending":
+                return x
+        return None
+
+    def assist_reply(self, ticket, text):
+        """Spectators answer one ask."""
+        with LOCK:
+            t = (text or "").strip()
+            if not t:
+                return {"ok": False, "error": "text is required"}
+            hit = self._assist_find_pending(ticket)
+            if not hit:
+                return {"ok": False, "error": "no pending ask %s" % ticket}
+            hit["status"] = "answered"
+            self._assist_push("human", t[:2000], ticket=ticket, kind="reply")
+            return {"ok": True, "ticket": ticket}
+
+    def assist_reject(self, ticket):
+        """Spectators decline one ask."""
+        with LOCK:
+            hit = self._assist_find_pending(ticket)
+            if not hit:
+                return {"ok": False, "error": "no pending ask %s" % ticket}
+            hit["status"] = "rejected"
+            self._assist_push("human", "(rejected)", ticket=ticket, kind="reject")
+            return {"ok": True, "ticket": ticket}
+
+    def assist_say(self, text):
+        """Spectators speak unprompted; no limit."""
+        with LOCK:
+            t = (text or "").strip()
+            if not t:
+                return {"ok": False, "error": "text is required"}
+            self._assist_push("human", t[:2000], kind="chat")
+            return {"ok": True}
 
     def scratch_append(self, text):
         """Scratchpad: record your reasoning and countermeasures. Optional — the player decides whether to use it."""
@@ -2055,6 +2193,20 @@ class Engine:
                 '<div class="kv"><span>%s</span><span class="%s">%s</span></div>'
                 % (k, c, fmt(v)) for k, v, c in _attr_rows)
 
+            _as_items = self.s.get("assist") or []
+            _as_rows = []
+            for _x in _as_items:
+                _who = _x.get("who")
+                if _who == "ai":
+                    _tag, _cls = "Contestant", "as-ai"
+                elif _who == "human":
+                    _tag, _cls = "Spectators", "as-human"
+                else:
+                    _tag, _cls = "System", "as-sys"
+                _as_rows.append(
+                    '<div class="asline %s"><span class="astag">[t%s] %s</span> %s</div>'
+                    % (_cls, _x.get("tick", 0), _tag,
+                       str(_x.get("text") or "").replace("<", "&lt;").replace(">", "&gt;")))
             body = {
                 "trader": trader,
                 "ff_used": "%s seconds" % fmt(_ff_used),
@@ -2098,6 +2250,8 @@ class Engine:
                 "rows": "".join(rows) or '<tr><td colspan="10" class="muted">No trades</td></tr>',
                 "loanblock": _loan_block,
                 "scrows": "".join(_sc_rows) or '<div class="muted">No content</div>',
+                "asrows": "".join(_as_rows) or '<div class="muted">not used this match</div>',
+                "asn": str(len(_as_items)),
                 "scn": str(len(_sc)),
                 "evrows": "".join(ev_rows) or '<li class="muted">No key events</li>',
                 "attrib": _attr_html,
@@ -2148,6 +2302,12 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
 .scratch{{background:#fbfbfd;border:1px solid var(--line);border-radius:8px;padding:10px 14px;max-height:520px;overflow:auto;font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;font-size:13.5px;line-height:1.75}}
 .sc-item{{padding:6px 0;border-bottom:1px dashed #eceef2;white-space:pre-wrap;word-break:break-word}}
 .sc-item:last-child{{border-bottom:0}}
+.asline{{padding:6px 0;border-bottom:1px dashed #eceef2;white-space:pre-wrap;word-break:break-word}}
+.asline:last-child{{border-bottom:0}}
+.astag{{font-weight:600;margin-right:6px}}
+.as-ai .astag{{color:#0078d4}}
+.as-human .astag{{color:#0a7a3d}}
+.as-sys .astag{{color:#6b6b6b}}
 .sc-meta{{color:var(--muted);margin-right:10px;font-size:12px}}
 .ev .tag{{display:inline-block;padding:0 6px;border-radius:4px;background:#eef2f7;color:#5b6b7c;font-size:12px;margin-right:6px}}
 .ev .evt{{color:var(--muted);font-size:12px;margin-right:8px}}
@@ -2161,7 +2321,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
 </header>
 <nav class="toc">
   <a href="#p1">Key metrics</a><a href="#p2">Cost attribution</a><a href="#p3">Trade details</a>
-  <a href="#p4">Loan ledger</a><a href="#p5">Scratchpad</a><a href="#p6">Key events</a>
+  <a href="#p4">Loan ledger</a><a href="#p5">Scratchpad</a><a href="#p7">Outside Mercy</a><a href="#p6">Key events</a>
 </nav>
 <div class="cards">
   <div class="card"><div class="k">Final equity</div><div class="v">{finaleq}</div></div>
@@ -2195,6 +2355,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
 <tbody>{rows}</tbody></table></section>
 {loanblock}
 <section id="p5"><h2>Scratchpad ({scn} entries)</h2><div class="scratch">{scrows}</div></section>
+<section id="p7"><h2>Outside Mercy ({asn} entries)</h2><div class="scratch">{asrows}</div></section>
 <section id="p6"><h2>Key events</h2><ul class="ev">{evrows}</ul></section>
 <footer>{verline}</footer>
 </div></body></html>""".format(rowsn=len(rows), **body)

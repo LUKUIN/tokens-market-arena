@@ -66,6 +66,10 @@ class Handler(BaseHTTPRequestHandler):
                                "finished": st["finished"]})
         if path == "/scratchpad":
             return self._send({"ok": True, "items": ENGINE.scratch_read()})
+        if path == "/assist/pending":
+            return self._send(ENGINE.assist_pending())
+        if path == "/assist/inbox":
+            return self._send(ENGINE.assist_inbox())
         if path == "/rules":
             return self._send(ENGINE.rules())
         if path == "/state":
@@ -127,6 +131,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(ENGINE.set_trader(b.get("name")))
         if path == "/scratchpad":
             return self._send(ENGINE.scratch_append(b.get("text")))
+        if path == "/assist/enable":
+            return self._send(ENGINE.assist_enable())
+        if path == "/assist/ask":
+            return self._send(ENGINE.assist_ask(b.get("text")))
+        if path == "/assist/reply":
+            return self._send(ENGINE.assist_reply(b.get("ticket"), b.get("text")))
+        if path == "/assist/reject":
+            return self._send(ENGINE.assist_reject(b.get("ticket")))
+        if path == "/assist/say":
+            return self._send(ENGINE.assist_say(b.get("text")))
         if path == "/reset":
             return self._send(ENGINE.reset())
         if path == "/pause":

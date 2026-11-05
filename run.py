@@ -103,8 +103,13 @@ def _interactive_setup():
     slot_on = _ask_special(
         "TM_SLOT", "Enable the global event [Slot Machine]?",
         "3 plays per match (1~200000 each, never above current equity); 80% nothing / 15% refund 5x / 5% refund 10x; winnings lift the target by -5%~100%")
+    assist_on = _ask_special(
+        "TM_ASSIST", "Enable Outside Mercy? (free before the match starts)",
+        "Lets the contestant ask the spectators for help, 3 times per match; spectators may reply, "
+        "decline, or speak unprompted. Enabling it after the start costs 500,000 cash")
     os.environ["TM_FR"] = "1" if fr_on else "0"
     os.environ["TM_SLOT"] = "1" if slot_on else "0"
+    os.environ["TM_ASSIST"] = "1" if assist_on else "0"
 
     print()
     print("  Player  %s" % name)
@@ -191,6 +196,13 @@ def _run_ai(interactive=False, port=None):
         return 1
 
     print("  HTTP API: http://127.0.0.1:%d  (rules: GET /rules)" % port)
+    if (os.environ.get("TM_ASSIST") or "0") == "1":
+        try:
+            import tm_api
+            tm_api.ENGINE.assist_enable_free("enabled at startup")
+            print("  Outside Mercy: enabled (the contestant may ask the spectators 3 times)")
+        except Exception as exc:
+            print("  Outside Mercy: failed to enable (%s)" % exc)
     # Load the spectator module before the guard seals the sources: the other way
     # round, the import lands on a decoy, the decoy drops a cheat flag and exits.
     import tm_watch_ai
@@ -305,6 +317,13 @@ def main(argv=None):
         print("  " + "!" * 62)
         print()
         guard_stop = _start_guard(port)
+        if (os.environ.get("TM_ASSIST") or "0") == "1":
+            try:
+                import tm_api
+                tm_api.ENGINE.assist_enable_free("enabled at startup")
+                print("  Outside Mercy: enabled (the contestant may ask the spectators 3 times)")
+            except Exception as exc:
+                print("  Outside Mercy: failed to enable (%s)" % exc)
         try:
             serve(host, port)
         finally:

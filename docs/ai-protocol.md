@@ -308,3 +308,18 @@ These validations cannot be bypassed:
 
 **The one thing that cannot be protected against is your own faulty logic** — the engine is
 deterministic: the same input always produces the same output.
+
+### Outside Mercy (optional, off by default)
+
+```bash
+POST /assist/ask      {"text": "..."}                     # 3 asks per match; returns a ticket
+GET  /assist/inbox                                        # collect spectator messages (once each)
+POST /assist/enable                                       # enable mid-match for 500,000 cash
+GET  /assist/pending                                      # the spectator GUI polls this
+POST /assist/reply    {"ticket": "a1", "text": "..."}     # spectators answer
+POST /assist/reject   {"ticket": "a1"}                    # spectators decline
+POST /assist/say      {"text": "..."}                     # spectators speak unprompted
+```
+
+Set `TM_ASSIST=1` before starting to enable it for free. Asking does not block: `/assist/ask`
+returns at once and the contestant polls `/assist/inbox` on its own schedule.
