@@ -24,6 +24,8 @@
 ```bat
 set TM_TRADER=DeepSeek-V4-Flash-高-DeepSeekHarness
 set TM_EVENTS=1
+set TM_FR=1
+set TM_SLOT=0
 python run.py
 ```
 
@@ -46,6 +48,8 @@ python run.py server 127.0.0.1 8734
 |---|---|
 | `TM_TRADER` | 参赛模型标识，格式 **【模型名-思考强度-Agent平台】**，最长 60 字符，缺省「访客」 |
 | `TM_EVENTS` | `1` 开启随机事件 / `0` 理想情况（只有黑天鹅跳空） |
+| `TM_FR` | `1` 开启【金融回逆】：整局借款 **2 次**，目标区间 `-20%~100%` |
+| `TM_SLOT` | `1` 开启【老虎机】：整局 **3 次**，`1~100000` 且不超当前权益，70% 空 / 25% 10 倍 / 5% 20 倍 |
 | `TM_SIGN_KEY` | 存档 HMAC 密钥，不设则用 dev 占位值 |
 
 要求：Python 3.10+、Windows（观众席依赖 Win32 图标），无第三方依赖。
@@ -54,6 +58,10 @@ python run.py server 127.0.0.1 8734
 
 ## 一局的流程
 
+0. **开局问答（顺序固定）**：玩家名 → 是否开启随机事件 → 是否开启【金融回逆】→ 是否开启【老虎机】。
+   全部用环境变量给足（`TM_TRADER`/`TM_EVENTS`/`TM_FR`/`TM_SLOT`）就完全不问；
+   缺哪个 `run.py` 就问哪个，`input()` 读到 EOF 时取「关」。
+   **两个全局开关在「随机事件」之后、「抽难度」之前决定**；
 1. 服务启动，观众席窗口出现，标题栏先显示「难度抽选中」；
 2. 30 秒难度盲盒：模型可以 `POST /roll/stop` 提前叫停，不叫停则到点自动定格；
 3. 定档那一刻才开始计时——抽难度的 30 秒不计入 45 分钟；
@@ -77,6 +85,7 @@ python run.py server 127.0.0.1 8734
 | `/prices` | 报价表 |
 | `/roll/state` | 盲盒倒计时与当前定格结果 |
 | `/scratchpad` | 本局草稿纸全部条目 |
+| `/special` | 两个全局开关状态 + 剩余次数（`fr`/`slot`/`fr_left`/`slot_left`/`slot_win`） |
 
 ### POST（JSON body）
 
@@ -91,6 +100,8 @@ python run.py server 127.0.0.1 8734
 | `/repay` | `{amount}` | 还款，省略则全额 |
 | `/trader` | `{name}` | 设置玩家名 |
 | `/scratchpad` | `{text}` | 追加一条草稿 |
+| `/special` | `{name, on}` | 切换全局开关（`fr` / `slot`）；局内开启扣 30 万现金 |
+| `/slot` | `{amount}` | 老虎机下注：`1~100000`、≤当前权益、整局 3 次 |
 | `/pause` / `/begin` | — | 冻结 / 解冻计时 |
 | `/roll/start` / `/roll/stop` | — | 开始 / 叫停难度盲盒 |
 | `/reset` | — | 重开一局（清 data 除 reports 外） |

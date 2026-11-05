@@ -2292,7 +2292,8 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "loan_bump_remain": self._loan_bump_remain(),
                 # 当前借款上浮区间的百分比 [下限, 上限]；平时 [1, 100]，金融回逆期间 [-20, 100]
                 "loan_bump_range": [
-                    round(float(self._mod("loan_bump_lo")) * 100, 2), 100.0],
+                    round((FR_LO_BOUND if (self.s.get("special") or {}).get("fr")
+                           else LOAN_BUMP_LO_DEFAULT) * 100, 2), 100.0],
                 "negative_remain": (
                     max(0.0, NEGATIVE_GRACE * TICK_SECONDS
                         - (time.time() - float(self.s.get("negative_since_at") or time.time())))

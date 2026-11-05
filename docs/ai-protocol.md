@@ -10,9 +10,15 @@
 
 # 2. 非交互启动（不读 stdin，适合后台）
 set TM_TRADER=MyAgent
-set TM_EVENTS=1
+set TM_EVENTS=1        # 随机事件
+set TM_FR=1            # 金融回逆（整局借款 2 次，目标区间 -20%~100%）
+set TM_SLOT=0          # 老虎机（整局 3 次，70% 空 / 25% 10 倍 / 5% 20 倍）
 python run.py ai
 ```
+
+> **问答顺序是固定的**：玩家名 → 随机事件 → 老虎机/金融回逆 → 起服务 → 30 秒难度盲盒。
+> 两个全局开关在「随机事件」之后、「抽难度」之前决定。
+> 四个变量都给了才完全不问；缺哪个 `run.py` 就会交互问哪个（`input()` 读到 EOF 时取默认值「关」）。
 
 启动后：
 
@@ -72,6 +78,9 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 | POST | `/begin` | 解除开局冻结 |
 | POST | `/pause` | 冻结（**只在开局前有效，之后一律拒绝**） |
 | POST | `/scratchpad` | `{"text":"..."}`，写草稿纸 |
+| GET | `/special` | 两个全局开关状态 + 剩余次数 |
+| POST | `/special` | `{"name":"fr"或"slot","on":true}`，切换开关（局内开启扣 30 万现金） |
+| POST | `/slot` | `{"amount":10000}`，老虎机下注（1~100000，≤当前权益，整局 3 次） |
 | POST | `/reset` | 开新一局 |
 | POST | `/quit` | 主动结算并生成报告 |
 | POST | `/shutdown` | 关服务（**会记一次异常退出**） |
@@ -95,8 +104,13 @@ curl -X POST http://127.0.0.1:8734/roll/stop
   "total_borrowed": 0,
 
   "active_mods": ["央行放水"],          // 当前生效的事件名
-  "loan_bump_range": [1.0, 100.0],      // 借款上浮区间（%）
-  "loan_bump_remain": null,             // 金融回逆剩余秒数
+  "loan_bump_range": [1.0, 100.0],      // 借款上浮区间（%）：未开金融回逆 [1,100]，已开 [-20,100]
+  "special": {                          // 两个全局开关
+    "fr": true, "fr_left": 2,           // 金融回逆已开，还剩 2 次借款
+    "slot": false, "slot_left": 3,      // 老虎机未开
+    "slot_win": 0.0, "fr_lo_pct": -20.0 // 老虎机累计返还 / 借款下限（%）
+  },
+  "seed": 20261105,                     // 本局随机种子（写进报告，可复现）
 
   "gap_level": "低", "liq_level": "正常",
   "ff_remain": 900,                     // 快进剩余额度（秒）
@@ -105,14 +119,15 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 }
 ```
 
-### 六个判断点
+### 七个判断点
 
 1. **`equity` vs `target`** —— 还差多少
 2. **`margin_level`** —— 低于 100% 要补保证金，低于 50% 会被强平
 3. **`active_mods`** —— 现在有什么临时规则在改行情
 4. **`loan_bump_range`** —— 现在借钱是什么代价（`[1,100]` 正常，`[-20,100]` 是金融回逆）
-5. **`ff_remain`** —— 还能快进多少秒
-6. **`events`** —— 最近发生了什么（**完整中文文案，不需要额外查文档**）
+5. **`special`** —— 两个开关开没开、还剩几次（`fr_left` / `slot_left`）
+6. **`ff_remain`** —— 还能快进多少秒
+7. **`events`** —— 最近发生了什么（**完整中文文案，不需要额外查文档**）
 
 ## 五、快进额度的约束
 
