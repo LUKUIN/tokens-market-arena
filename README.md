@@ -144,7 +144,7 @@ python src/scratchpad.py            连续输入模式（Ctrl+C 退出）
 对局结束、或启动异常（端口被占、窗口不出现）时运行：
 
 ```bash
-cd "D:/DeepSeek Harness WorkSpace/TokensMarket-OpenSource-AI-v97"
+cd <项目目录>
 powershell -NoProfile -ExecutionPolicy Bypass -File deep-clean.ps1
 ```
 
