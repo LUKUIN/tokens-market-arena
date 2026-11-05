@@ -14,6 +14,7 @@ import socket
 import sys
 import tkinter as tk
 import time
+import tkinter.font as tkfont
 from tkinter import ttk, messagebox
 import urllib.request
 
@@ -378,6 +379,20 @@ class Watch:
         tk.Label(topbar, text="人类玩家版 | 投资终端", font=FONT_SMALL, bg=CARD, fg=MUTED).pack(
             side="left", pady=8)
 
+        # 两个全局开关型事件的状态：开启=紫色粗体；未开启=黑色粗体+删除线
+        self._f_on = tkfont.Font(root=root, family=FONT[0], size=10, weight="bold")
+        self._f_off = tkfont.Font(root=root, family=FONT[0], size=10, weight="bold",
+                                  overstrike=1)
+        self.lbl_fr = tk.Label(topbar, text="金融回逆", font=self._f_off, bg=CARD, fg=TEXT)
+        self.lbl_fr.pack(side="left", padx=(16, 0), pady=8)
+        self.lbl_slot = tk.Label(topbar, text="老虎机", font=self._f_off, bg=CARD, fg=TEXT)
+        self.lbl_slot.pack(side="left", padx=(10, 0), pady=8)
+        self._last_special = None
+        self.btn_slot = tk.Button(topbar, text="老虎机", command=self._open_slot,
+                                  font=FONT_SMALL, bd=0, padx=12, pady=4,
+                                  bg="#F3EEFF", fg="#6B4E9B", activebackground="#E9E0FF",
+                                  activeforeground="#6B4E9B", cursor="hand2")
+
         btn_style = dict(font=FONT_SMALL, bd=0, relief="flat", cursor="hand2",
                          padx=12, pady=4)
         tk.Button(topbar, text="最小化", command=self.root.iconify,
@@ -587,7 +602,7 @@ class Watch:
             st = get("/state")
             self._render(st)
         except Exception:
-            self.lbl_status.config(text="等待服务启动（python run.py）",
+            self.lbl_status.config(text="等待服务启动（python startgame.pyc api 127.0.0.1 8734）",
                                    fg=ORANGE)
         self.root.after(300, self.refresh)
 
@@ -641,6 +656,22 @@ class Watch:
             self.root.title(_bt + " | 金融回逆 剩余 %d 秒" % int(_lbr + 0.999))
         elif _bt:
             self.root.title(_bt)
+        # 全局开关状态：只在变化时重设字体/按钮可见性
+        sp = st.get("special") or {}
+        _sig = (bool(sp.get("fr")), bool(sp.get("slot")))
+        if self._last_special != _sig:
+            self._last_special = _sig
+            _fr_on, _slot_on = _sig
+            _purple = "#7B3FB8"
+            self.lbl_fr.config(font=self._f_on if _fr_on else self._f_off,
+                               fg=_purple if _fr_on else TEXT)
+            self.lbl_slot.config(font=self._f_on if _slot_on else self._f_off,
+                                 fg=_purple if _slot_on else TEXT)
+            if _slot_on:
+                self.btn_slot.pack(side="right", padx=(0, 8), pady=6)
+            else:
+                self.btn_slot.pack_forget()
+
         eq, pnl = st["equity"], st["pnl"]
         up = pnl >= 0
         self.lbl_equity.config(text="{:,.0f}".format(eq), fg=GREEN if up else RED)
@@ -707,7 +738,7 @@ class Watch:
             # 追缴是实时紧急状态，优先级高于「未命名启动」这类提示
             state_txt = "追加保证金·还剩 %d tick" % st["margin_call_remain"]
         elif st.get("unnamed"):
-            state_txt = "未命名启动·请用 开始游戏！.bat"
+            state_txt = "未命名启动·请用启动游戏.bat"
         elif ml is not None and ml < 50:
             state_txt = "保证金水平告急"
         elif st["blowups"] > 0 and ml is None:
@@ -1369,6 +1400,72 @@ class Watch:
             self._tp_say("本局已结束 —— 点下方「重开一局」开始新的", ORANGE)
             return False
         return True
+
+    def _open_slot(self):
+        """老虎机：投入 1~100000 Tokens（不超过当前权益），整局 3 次。"""
+        st = self.st or {}
+        sp = st.get("special") or {}
+        if not sp.get("slot"):
+            messagebox.showinfo("老虎机", "本局未开启【老虎机】。" + chr(10)
+                                          + "开新局时在启动窗口里选择开启即可。")
+            return
+        left = sp.get("slot_left")
+        if left is not None and left <= 0:
+            messagebox.showinfo("老虎机", "本局老虎机次数已用完（%d/%d）。" % (
+                sp.get("slot_plays", 0), 3))
+            return
+        eq = float(st.get("equity") or 0.0)
+        win = tk.Toplevel(self.root)
+        win.title("老虎机 · Tokens 交易市场")
+        _apply_icon(win)
+        win.configure(bg=BG)
+        w, h = 460, 300
+        sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
+        win.geometry("%dx%d+%d+%d" % (w, h, (sw - w) // 2, (sh - h) // 3))
+        win.transient(self.root)
+        tk.Label(win, text="老虎机", font=FONT_BIG, bg=BG, fg=TEXT).pack(anchor="w", padx=20, pady=(16, 4))
+        tk.Label(win, text="剩余 %s 次 · 当前权益 %s" % (
+            left if left is not None else "—", "{:,.0f}".format(eq)),
+            font=FONT_SMALL, bg=BG, fg=MUTED).pack(anchor="w", padx=20)
+        tk.Label(win, text="投入金额（1 ~ 100,000，且不超过当前权益）",
+                 font=FONT_SMALL, bg=BG, fg=MUTED).pack(anchor="w", padx=20, pady=(14, 4))
+        var = tk.StringVar(value="10000")
+        ent = tk.Entry(win, textvariable=var, font=FONT, justify="right")
+        ent.pack(fill="x", padx=20)
+        tip = tk.Label(win, text="70% 无所得 · 25% 返还 10 倍 · 5% 返还 20 倍",
+                       font=FONT_TINY, bg=BG, fg=MUTED)
+        tip.pack(anchor="w", padx=20, pady=(6, 0))
+
+        def _go():
+            try:
+                amt = float(var.get().replace(",", "").strip())
+            except Exception:
+                messagebox.showwarning("老虎机", "请输入数字。", parent=win)
+                return
+            r = post("/slot", {"amount": amt})
+            if not r or not r.get("ok"):
+                messagebox.showwarning("老虎机", (r or {}).get("error", "请求失败"), parent=win)
+                return
+            mult = r.get("mult") or 0
+            payout = r.get("payout") or 0.0
+            if mult:
+                messagebox.showinfo("老虎机", "中奖！%d 倍，返还 %s Tokens。" + chr(10) + "目标上浮 %+.2f%%（%+.0f）。" % (
+                    mult, "{:,.0f}".format(payout), r.get("bump_pct") or 0, r.get("bump") or 0),
+                    parent=win)
+            else:
+                messagebox.showinfo("老虎机", "无所得。", parent=win)
+            win.destroy()
+
+        btns = tk.Frame(win, bg=BG)
+        btns.pack(fill="x", padx=20, pady=14)
+        tk.Button(btns, text="投入", command=_go, font=FONT, bd=0, padx=20, pady=6,
+                  bg="#6B4E9B", fg="#FFFFFF", activebackground="#5A3F9E",
+                  activeforeground="#FFFFFF", cursor="hand2").pack(side="right")
+        tk.Button(btns, text="取消", command=win.destroy, font=FONT, bd=0, padx=20, pady=6,
+                  bg="#F1F1F1", fg=TEXT, activebackground="#E5E5E5",
+                  cursor="hand2").pack(side="right", padx=(0, 10))
+        ent.focus_set()
+        ent.select_range(0, "end")
 
     def _open_trade_panel(self):
         tp = getattr(self, "_tp", None)

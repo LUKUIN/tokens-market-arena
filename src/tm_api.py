@@ -74,6 +74,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(ENGINE.state()["prices"])
         if path == "/roll/state":
             return self._send({"ok": True, **ENGINE.roll_state()})
+        if path == "/special":
+            return self._send({"ok": True, **ENGINE.special_state()})
         return self._send({"ok": False, "error": "未知端点：%s" % path}, 404)
 
     def do_POST(self):
@@ -134,6 +136,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(ENGINE.roll_stop())
         if path == "/roll/start":
             return self._send(ENGINE.start_roll())
+        if path == "/special":
+            return self._send(ENGINE.set_special(b.get("name"), b.get("on")))
+        if path == "/slot":
+            return self._send(ENGINE.slot(b.get("amount")))
         return self._send({"ok": False, "error": "未知端点：%s" % path}, 404)
 
 
