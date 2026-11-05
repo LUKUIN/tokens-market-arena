@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Tokens 交易市场 —— 观众席（只读 | 交易终端风格）
+"""Tokens Trading Market — Spectator (read-only | trading-terminal style)
 
-显示：账户权益、累计盈亏、保证金水平、目标进度、可贷额度、
-持仓表、权益曲线、多货币报价台、活动流（可滚动、不跳回）。
+Shows: account equity, cumulative P&L, margin level, target progress, credit line,
+positions table, equity curve, multi-currency quotes, event feed (scrollable, no jump-back).
 
-额外提供：
-  | 结束相关进程 —— 通知 API 立即退出，随后关闭观众席
+Also provides:
+  | End processes — tells the API to exit immediately, then closes the spectator
 """
 
 import json
@@ -21,42 +21,43 @@ import urllib.request
 API = "http://127.0.0.1:8734"
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-# 单实例锁：占住一个本地端口，进程退出自动释放。
+# Single-instance lock: hold one local port; released automatically when the process exits.
 WATCH_LOCK_PORT = 8735
 _LOCK_SOCK = None
 
-# 窗口 / 任务栏图标（￥ 符号，多尺寸 ico）
+# Window / taskbar icon (yen symbol, multi-size ico)
 ICO_PATH = os.path.join(HERE, "app.ico")
 WARN_ICO = os.path.join(HERE, "warn.ico")
 
-DISCLAIMER_TEXT = """本程序是一个虚构的杠杆交易模拟游戏，仅供娱乐与学习使用。
+DISCLAIMER_TEXT = """This program is a fictional leveraged-trading simulation game, for entertainment and learning only.
 
-【虚构声明】
-· 游戏中的货币对、行情走势、随机事件、黑天鹅跳空，全部是程序生成的虚构数据
-· 与任何真实市场、真实资产无关，不代表任何真实价格或趋势
+[Fiction notice]
+· The currency pairs, price action, random events and Black Swan gaps in the game are all procedurally generated fictional data
+· They are unrelated to any real market or real asset and do not represent any real price or trend
 
-【不构成建议】
-· 本程序不构成任何投资建议、理财建议或交易策略建议
-· 请勿把游戏里的任何操作或盈亏结果，套用到真实交易中
+[Not advice]
+· This program does not constitute any investment, financial or trading-strategy advice
+· Do not apply any in-game action or P&L result to real trading
 
-【无真实资金】
-· 游戏内的 Tokens、借款、利息、爆仓全部是模拟数值
-· 不涉及任何真实资金往来，也不会产生真实盈亏
+[No real money]
+· Tokens, borrowing, interest and blown-out accounts in the game are all simulated values
+· No real funds are involved and no real P&L is produced
 
-【风险提示】
-· 高杠杆交易在现实中风险极高，可能导致本金全部损失
-· 本游戏只是把这种风险做了简化呈现，不能作为风险评估依据
+[Risk warning]
+· High-leverage trading is extremely risky in reality and may wipe out your entire principal
+· This game only presents that risk in a simplified form and cannot be used as a basis for risk assessment
 
-【使用须知】
-· 请勿将本程序用于任何形式的赌博、诈骗或非法金融活动
-· 程序按现状提供，作者不对使用过程中产生的任何后果负责
+[Usage notice]
+· Do not use this program for any form of gambling, fraud or illegal financial activity
+· The program is provided as is; the author is not liable for any consequence arising from its use
 
-点击下方「我已阅读并同意」，表示你已理解以上内容。"""
+Click "I have read and agree" below to confirm you understand the above.
+"""
 
 
-# 字号缩放：窗口越小，字号相对放大。
-# 人的观看距离不变，窗口缩小时若字号同比缩小会看不清；
-# 所以小窗反而把字抬一点，把省出来的空间让给字号。
+# Font scaling: the smaller the window, the larger the font.
+# Viewing distance stays the same, so shrinking the font with the window makes it unreadable;
+# so a small window actually bumps the font up and spends the saved space on type size.
 _UI_SCALE = {"v": 1.0}
 
 
@@ -84,10 +85,10 @@ RESOLUTIONS = [
 
 
 def _hide_close_button(win):
-    """去掉标题栏右上角的关闭按钮（仅 Windows 有效）。
+    """Removes the close button in the top-right corner of the title bar (Windows only).
 
-    `WM_DELETE_WINDOW` 只能做到「点了没反应」，按钮本身还画在那里；
-    这里直接清掉窗口样式里的 WS_SYSMENU，让它真正消失。
+    `WM_DELETE_WINDOW` only makes the click do nothing; the button itself is still drawn there;
+    here we clear WS_SYSMENU from the window style so it really disappears.
     """
     try:
         import ctypes
@@ -100,17 +101,17 @@ def _hide_close_button(win):
         target = parent if parent else hwnd
         style = u.GetWindowLongW(target, GWL_STYLE)
         u.SetWindowLongW(target, GWL_STYLE, style & ~WS_SYSMENU)
-        u.SetWindowPos(target, 0, 0, 0, 0, 0, 0x0037)  # 刷新窗口框架
+        u.SetWindowPos(target, 0, 0, 0, 0, 0, 0x0037)  # refresh the window frame
         win.update_idletasks()
     except Exception:
         pass
 
 
 def _apply_icon(win):
-    """给窗口设置 ￥ 图标；任务栏与标题栏都会跟随。
+    """Sets the ￥ icon on the window; the taskbar and title bar both follow it.
 
-    注意必须先用「无 default」的写法：`iconbitmap(default=...)` 只影响此后新建的
-    窗口，对已经存在的窗口不生效。
+    Note that the "no default" form must be used first: `iconbitmap(default=...)` only affects
+    windows created afterwards, and has no effect on windows that already exist.
     """
     try:
         win.iconbitmap(ICO_PATH)
@@ -122,7 +123,7 @@ def _apply_icon(win):
     except Exception:
         pass
 
-# Fluent 配色
+# Fluent color palette
 BG = "#F3F3F3"
 CARD = "#FFFFFF"
 BORDER = "#E1E1E1"
@@ -133,7 +134,7 @@ GREEN = "#107C10"
 RED = "#C42B1C"
 ORANGE = "#CA5010"
 YELLOW = "#B8860B"
-PURPLE = "#7B2FBE"   # 紫：欠款区（净值 < 0）
+PURPLE = "#7B2FBE"   # purple: debt zone (net value < 0)
 HEAD = "#F7F7F7"
 
 FONT = ("Microsoft YaHei UI", 10)
@@ -141,13 +142,24 @@ FONT_SMALL = ("Microsoft YaHei UI", 9)
 FONT_TINY = ("Microsoft YaHei UI", 8)
 FONT_BIG = ("Microsoft YaHei UI", 23, "bold")
 FONT_MID = ("Microsoft YaHei UI", 12, "bold")
-FONT_BAR = ("Microsoft YaHei UI", 11)   # 状态条：11pt
-# 难度档位 → 展示用数值（与 tm_engine.GAP_LEVELS / LIQ_LEVELS 保持一致）
-_GAP_PCT = {"极低": "0.24%", "低": "0.60%", "中": "1.50%", "高": "3.75%", "极高": "9.38%"}
-_LIQ_PCT = {"充裕": "3.5%", "正常": "7.0%", "纤薄": "14.0%", "枯竭": "28%", "黑洞": "56%"}
-FONT_LOG = ("Microsoft YaHei UI", 11)   # 活动流专用：比状态栏大一号，便于扫读
+FONT_BAR = ("Microsoft YaHei UI", 11)   # status bar: 11pt
+# Difficulty tier -> display value (must match tm_engine.GAP_LEVELS / LIQ_LEVELS)
+_GAP_PCT = {"very low": "0.24%", "low": "0.60%", "medium": "1.50%", "high": "3.75%", "very high": "9.38%"}
+_LIQ_PCT = {"abundant": "3.5%", "normal": "7.0%", "thin": "14.0%", "drained": "28%", "black hole": "56%"}
+FONT_LOG = ("Microsoft YaHei UI", 11)   # event feed: one size up for scanning
 FONT_MONO = ("Consolas", 9)
 FONT_MONO_BIG = ("Consolas", 11, "bold")
+
+# Event feed quick-filter tabs: (key, label).  "gap" and "liq" share the same
+# engine kind "gap", so they are split by the "[Liquidity drained]" text prefix.
+LOG_TABS = (
+    ("all", "All"),
+    ("gap", "Black Swan"),
+    ("liq", "Liquidity"),
+    ("news", "Random events"),
+    ("trade", "Open / Close"),
+    ("risk", "Risk"),
+)
 
 PAIR_ORDER = ["AURA/CORE", "FROST/CORE", "AMBER/CORE", "TIDE/CORE",
               "LUMEN/CORE", "NEON/CORE", "ASH/CORE"]
@@ -176,7 +188,7 @@ def card(parent, pad=0):
 
 
 def _fit_title(name, limit=44):
-    """标题栏宽度有限：超长时保留首尾、中间省略，避免把「Agent」这种尾巴切掉。"""
+    """Title bar width is limited: when too long, keep head and tail and elide the middle, so a tail like \"Agent\" is not cut off."""
     if len(name) <= limit:
         return name
     head = name[:limit // 2]
@@ -187,10 +199,10 @@ def _fit_title(name, limit=44):
 class Watch:
     def __init__(self, size=(1920, 1080)):
         self.root = tk.Tk()
-        self.root.title("Tokens 交易市场")
+        self.root.title("Tokens Trading Market")
         self.W, self.H = int(size[0]), int(size[1])
         self.S = self.W / 1920.0
-        # 字号放大后内容变高，窄屏要靠收紧竖向留白把版面塞回可视区
+        # Bigger fonts make the content taller; narrow screens must tighten vertical padding to fit the layout back into view
         self.V = 1.0 if self.H >= 1000 else (0.84 if self.H >= 860 else 0.72)
         sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
         px = max(0, (sw - self.W) // 2)
@@ -198,11 +210,11 @@ class Watch:
         self.root.geometry("%dx%d+%d+%d" % (self.W, self.H, px, py))
         self.root.resizable(False, False)
         self.root.configure(bg=BG)
-        # 字号：窗口越小越大（不随窗口同比缩小），保证小窗也能看清
+        # Font size: smaller window means bigger font (not scaled down with the window), so small windows stay readable
         _apply_ui_scale(self.root, self.W)
         _apply_icon(self.root)
-        # 主窗口不允许关闭：关掉就没有 GUI 了，进程还在后台空转。
-        # 只留最小化（工具栏那颗按钮），退出走「结束并结算」。
+        # The main window cannot be closed: there would be no GUI left while the process idles in the background.
+        # Only minimize is allowed (the toolbar button); exit goes through "End and settle".
         self.root.protocol("WM_DELETE_WINDOW", lambda: None)
         self.root.after(120, lambda: _hide_close_button(self.root))
 
@@ -212,13 +224,16 @@ class Watch:
         self._closing = False
         self._last_trader = None
         self._log_seen = set()
+        self._log_events = []
+        self._log_filter = "all"
+        self._log_tabs = {}
         self._log_anchor_init = False
         self._last_tick = -1
         self.st = None
         self._tp = None
-        # 窄屏放不下活动流：主窗口不建，改由工具栏按钮开独立窗口
-        # 只有 1920x1080 走完整版式；1366x768 / 1400x900 / 1600x900 都算窄屏
-        self.narrow = False   # AI 版固定完整版式：活动流内嵌，不做分辨率选择
+        # Narrow screens cannot fit the activity feed: skip it in the main window and open it from a toolbar button instead
+        # Only 1920x1080 gets the full layout; 1366x768 / 1400x900 / 1600x900 all count as narrow
+        self.narrow = False   # AI edition uses a fixed full layout; the feed is inline, no resolution picker
         self._loan_win = None
         self._loan_left = None
         self.log_text = None
@@ -226,94 +241,100 @@ class Watch:
 
         self._build()
         self.refresh()
-        # AI 版不弹规则窗（规则见 README / /rules 接口）
+        # The AI build shows no rules dialog (rules live in README / the /rules endpoint)
 
-    # ------------------------------------------------------------ 布局
+    # ------------------------------------------------------------ layout
     def _build(self):
         root = self.root
 
-        # ---------- 工具栏 ----------
+        # ---------- toolbar ----------
         topbar = tk.Frame(root, bg=CARD, highlightbackground=BORDER, highlightthickness=1)
         topbar.pack(fill="x", padx=14, pady=(12, 6))
 
-        tk.Label(topbar, text="  Tokens 交易市场", font=(FONT[0], 12, "bold"),
+        tk.Label(topbar, text="  Tokens Trading Market", font=(FONT[0], 12, "bold"),
                  bg=CARD, fg=TEXT).pack(side="left", padx=(6, 4), pady=8)
         self.lbl_trader = tk.Label(topbar, text="", font=(FONT[0], 12, "bold"),
                                    bg=CARD, fg=BLUE)
         self.lbl_trader.pack(side="left", padx=(10, 0))
         self.lbl_mode = tk.Label(topbar, text="", font=FONT_SMALL, bg=CARD, fg=MUTED)
         self.lbl_mode.pack(side="left", padx=(8, 0))
-        tk.Label(topbar, text="只读观战终端", font=FONT_SMALL, bg=CARD, fg=MUTED).pack(
+        tk.Label(topbar, text="Read-only spectator terminal", font=FONT_SMALL, bg=CARD, fg=MUTED).pack(
             side="left", pady=8)
 
-        # 两个全局开关型事件的状态：开启=紫色粗体；未开启=黑色粗体+删除线
+        # State of the two global switch events: on = purple bold; off = black bold + strikethrough
         self._f_on = tkfont.Font(root=root, family=FONT[0], size=10, weight="bold")
         self._f_off = tkfont.Font(root=root, family=FONT[0], size=10, weight="bold",
                                   overstrike=1)
-        self.lbl_fr = tk.Label(topbar, text="金融回逆", font=self._f_off,
+        self.lbl_fr = tk.Label(topbar, text="Finance Reversal", font=self._f_off,
                                bg=CARD, fg=TEXT)
         self.lbl_fr.pack(side="left", padx=(16, 0), pady=8)
-        self.lbl_slot = tk.Label(topbar, text="老虎机", font=self._f_off,
+        self.lbl_slot = tk.Label(topbar, text="Slot Machine", font=self._f_off,
                                  bg=CARD, fg=TEXT)
         self.lbl_slot.pack(side="left", padx=(10, 0), pady=8)
         self._last_special = None
 
         btn_style = dict(font=FONT_SMALL, bd=0, relief="flat", cursor="hand2",
                          padx=12, pady=4)
-        tk.Button(topbar, text="AI 行为", command=self._show_scratch,
+        tk.Button(topbar, text="AI Notes", command=self._show_scratch,
                   bg="#F3EEFF", fg="#6B4E9B", activebackground="#E9E0FF",
                   activeforeground="#6B4E9B", font=FONT_SMALL, bd=0,
                   padx=14, pady=5, cursor="hand2").pack(side="right", padx=(0, 8), pady=6)
-        tk.Button(topbar, text="最小化", command=self.root.iconify,
+        tk.Button(topbar, text="Minimize", command=self.root.iconify,
                   bg="#F1F1F1", fg=TEXT, activebackground="#E5E5E5",
                   **btn_style).pack(side="right", padx=(0, 8), pady=6)
-        tk.Button(topbar, text="结束相关进程", command=self._kill_all,
+        tk.Button(topbar, text="End processes", command=self._kill_all,
                   bg="#FDEDED", fg=RED, activebackground="#F8D7D7",
                   activeforeground=RED, **btn_style).pack(side="right", padx=(0, 10), pady=6)
 
-        # ---------- 指标卡 ----------
+        # ---------- metric cards ----------
         metrics = tk.Frame(root, bg=BG)
         metrics.pack(fill="x", padx=14, pady=(0, 6))
-        self.lbl_equity = self._metric(metrics, 0, "账户权益（Tokens）", BLUE)
-        self.lbl_pnl = self._metric(metrics, 1, "累计盈亏", TEXT)
-        self.lbl_margin = self._metric(metrics, 2, "保证金水平", TEXT)
-        self.lbl_target = self._metric(metrics, 3, "目标进度", BLUE)
+        self.lbl_equity = self._metric(metrics, 0, "Account equity (Tokens)", BLUE)
+        self.lbl_pnl = self._metric(metrics, 1, "Cumulative P&L", TEXT)
+        self.lbl_margin = self._metric(metrics, 2, "Margin level", TEXT)
+        self.lbl_target = self._metric(metrics, 3, "Target progress", BLUE)
         for i in range(4):
             metrics.columnconfigure(i, weight=1, uniform="m")
 
-        # ---------- 状态条 ----------
+        # ---------- status bar, row 1: account / capital ----------
         bar = card(root)
-        bar.pack(fill="x", padx=14, pady=(0, 6))
-        self.lbl_loan = tk.Label(bar, text="可贷 Tokens：—", font=FONT, bg=CARD, fg=BLUE)
+        bar.pack(fill="x", padx=14, pady=(0, 4))
+        self.lbl_loan = tk.Label(bar, text="Credit Tokens: —", font=FONT, bg=CARD, fg=BLUE)
         self.lbl_loan.pack(side="left", padx=16, pady=7)
         self.lbl_extra = tk.Label(bar, text="", font=FONT_BAR, bg=CARD, fg=MUTED)
         self.lbl_extra.pack(side="left", padx=(0, 16))
-        self.lbl_target_abs = tk.Label(bar, text="目标 —", font=FONT_BAR, bg=CARD, fg=MUTED)
-        self.lbl_target_abs.pack(side="left", padx=(0, 16))
-        self.lbl_stats = tk.Label(bar, text="回撤 — | 夏普 —", font=FONT_BAR, bg=CARD, fg=MUTED)
-        self.lbl_stats.pack(side="left", padx=(0, 16))
-        self.lbl_ff = tk.Label(bar, text="快进 —", font=FONT_BAR, bg=CARD, fg=MUTED)
-        self.lbl_ff.pack(side="left", padx=(0, 16))
-        self.lbl_status = tk.Label(bar, text="等待连接…", font=FONT, bg=CARD, fg=MUTED)
+        self.lbl_status = tk.Label(bar, text="Waiting for connection...", font=FONT, bg=CARD, fg=MUTED)
         self.lbl_status.pack(side="right", padx=16, pady=7)
 
-        # ---------- 时间进度条 ----------
+        # ---------- status bar, row 2: the figures that change every tick ----------
+        # Long English sentences made the single band unreadable, so the fast-moving
+        # numbers (drawdown / Sharpe / win rate / fees) get their own line.
+        bar2 = card(root)
+        bar2.pack(fill="x", padx=14, pady=(0, 6))
+        self.lbl_target_abs = tk.Label(bar2, text="Target —", font=FONT_BAR, bg=CARD, fg=MUTED)
+        self.lbl_target_abs.pack(side="left", padx=16, pady=5)
+        self.lbl_stats = tk.Label(bar2, text="Drawdown — | Sharpe —", font=FONT_BAR, bg=CARD, fg=MUTED)
+        self.lbl_stats.pack(side="left", padx=(0, 16))
+        self.lbl_ff = tk.Label(bar2, text="Fast-forward —", font=FONT_BAR, bg=CARD, fg=MUTED)
+        self.lbl_ff.pack(side="right", padx=16, pady=5)
+
+        # ---------- time progress bar ----------
         tbar = tk.Frame(root, bg=CARD)
         tbar.pack(fill="x", padx=14, pady=(0, 6))
         self.cv_time = tk.Canvas(tbar, height=6, bg="#EDF0F4", highlightthickness=0, bd=0)
         self.cv_time.pack(fill="x", side="left", expand=True, pady=4)
-        self.lbl_time = tk.Label(tbar, text="剩余 —", font=FONT_TINY, bg=CARD, fg=MUTED)
+        self.lbl_time = tk.Label(tbar, text="Remaining —", font=FONT_TINY, bg=CARD, fg=MUTED)
         self.lbl_time.pack(side="left", padx=(10, 12))
         self.cv_time.bind("<Configure>", lambda e: self._draw_time_bar())
         self._cv_bar = None
 
-        # ---------- 中部：持仓 + 曲线 ----------
+        # ---------- middle: positions + curve ----------
         mid = tk.Frame(root, bg=BG)
         mid.pack(fill="both", expand=True, padx=14, pady=(0, 6))
 
         left = card(mid)
         left.pack(side="left", fill="both", expand=True)
-        self._section_title(left, "持仓明细")
+        self._section_title(left, "Positions")
 
         style = ttk.Style()
         try:
@@ -330,28 +351,28 @@ class Watch:
             left, columns=("pair", "side", "lots", "leverage", "entry", "price", "margin", "upnl"),
             show="headings", height=7, style="Tm.Treeview", selectmode="none")
         for col, title, width in (
-                ("pair", "交易对", 296), ("side", "方向", 48), ("lots", "手数", 64),
-                ("leverage", "杠杆", 48), ("entry", "开仓价", 86), ("price", "最新价", 86),
-                ("margin", "保证金", 80), ("upnl", "浮动盈亏", 90)):
+                ("pair", "Pair", 196), ("side", "Side", 50), ("lots", "Lots", 62),
+                ("leverage", "Leverage", 62), ("entry", "Entry", 88), ("price", "Last", 88),
+                ("margin", "Margin", 82), ("upnl", "Unrealised P&L", 96)):
             self.tree.heading(col, text=title)
             self.tree.column(col, width=width, anchor="center")
         self.tree.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
         right = card(mid)
         right.pack(side="left", fill="both", expand=True, padx=(8, 0))
-        self._section_title(right, "权益曲线（Tokens）")
+        self._section_title(right, "Equity curve (Tokens)")
         self.equity_canvas = tk.Canvas(right, bg=CARD, height=330, bd=0,
                                        highlightthickness=0)
         self.equity_canvas.pack(fill="both", expand=True, padx=14, pady=(0, 12))
 
-        # ---------- 底部：报价台 + 活动流 ----------
+        # ---------- bottom: quote board + activity feed ----------
         bottom = card(root)
         bottom.pack(fill="both", expand=True, padx=14, pady=(0, max(4, int(12 * self.V))))
-        self._section_title(bottom, "报价台")
+        self._section_title(bottom, "Quotes")
 
         price_grid = tk.Frame(bottom, bg=CARD)
         price_grid.pack(fill="x", padx=12, pady=(0, 8))
-        # 4 列均分父宽：窄屏 + 放大字号时，列宽不会被内容挤成 0
+        # Four columns split the parent width evenly: on narrow screens with big fonts no column gets squeezed to 0
         for _c in range(4):
             price_grid.grid_columnconfigure(_c, weight=1, uniform="px")
         self.price_labels = {}
@@ -369,11 +390,25 @@ class Watch:
             self.price_labels[sym] = (name, val)
 
         if self.narrow:
-            # 窄屏放不下：活动流改为工具栏「活动流」按钮打开的独立窗口，
-            # 由玩家自己点开，不自动弹。
+            # Narrow screens cannot fit it: the activity feed moves to a separate window opened from the "Activity feed" toolbar button,
+            # opened by the player, never popped up automatically.
             return
 
-        self._section_title(bottom, "活动流（可滚动）")
+        # ---------- event feed header with category tabs ----------
+        feed_head = tk.Frame(bottom, bg=CARD)
+        feed_head.pack(fill="x")
+        tk.Label(feed_head, text="Event feed", font=FONT, bg=CARD, fg=TEXT, anchor="w",
+                 padx=14, pady=max(3, int(7 * self.V))).pack(side="left")
+        tab_box = tk.Frame(feed_head, bg=CARD)
+        tab_box.pack(side="right", padx=(0, 12), pady=max(2, int(3 * self.V)))
+        for _key, _label in LOG_TABS:
+            _btn = tk.Button(tab_box, text=_label, font=FONT_TINY, bd=0, relief="flat",
+                             cursor="hand2", padx=9, pady=2,
+                             command=lambda k=_key: self._set_log_filter(k))
+            _btn.pack(side="left", padx=(0, 4))
+            self._log_tabs[_key] = _btn
+        self._paint_log_tabs()
+
         log_wrap = tk.Frame(bottom, bg=CARD)
         log_wrap.pack(fill="both", expand=True, padx=0, pady=(0, 10))
         self.log_text = tk.Text(log_wrap, bg=CARD, fg=MUTED, font=FONT_LOG, bd=0,
@@ -399,18 +434,18 @@ class Watch:
         tk.Label(parent, text=text, font=FONT, bg=CARD, fg=TEXT, anchor="w",
                  padx=14, pady=max(3, int(7 * self.V))).pack(fill="x")
 
-    # ------------------------------------------------------------ 刷新
+    # ------------------------------------------------------------ refresh
     def refresh(self):
         try:
             st = get("/state")
             self._render(st)
         except Exception:
-            self.lbl_status.config(text="等待服务启动（python startgame.pyc api 127.0.0.1 8734）",
+            self.lbl_status.config(text="Waiting for the service to start (python startgame.pyc api 127.0.0.1 8734)",
                                    fg=ORANGE)
         self.root.after(300, self.refresh)
 
     def _draw_time_bar(self):
-        """按当前宽度重画时间进度条（窗口缩放时由 <Configure> 触发）。"""
+        """Redraws the time progress bar at the current width (triggered by <Configure> on window resize)."""
         st = self.st or {}
         try:
             _el = float(st.get("elapsed_seconds") or 0)
@@ -424,30 +459,30 @@ class Watch:
                     0, 0, max(1, int(_w * _frac)), 6,
                     fill="#2D7FF9" if _frac < 0.8 else "#E8743B", outline="")
             self.lbl_time.config(
-                text="剩余 %02d:%02d" % (int(_rem) // 60, int(_rem) % 60),
+                text="Remaining %02d:%02d" % (int(_rem) // 60, int(_rem) % 60),
                 fg=MUTED if _frac < 0.8 else "#E8743B")
         except Exception:
             pass
 
     def _show_scratch(self):
-        """查看 AI 在草稿纸里写下的内容（只读）。"""
+        """View what the AI wrote in the scratchpad (read-only)."""
         try:
             r = get("/scratchpad")
         except Exception as exc:
-            messagebox.showwarning("AI 行为", "读取失败：%s" % exc)
+            messagebox.showwarning("AI Notes", "Read failed: %s" % exc)
             return
         items = (r or {}).get("items") or []
         win = tk.Toplevel(self.root)
-        win.title("AI 行为 · Tokens 交易市场")
+        win.title("AI Notes · Tokens Trading Market")
         win.configure(bg=BG)
         w, h = 760, 620
         sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
         win.geometry("%dx%d+%d+%d" % (w, h, max(0, (sw - w) // 2), max(0, (sh - h) // 3)))
         _apply_icon(win)
         win.protocol("WM_DELETE_WINDOW", win.destroy)
-        tk.Label(win, text="草稿纸（%d 条）" % len(items), bg=BG, fg=TEXT,
+        tk.Label(win, text="Scratchpad (%d entries)" % len(items), bg=BG, fg=TEXT,
                  font=FONT_BIG).pack(anchor="w", padx=18, pady=(14, 4))
-        tk.Label(win, text="AI 可随时写入自己的判断与对策；本窗口只读。",
+        tk.Label(win, text="The AI may write its own judgement and counter-measures at any time; this window is read-only.",
                  bg=BG, fg=MUTED, font=FONT_SMALL).pack(anchor="w", padx=18, pady=(0, 8))
         wrap = tk.Frame(win, bg=BG)
         wrap.pack(fill="both", expand=True, padx=18, pady=(0, 14))
@@ -459,20 +494,20 @@ class Watch:
         sb.pack(side="right", fill="y")
         if items:
             for x in items:
-                txt.insert("end", "[t%s · %s 秒]" % (x.get("tick", "—"),
+                txt.insert("end", "[t%s · %s s]" % (x.get("tick", "—"),
                                                     ("%.0f" % float(x.get("elapsed") or 0))))
                 txt.insert("end", chr(10) + str(x.get("text", "")) + chr(10) + chr(10))
         else:
-            txt.insert("end", "本局 AI 还没有在草稿纸里留下内容。")
+            txt.insert("end", "The AI has not left anything in the scratchpad this session.")
         txt.config(state="disabled")
         txt.yview_moveto(0.0)
         win.after(80, lambda: txt.yview_moveto(0.0))
 
     def _render(self, st):
         self.st = st
-        trader = st.get("trader") or "访客"
-        mode = "已开启随机事件" if st.get("events_on", True) else "理想情况"
-        # 抽到的难度也进标题，和人类版保持一致
+        trader = st.get("trader") or "Guest"
+        mode = "Random events on" if st.get("events_on", True) else "Ideal case"
+        # Put the drawn difficulty in the title too, matching the human build
         gap_lv = st.get("gap_level") or ""
         liq_lv = st.get("liq_level") or ""
         diff = ("%s × %s" % (gap_lv, liq_lv)) if (gap_lv and liq_lv) else ""
@@ -482,23 +517,23 @@ class Watch:
             self.lbl_trader.config(text="| %s" % trader)
             self.lbl_mode.config(text="（%s）" % mode,
                                  fg=BLUE if st.get("events_on", True) else MUTED)
-            title = "Tokens 交易市场 | %s（%s）" % (_fit_title(trader), mode)
+            title = "Tokens Trading Market | %s (%s)" % (_fit_title(trader), mode)
             if gap_lv and liq_lv:
-                title += " | 黑天鹅频率：%s（%s/tick） | 流动性枯竭程度：%s（%s 往返）" % (
+                title += " | Black Swan: %s (%s/tick) | Liquidity: %s (%s round trip)" % (
                     gap_lv, _GAP_PCT.get(gap_lv, "?"),
                     liq_lv, _LIQ_PCT.get(liq_lv, "?"))
             elif rolling:
-                title += " | 难度抽选中…"
+                title += " | Choosing difficulty..."
             self._base_title = title
             self.root.title(title)
-        # 【金融回逆】是不改目标就会长期吃钱的特殊事件，倒计时单独放标题栏（不占状态栏）
+        # [Finance Reversal] keeps draining money until the target is changed, so its countdown goes in the title bar (not the status bar)
         _lbr = st.get("loan_bump_remain")
         _bt = getattr(self, "_base_title", "")
         if _lbr:
-            self.root.title(_bt + " | 金融回逆 剩余 %d 秒" % int(_lbr + 0.999))
+            self.root.title(_bt + " | Finance Reversal %d s left" % int(_lbr + 0.999))
         elif _bt:
             self.root.title(_bt)
-        # 全局开关状态（只在变化时重设字体，避免每次刷新都动控件）
+        # Global switch state (reset fonts only on change; avoid touching widgets on every refresh)
         sp = st.get("special") or {}
         _sig = (bool(sp.get("fr")), bool(sp.get("slot")))
         if self._last_special != _sig:
@@ -526,14 +561,14 @@ class Watch:
         self.lbl_target.config(text="%.1f%%" % st["target_pct"], fg=BLUE)
         bonus = st.get("target_bonus", 0) or 0
         self.lbl_target_abs.config(
-            text="目标 {:,.0f}{}".format(st.get("target", 0),
-                                        ("（贷款上浮 +{:,.0f}）".format(bonus) if bonus else "")))
+            text="Target {:,.0f}{}".format(st.get("target", 0),
+                                        ("(loan markup +{:,.0f})".format(bonus) if bonus else "")))
 
         loan = st["loan"]
-        # 现金与净值是两个数：借款会把现金补正、但净值不变（同时加了欠款），
-        # 只显示「权益」会让人以为借款没生效
+        # Cash and net value are two different numbers: a loan repairs cash but leaves net value unchanged (it adds debt too),
+        # showing only "equity" makes loans look like they did nothing
         self.lbl_loan.config(
-            text="可贷 {:,.0f}{} | 现金 {:+,.0f}".format(
+            text="Credit {:,.0f}{} | Cash {:+,.0f}".format(
                 loan["limit"],
                 ("（%s）" % st["loan_pool_event"]) if st.get("loan_pool_event") else "",
                 st["balance"]),
@@ -544,94 +579,94 @@ class Watch:
             _cn = int(st.get("closed_n") or 0)
             _wn = int(st.get("win_n") or 0)
             _fee = float(st.get("fees") or 0) + float(st.get("swap") or 0)
-            _stat = "回撤 %s | 夏普 %s | %d 笔 · 胜率 %s | 费息 %.0f" % (
+            _stat = "Drawdown %s | Sharpe %s | %d trades · Win rate %s | Fees & interest %.0f" % (
                 "—" if mdd is None else "%.2f%%" % mdd,
                 "—" if shp is None else "%.2f" % shp,
                 _cn,
                 ("%.0f%%" % (_wn * 100.0 / _cn)) if _cn else "—",
                 _fee)
         except Exception:
-            _stat = "回撤 {} | 夏普 {}".format("—" if mdd is None else "%.2f%%" % mdd,
+            _stat = "Drawdown {} | Sharpe {}".format("—" if mdd is None else "%.2f%%" % mdd,
                                                 "—" if shp is None else "%.2f" % shp)
         self.lbl_stats.config(text=_stat)
-        # 时间进度条（宽度自适应，缩放时由 <Configure> 重画）
+        # Time progress bar (width-adaptive; redrawn on <Configure> when resized)
         self._draw_time_bar()
-        # 快进额度（只读）：剩余 + 已用记录 + 冷却
+        # Fast-forward quota (read-only): remaining + usage log + cooldown
         try:
             _f = st.get("ff") or {}
             _rm = float(_f.get("remain") or 0)
             _cd = float(_f.get("cool_left") or 0)
             _rc = _f.get("records") or []
-            _txt = ("快进剩 %d 分钟" % int(_rm // 60)) if _rm >= 60 else ("快进剩 %d 秒" % int(_rm))
+            _txt = ("Fast-forward %d min left" % int(_rm // 60)) if _rm >= 60 else ("Fast-forward %d s left" % int(_rm))
             if _rc:
-                _txt += " | 已用 %d 分钟" % int(sum(_rc) // 60)
+                _txt += " | %d min elapsed" % int(sum(_rc) // 60)
             if _cd > 0:
-                _txt += " | 冷却 %d 秒" % int(_cd + 0.999)
+                _txt += " | Cooldown %d s" % int(_cd + 0.999)
             self.lbl_ff.config(text=_txt, fg=RED if _cd > 0 else MUTED)
         except Exception as exc:
             sys.stderr.write("ff label: %r\n" % (exc,))
         borrowed = st.get("total_borrowed") or 0
-        # 「已借」只显示本金（固定），欠款含利息单独一行，避免这个数字一直在涨
-        self.lbl_extra.config(text="已借 {:,.0f} | 欠款 {:,.0f} | 利息 {:,.0f} | {:.3f}%/tick".format(
+        # "Borrowed" shows principal only (fixed); interest-bearing debt gets its own line so the number stops creeping up
+        self.lbl_extra.config(text="Borrowed {:,.0f} | Owed {:,.0f} | Interest {:,.0f} | {:.3f}%/tick".format(
             borrowed, loan["balance"], loan["interest"], loan["rate_pct"]),
             fg=RED if borrowed > 0 else BLUE)
 
-        state_txt = "正常交易中"
+        state_txt = "Trading normally"
         if st.get("negative_remain") is not None:
-            # 资金为负：要么马上借钱，要么这局就结束了，优先级最高
-            state_txt = "资金为负·还剩 %d 秒借款，否则结束" % st["negative_remain"]
+            # Negative balance: borrow now or the round is over; highest priority
+            state_txt = "Negative equity · %d s left to borrow, otherwise the session ends" % st["negative_remain"]
         elif st.get("tampered"):
-            state_txt = "存档被篡改·已重置"
+            state_txt = "Save tampered · reset"
         elif st.get("clock_cheat"):
-            state_txt = "时钟被回拨·计时已冻结"
+            state_txt = "Clock rolled back · timing frozen"
         elif st.get("margin_call_remain") is not None:
-            # 追缴是实时紧急状态，优先级高于「未命名启动」这类提示
-            state_txt = "追加保证金·还剩 %d tick" % st["margin_call_remain"]
+            # A margin call is a live emergency; it outranks notices like "unnamed start"
+            state_txt = "Margin call · %d ticks left" % st["margin_call_remain"]
         elif st.get("unnamed"):
-            state_txt = "未命名启动·请用启动游戏.bat"
+            state_txt = "Unnamed launch · please use Start Game.bat"
         elif ml is not None and ml < 50:
-            state_txt = "保证金水平告急"
+            state_txt = "Margin level critical"
         elif st["blowups"] > 0 and ml is None:
-            state_txt = "已爆仓 %d 次" % st["blowups"]
+            state_txt = "Blown out %d times" % st["blowups"]
 
         if st["finished"]:
-            state_txt = "本局已结束"
+            state_txt = "Session ended"
             if not self._closing:
                 self._closing = True
                 self.root.after(3000, self.root.destroy)
         el = int(st.get("elapsed_seconds", 0))
         mm, ss = divmod(el, 60)
         self.lbl_status.config(
-            text=("%s | %02d:%02d | 订单 %d" % (state_txt, mm, ss, st["order_count"])
+            text=("%s | %02d:%02d | Order %d" % (state_txt, mm, ss, st["order_count"])
                   + (("  |  " + " ".join(st["active_mods"])) if st.get("active_mods") else "")),
-            fg=RED if any(k in state_txt for k in ("告急", "篡改", "回拨", "未命名", "追加保证金", "资金为负")) else MUTED)
+            fg=RED if any(k in state_txt for k in ("Critical", "Tampered", "Rollback", "Unnamed", "Margin call", "Negative equity")) else MUTED)
 
-        # 持仓表
+        # Positions table
         for row in self.tree.get_children():
             self.tree.delete(row)
         if not st["positions"]:
-            # 空仓时把最近 2 分钟内成交过的记录贴在此处，避免「刚操作完就什么都看不到」
+            # When flat, keep trades from the last 2 minutes here so the table is not empty right after an action
             now = time.time()
             recent = [e for e in st.get("events", [])
                       if e["kind"] in ("open", "close")
                       and now - float(e.get("time", 0)) < 120][-3:]
             if recent:
                 self.tree.insert("", "end", values=(
-                    "（空仓）最近 %d 笔成交：" % len(recent), "", "", "", "", "", "", ""))
+                    "(Flat) · last %d" % len(recent), "", "", "", "", "", "", ""))
                 for e in reversed(recent):
                     self.tree.insert("", "end", values=(
-                        "  [t%d] %s" % (e["tick"], e["text"][:40]), "", "", "", "", "", "", ""))
+                        "  [t%d] %s" % (e["tick"], e["text"][:26]), "", "", "", "", "", "", ""))
             else:
-                self.tree.insert("", "end", values=("（空仓）", "", "", "", "", "", "", ""))
+                self.tree.insert("", "end", values=("(Flat)", "", "", "", "", "", "", ""))
         else:
             for p in st["positions"]:
                 self.tree.insert("", "end", values=(
-                    p["pair"], "多" if p["side"] == "LONG" else "空",
+                    p["pair"], "Long" if p["side"] == "LONG" else "Short",
                     "%.0f" % p["lots"], "%dx" % p["leverage"],
                     "%.4f" % p["entry"], "%.4f" % p["price"],
                     "%.0f" % p["margin"], "%+.0f" % p["upnl"]))
 
-        # 报价台
+        # Quote board
         hist = st.get("price_history", {})
         for sym, q in st["prices"].items():
             pair = self.price_labels.get(sym)
@@ -646,27 +681,23 @@ class Watch:
             name_lbl.config(text="%s  %s" % (sym, q["name"]), fg=TEXT)
             val_lbl.config(text="%.4f  %s %+.2f%%" % (q["price"], arrow, chg), fg=color)
 
-        # 曲线
+        # Curve
         self.curve = st["equity_curve"]
         self._draw_equity()
 
-        # 活动流（只在有新事件时追加，保持滚动位置）
+        # Activity feed (append only on new events; preserve scroll position)
         self._append_log(st.get("events", []))
 
-        # 资金为负：弹一次贷款自救窗口
+        # Negative balance: pop the loan self-rescue window once
 
     def _append_log(self, events):
         if self.log_text is None:
             return
         if not events:
-            if self._log_seen:
-                self._log_seen.clear()
-                self.log_text.config(state="normal")
-                self.log_text.delete("1.0", "end")
-                self.log_text.config(state="disabled")
+            if self._log_events:
+                self._log_events = []
+                self._render_log()
             return
-        at_bottom = self.log_text.yview()[1] >= 0.999
-        top = self.log_text.yview()[0]
         fresh = []
         for e in events:
             key = (e.get("tick"), e.get("text"))
@@ -674,37 +705,92 @@ class Watch:
                 continue
             self._log_seen.add(key)
             fresh.append(e)
-        if not fresh:
-            return
         if len(self._log_seen) > 400:
             self._log_seen.clear()
             for e in events:
                 self._log_seen.add((e.get("tick"), e.get("text")))
+        if not fresh:
+            return
+        self._log_events.extend(fresh)
+        if len(self._log_events) > 300:
+            self._log_events = self._log_events[-300:]
+        self._write_log(fresh)
+
+    def _log_cat(self, e):
+        """Bucket one event into a quick-filter tab."""
+        k = e.get("kind", "info")
+        t = e.get("text", "")
+        if k == "gap":
+            return "liq" if "[Liquidity drained]" in t else "gap"
+        if k == "news":
+            return "news"
+        if k in ("open", "close"):
+            return "trade"
+        if k in ("stopout", "blowup", "margin_call", "warn"):
+            return "risk"
+        return "other"
+
+    def _set_log_filter(self, key):
+        if key == self._log_filter:
+            return
+        self._log_filter = key
+        self._paint_log_tabs()
+        self._render_log()
+
+    def _paint_log_tabs(self):
+        for key, btn in self._log_tabs.items():
+            on = (key == self._log_filter)
+            btn.config(bg=BLUE if on else "#F1F1F1",
+                       fg="#FFFFFF" if on else MUTED,
+                       activebackground=BLUE if on else "#E5E5E5",
+                       activeforeground="#FFFFFF" if on else MUTED)
+
+    def _render_log(self):
+        if self.log_text is None:
+            return
+        rows = self._log_events if self._log_filter == "all" else [
+            e for e in self._log_events if self._log_cat(e) == self._log_filter]
         self.log_text.config(state="normal")
-        # 按事件种类上色：危险→红/橙，机会→蓝，成交→绿，资金→紫，氛围→灰
-        kind_color = {
-            "blowup": "#8B0000",      # 爆仓：深红
-            "stopout": RED,           # 强平：红
-            "gap": "#E07000",         # 黑天鹅跳空：橙红
-            "news": PURPLE,           # 突发新闻：紫
-            "warn": ORANGE,           # 警告（资金告负、异常退出）：橙
-            "margin_call": YELLOW,    # 追加保证金：暗金
-            "open": BLUE,             # 开仓成交：蓝
-            "close": GREEN,           # 平仓成交：绿
-            "loan": "#7B2FBE",        # 借贷：紫
-            "end": "#444444",         # 本局结束：深灰
-            "trader": "#44546A",      # 身份识别：蓝灰
-            "info": MUTED,            # 氛围：灰
-        }
-        for e in fresh:
-            k = e.get("kind", "info")
-            self.log_text.insert("end", "[t%d] %s\n" % (e["tick"], e["text"]), k)
-            self.log_text.tag_config(k, foreground=kind_color.get(k, MUTED))
+        self.log_text.delete("1.0", "end")
+        self._write_rows(rows)
+        self.log_text.see("end")
+        self.log_text.config(state="disabled")
+
+    def _write_log(self, fresh):
+        rows = fresh if self._log_filter == "all" else [
+            e for e in fresh if self._log_cat(e) == self._log_filter]
+        if not rows:
+            return
+        at_bottom = self.log_text.yview()[1] >= 0.999
+        top = self.log_text.yview()[0]
+        self.log_text.config(state="normal")
+        self._write_rows(rows)
         if at_bottom:
             self.log_text.see("end")
         else:
             self.log_text.yview_moveto(top)
         self.log_text.config(state="disabled")
+
+    def _write_rows(self, rows):
+        # Color by event kind: danger -> red/orange, opportunity -> blue, fill -> green, cash -> purple, ambiance -> gray
+        kind_color = {
+            "blowup": "#8B0000",      # blown out: dark red
+            "stopout": RED,           # forced liquidation: red
+            "gap": "#E07000",         # Black Swan gap: orange-red
+            "news": PURPLE,           # breaking news: purple
+            "warn": ORANGE,           # warning (negative cash, abnormal exit): orange
+            "margin_call": YELLOW,    # margin call: dark gold
+            "open": BLUE,             # position opened: blue
+            "close": GREEN,           # position closed: green
+            "loan": "#7B2FBE",        # loan: purple
+            "end": "#444444",         # match ended: dark grey
+            "trader": "#44546A",      # identity: blue-grey
+            "info": MUTED,            # ambient: grey
+        }
+        for e in rows:
+            k = e.get("kind", "info")
+            self.log_text.insert("end", "[t%d] %s\n" % (e["tick"], e["text"]), k)
+            self.log_text.tag_config(k, foreground=kind_color.get(k, MUTED))
 
     def _draw_equity(self):
         c = self.equity_canvas
@@ -712,7 +798,7 @@ class Watch:
         w = max(c.winfo_width(), 100)
         h = max(c.winfo_height(), 100)
         if len(self.curve) < 2:
-            c.create_text(w / 2, h / 2, text="暂无数据", fill=MUTED, font=FONT)
+            c.create_text(w / 2, h / 2, text="No data", fill=MUTED, font=FONT)
             return
 
         eqs = [p["equity"] for p in self.curve]
@@ -730,7 +816,7 @@ class Watch:
             y = h - pad_b - (h - pad_t - pad_b) * ((v - lo) / (hi - lo))
             return (x, y)
 
-        # 水平网格 + 刻度
+        # Horizontal grid + ticks
         for i in range(5):
             v = lo + (hi - lo) * i / 4
             _, gy = xy(0, v)
@@ -738,38 +824,38 @@ class Watch:
             c.create_text(pad_l - 8, gy, text="{:,.0f}".format(v), anchor="e",
                           fill=MUTED, font=FONT_TINY)
 
-        # 初始资金虚线
+        # Starting-capital dashed line
         if lo <= 1_000_000 <= hi:
             _, by = xy(0, 1_000_000)
             c.create_line(pad_l, by, w - pad_r, by, fill="#B9B9B9", dash=(4, 4))
-            c.create_text(w - pad_r, by - 9, text="初始 1,000,000", fill="#9A9A9A",
+            c.create_text(w - pad_r, by - 9, text="Initial 1,000,000", fill="#9A9A9A",
                           anchor="e", font=FONT_TINY)
 
         pts = [xy(i, v) for i, v in enumerate(eqs)]
         color = GREEN if eqs[-1] >= eqs[0] else RED
 
-        # 面积填充（stipple 模拟半透明）
+        # Area fill (stipple fakes transparency)
         poly = [pts[0][0], h - pad_b] + [v for p in pts for v in p] + [pts[-1][0], h - pad_b]
         c.create_polygon(*poly, fill=color, stipple="gray12", outline="")
 
-        # 主折线：0 以上沿用绿/红，跌到 0 以下整段转紫（欠款）
+        # Main polyline: green/red above 0, turns purple over the whole stretch once it drops below 0 (debt)
         for i in range(n - 1):
             seg = PURPLE if min(eqs[i], eqs[i + 1]) < 0 else color
             c.create_line(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1],
                           fill=seg, width=2)
 
-        # 0 轴（净值穿过 0 时画一条紫线，让"欠款区"有明确边界）
+        # Zero axis (draw a purple line where net value crosses 0 so the "debt zone" has a clear boundary)
         if lo < 0 < hi:
             _, zy = xy(0, 0)
             c.create_line(pad_l, zy, w - pad_r, zy, fill=PURPLE, dash=(3, 3))
             c.create_text(pad_l - 8, zy, text="0", anchor="e", fill=PURPLE, font=FONT_TINY)
 
-        # 峰值 / 谷值
+        # Peak / trough
         imax = max(range(n), key=lambda i: eqs[i])
         imin = min(range(n), key=lambda i: eqs[i])
         if imax != imin:
-            for i, txt, col, anchor in ((imax, "峰 {:,.0f}".format(eqs[imax]), GREEN, "s"),
-                                        (imin, "谷 {:,.0f}".format(eqs[imin]), RED, "n")):
+            for i, txt, col, anchor in ((imax, "Peak {:,.0f}".format(eqs[imax]), GREEN, "s"),
+                                        (imin, "Trough {:,.0f}".format(eqs[imin]), RED, "n")):
                 px, py = xy(i, eqs[i])
                 if eqs[i] < 0:
                     col = PURPLE
@@ -777,11 +863,11 @@ class Watch:
                 c.create_text(px, py - 12 if anchor == "s" else py + 12, text=txt,
                               fill=col, anchor=anchor, font=FONT_TINY)
 
-        # 当前值
-        c.create_text(pad_l + 4, pad_t + 2, text="当前 {:,.0f}".format(eqs[-1]),
+        # Current value
+        c.create_text(pad_l + 4, pad_t + 2, text="Current {:,.0f}".format(eqs[-1]),
                       fill=PURPLE if eqs[-1] < 0 else color, font=FONT_MID, anchor="nw")
 
-    # ------------------------------------------------------------ 游戏规则
+    # ------------------------------------------------------------ game rules
     def _ack_path(self):
         return os.path.join(HERE, "data", ".rules_ack")
 
@@ -802,13 +888,13 @@ class Watch:
 
     @staticmethod
     def _kill_all(self):
-        if not messagebox.askyesno("结束相关进程", "将立即停止 Tokens 服务并关闭观众席。\n确定吗？"):
+        if not messagebox.askyesno("End processes", "The Tokens service will stop immediately and the spectator will close.\nAre you sure?"):
             return
         try:
             post("/shutdown")
         except Exception:
             pass
-        self.lbl_status.config(text="正在结束进程…", fg=RED)
+        self.lbl_status.config(text="Ending processes...", fg=RED)
         self.root.after(700, self.root.destroy)
         self.root.after(1000, lambda: os._exit(0))
 
@@ -817,10 +903,11 @@ class Watch:
 
 
 def _acquire_single_instance():
-    """同一个游戏目录只允许存在一个观众席。
+    """Only one spectator is allowed per game directory.
 
-    用占住本地端口做进程级互斥：绑定成功即拿到锁，进程退出（含被强杀）
-    时操作系统自动释放，不会留下需要人工清理的锁文件。
+    Uses a held local port as a process-level mutex: a successful bind acquires the lock, and the
+    OS releases it automatically when the process exits (including a hard kill), so no lock file is
+    left behind for manual cleanup.
     """
     global _LOCK_SOCK
     try:
@@ -837,7 +924,7 @@ def _warn_already_open():
     root = tk.Tk()
     root.withdraw()
     try:
-        messagebox.showwarning("Tokens 交易市场", "已打开观众席！")
+        messagebox.showwarning("Tokens Trading Market", "Spectator opened!")
     finally:
         try:
             root.destroy()
@@ -849,7 +936,7 @@ def main():
     if not _acquire_single_instance():
         _warn_already_open()
         return
-    size = (1920, 1080)   # AI 版固定 1920 版式
+    size = (1920, 1080)   # AI edition uses a fixed 1920 layout
     if not size:
         return
     Watch(size).run()

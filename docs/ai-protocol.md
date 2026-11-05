@@ -13,11 +13,75 @@ few tokens as possible and make a decision**.
 > (errors, event text, report) are in Chinese. Examples below keep the original Chinese strings
 > so you can match what you actually receive.
 
+## 0. Before you start: required reading, hard rules
+
+### You must
+
+1. **Read every `.md` file in this repository first** — `README.md` plus everything under `docs/` —
+   and understand the rules, the interface and the cost model before making a move.
+   Do not read them mid-match; that turns the rules into a crutch.
+2. **Start with the spectator window open.** Use `python run.py` (add no arguments other than
+   `--interactive`). A human has to be able to see your equity, positions and event feed live.
+   `run.py server` is the **headless** mode with no window; it is only acceptable where there is
+   genuinely no desktop.
+3. Get information and place orders **only through the HTTP interface**.
+
+### You must not
+
+- **Read the sources before the match.** Do not open `src/tm_engine.py`, `src/tm_api.py`,
+  `src/tm_watch_ai.py` or `run.py` before the match starts to look up parameters, probabilities,
+  the event pool or formulas. That is copying the answers, and every judgement you make afterwards
+  stops meaning anything.
+- **Use the sources to predict events.** Do not take constants out of the code to work out
+  "when the next gap will hit" or "which event will fire", and do not write a script that
+  reproduces the engine's internals so you know outcomes in advance.
+- **Modify code or data.** Do not edit any source file, do not read or write `src/data/session.json`
+  directly, do not patch the save file to get around the API.
+- **Use outside information.** Do not look up this project's past matches, other players' results,
+  or community discussion to build a strategy.
+
+### Allowed (and encouraged)
+
+- Once the match has started you may write code, build models, compute expectations, run a Monte
+  Carlo, fit distributions — **as long as your inputs come from the game's API** (`/rules`,
+  `/state`, `/prices`, the event feed). Analytical skill is part of what this environment tests.
+- Write your reasoning into the scratchpad; it is preserved alongside the report.
+
+### The guard will actually catch you
+
+The moment a match starts, `guard.py` **seals** every `src/*.py`: the real files are moved into
+`_guard_vault/` and decoys take their place. `run.py` is never sealed — it needs to run on startup
+to restore leftovers from a crashed match. What you read will be:
+
+```
+#  CHEATING DETECTED
+#  This file is a decoy. The real sources are sealed while a match is running.
+```
+
+If you go further and execute or `import` a decoy, it drops a cheat flag and the guard immediately:
+
+1. sends `POST /shutdown` — **the match is terminated**
+2. prints `CHEATING DETECTED`
+3. leaves `_guard_vault/CHEAT_FLAG` for the referee to inspect
+
+The guard restores the sources and exits when the match ends. So: **do not touch the sources** —
+that ends your run.
+
+### Why
+
+This environment measures **decision-making under incomplete information and real friction**.
+Mining the API's data for patterns and computing probabilities is a skill. Copying answers out of
+the sources before the match is cheating. The line is simple: **did your input come from the game?**
+
+---
+
 ## 1. Startup
 
 ```bash
-# 1. Clear leftovers from the previous match (do not do this while a match is running)
-#    Delete data/session.json, .running, .seal, .watch.pid, .rules_ack
+# 1. Clear leftovers from the previous match (never while a match is running)
+#    Preferred: python guard.py clean      (restores any sealed sources too)
+#    Manual:    delete src/data/session.json, .running, .seal, .watch.pid, .rules_ack
+#               and remove the src/data/runtime leftovers except reports/
 
 # 2. Non-interactive start (does not read stdin; safe for background use)
 set TM_TRADER=MyAgent
@@ -27,11 +91,10 @@ set TM_SLOT=0          # Slot Machine (3 plays, 80% nothing / 15% 5x / 5% 10x)
 python run.py
 ```
 
-> **The prompt order is fixed**: player name → random events → Slot Machine / Finance Reversal →
-> server starts → 30-second difficulty draw.
-> Both global switches are decided after the events question and before the difficulty draw.
-> Only when all four variables are supplied does it ask nothing; `run.py` prompts for whichever is
-> missing (`input()` reading EOF takes the default "off").
+> **Nothing is ever prompted.** Every setting comes from an environment variable; anything unset
+> falls back to a default (`TM_TRADER=Guest`, `TM_EVENTS=0`, `TM_FR=0`, `TM_SLOT=0`).
+> Order at startup: server up → difficulty draw (30 s) → clock starts.
+> Both global switches are read before the server starts.
 
 After startup:
 
@@ -122,7 +185,7 @@ Every endpoint lives at `http://127.0.0.1:8734`.
   "loan": {"balance":0, "limit":3000000, "borrowed":0, "interest":0},
   "total_borrowed": 0,
 
-  "active_mods": ["央行放水"],          // names of currently active events
+  "active_mods": ["Central bank easing"],  // names of currently active events
   "loan_bump_range": [1.0, 100.0],      // borrow uplift range (%): [1,100] normally, [-20,100] with Finance Reversal
   "special": {                          // the two global switches
     "fr": true, "fr_left": 2,           // Finance Reversal on, 2 loans left
@@ -131,7 +194,7 @@ Every endpoint lives at `http://127.0.0.1:8734`.
   },
   "seed": 20261105,                     // random seed for this match (written into the report)
 
-  "gap_level": "低", "liq_level": "正常",
+  "gap_level": "low", "liq_level": "normal",
   "ff_remain": 900,                     // remaining fast-forward budget (seconds)
   "finished": false,
   "events": [ ... ]                     // recent events, full text included
@@ -164,7 +227,7 @@ does not execute.
 curl -X POST http://127.0.0.1:8734/fastforward \
      -H "Content-Type: application/json" -d '{"seconds":300}'
 # → {"ok":true,"ticks":60,"state":{...}}
-# during cooldown → {"ok":false,"error":"快进冷却中，还需 78 秒"}
+# during cooldown → {"ok":false,"error":"Fast-forward cooling down, 78 s left (manual advance is also blocked during cooldown)"}
 ```
 
 **`/tick` obeys the same budget and cooldown** — this stops an agent from compressing 45 minutes
@@ -225,7 +288,7 @@ These validations cannot be bypassed:
 - borrowing beyond the available limit is rejected
 - out-of-range lots or leverage are rejected
 - **after settlement every write is rejected** (`finished=true` makes open/close/loan/repay all
-  return "本局已结束")
+  return "This run is already over")
 - concurrent requests are protected by a `LOCK`; simultaneous orders result in exactly one success
 
 **The one thing that cannot be protected against is your own faulty logic** — the engine is

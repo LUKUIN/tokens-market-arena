@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
-"""草稿纸终端 —— 对局期间随手记下判断与对策。
+"""Scratchpad terminal — jot down your read and plan during a match.
 
-用法（不需要服务在跑，直接读写 data/.scratchpad.jsonl）：
+Usage (no server needed; it reads and writes data/.scratchpad.jsonl directly):
 
-    python scratchpad.py "AURA 偏离均值 8%，准备做空"
-    python scratchpad.py --list        查看本局已记的全部内容
-    python scratchpad.py --count       只输出条数
-    python scratchpad.py --clear       清空本局草稿纸
-    python scratchpad.py              不带参数进入连续输入模式（Ctrl+C 退出）
+    python scratchpad.py "AURA is 8% off its mean, preparing to short"
+    python scratchpad.py --list        show everything recorded this match
+    python scratchpad.py --count       print the entry count only
+    python scratchpad.py --clear       clear this match's scratchpad
+    python scratchpad.py              no arguments: continuous input mode (Ctrl+C to exit)
 
-每写完一条立刻落盘，中途关掉终端也不会丢。
-游戏结算/重置时这个文件会被一并清掉。
+Every entry is flushed to disk immediately, so closing the terminal mid-match loses nothing.
+The file is cleared together with the game on settlement/reset.
 """
 
 import io
@@ -41,7 +41,7 @@ def _load():
 
 
 def _tick_now():
-    """从 session.json 读当前 tick；读不到就记 -1。"""
+    """Read the current tick from session.json; record -1 if it cannot be read."""
     p = os.path.join(HERE, "data", "session.json")
     try:
         with io.open(p, encoding="utf-8") as f:
@@ -53,25 +53,25 @@ def _tick_now():
 def append(text):
     t = (text or "").strip()
     if not t:
-        print("内容不能为空")
+        print("content cannot be empty")
         return False
     if len(t) > MAX_LEN:
         t = t[:MAX_LEN]
-        print("（已截断到 %d 字）" % MAX_LEN)
+        print("(truncated to %d characters)" % MAX_LEN)
     rec = {"tick": _tick_now(), "at": round(time.time(), 3), "text": t}
     os.makedirs(os.path.dirname(PAD), exist_ok=True)
     with io.open(PAD, "a", encoding="utf-8") as f:
         f.write(json.dumps(rec, ensure_ascii=False) + chr(10))
-    print("已记录（第 %d 条，tick %s）" % (len(_load()), rec["tick"]))
+    print("recorded (entry %d, tick %s)" % (len(_load()), rec["tick"]))
     return True
 
 
 def show():
     items = _load()
     if not items:
-        print("本局草稿纸为空。")
+        print("This match's scratchpad is empty.")
         return
-    print("本局草稿纸共 %d 条：" % len(items))
+    print("This match's scratchpad has %d entries:" % len(items))
     print("-" * 60)
     for i, x in enumerate(items, 1):
         print("[%d] tick %s" % (i, x.get("tick", "?")))
@@ -82,20 +82,20 @@ def show():
 def clear():
     if os.path.exists(PAD):
         os.remove(PAD)
-        print("已清空本局草稿纸。")
+        print("Cleared this match's scratchpad.")
     else:
-        print("本局草稿纸本来就是空的。")
+        print("This match's scratchpad was already empty.")
 
 
 def repl():
-    print("草稿纸终端。直接输入内容回车保存，Ctrl+C 退出。")
-    print("（每条写完立刻落盘，中途退出不会丢）")
+    print("Scratchpad terminal. Type an entry and press Enter to save; Ctrl+C to exit.")
+    print("(every entry is flushed to disk immediately, so exiting mid-match loses nothing)")
     print("-" * 60)
     while True:
         try:
             line = input("> ")
         except (EOFError, KeyboardInterrupt):
-            print(chr(10) + "已退出，共 %d 条。" % len(_load()))
+            print(chr(10) + "Exited, %d entries total." % len(_load()))
             return
         if line.strip():
             append(line)

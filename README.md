@@ -16,7 +16,7 @@ The participant is a large language model, not a human.
 
 - The model opens positions, closes them, borrows, and advances time over HTTP;
 - A human watches the account, positions, equity curve and event feed in a spectator window;
-- Whatever the model writes in the **scratchpad** is visible via the **"AI 行为"** button in the
+- Whatever the model writes in the **scratchpad** is visible via the **"AI Notes"** button in the
   spectator's top-right corner (read-only);
 - Every match generates a self-contained HTML report, with the scratchpad merged in.
 
@@ -24,34 +24,67 @@ The participant is a large language model, not a human.
 
 ## Quick start
 
-For agents and scripts (recommended, non-interactive):
+**This edition never prompts for input.** Every setting comes from environment variables; anything
+unset falls back to a default. There is no `input()`, no "press any key", no confirmation step.
+
+### For an agent or script (the normal case)
+
+`python run.py` runs **in the foreground for the whole match** — up to 45 minutes. If your harness
+executes it as a blocking command and hits its own timeout, the process is killed and the server
+disappears; every later request then fails with `connection refused`.
+
+**Use `python run.py`, which also opens the spectator window.** Do not use `run.py server` — that is
+the headless mode with no window, and nobody can watch the match happen.
+
+Start it in the background and poll until it answers:
+
+```bash
+cd <project-directory>
+
+TM_TRADER="model-name-high-platform" TM_EVENTS=1 TM_FR=0 TM_SLOT=0 \
+  nohup python run.py > run.log 2>&1 &
+
+for i in $(seq 1 30); do
+  curl -sf http://127.0.0.1:8734/health >/dev/null 2>&1 && break
+  sleep 1
+done
+```
+
+On Windows `cmd`:
 
 ```bat
-set TM_TRADER=DeepSeek-V4-Flash-high-DeepSeekHarness
-set TM_EVENTS=1
-set TM_FR=1
-set TM_SLOT=0
-python run.py
+cd /d <project-directory>
+start "" /b python run.py
 ```
 
-Manual demo (double-click):
+Do **not** use a fixed `sleep 6 && curl` — startup takes 3–8 seconds, and a slow machine makes it
+look like a failure.
 
-```
-双击  启动游戏.bat        (asks for model ID and event mode)
-or    python run.py --interactive
+**Then lock the difficulty.** Until it is locked, `/tick` does nothing:
+
+```bash
+curl -X POST http://127.0.0.1:8734/roll/stop
 ```
 
-Server only, no spectator window (headless, bring your own UI):
+### Double-click launcher
 
-```
+`Start Game.bat` is just another entry point — it asks nothing either, and only prints the values
+it is about to use. Same zero-prompt behaviour as `python run.py`.
+
+### Server only, no window
+
+```bash
 python run.py server 127.0.0.1 8734
 ```
+
+Use this in headless environments. The default mode creates a Tk window; on a machine without a
+desktop that fails and takes the process down with it.
 
 ### Environment variables
 
 | Variable | Purpose |
 |---|---|
-| `TM_TRADER` | Contestant ID, format **`<model>-<effort>-<agent-platform>`**, max 60 chars, defaults to `访客` |
+| `TM_TRADER` | Contestant ID, format **`<model>-<effort>-<agent-platform>`**, max 60 chars, defaults to `Guest` |
 | `TM_EVENTS` | `1` enable random events / `0` ideal conditions (black-swan gaps only) |
 | `TM_FR` | `1` enables **Finance Reversal**: at most **2** loans per match, target range `-20%~100%` |
 | `TM_SLOT` | `1` enables **Slot Machine**: **3** plays, `1~200000` and ≤ current equity, 80% nothing / 15% 5× / 5% 10× |
@@ -129,7 +162,7 @@ Base URL defaults to `http://127.0.0.1:8734`.
 ## Scratchpad CLI (optional)
 
 Lets the model record its reasoning during the match. It takes no space in the spectator's main
-layout — the human clicks **"AI 行为"** in the top-right corner to open a read-only window, and the
+layout — the human clicks **"AI Notes"** in the top-right corner to open a read-only window, and the
 contents are merged into the HTML report afterwards.
 
 ```bat
@@ -148,17 +181,41 @@ mid-match loses nothing. Cleared on settle/reset. You may skip it entirely — t
 
 ---
 
+## Source guard (anti-cheat)
+
+While a match runs the sources are sealed; reading them gives you a decoy, executing one ends the match.
+
+```bash
+python guard.py start --port 8734    # seal the sources and start watching
+python guard.py status               # sealed? cheat flag present?
+python guard.py stop                 # stop the guard and restore the sources
+```
+
+`Start Game.bat` starts the guard automatically and restores everything when the match ends.
+
+- While sealed, `src/*.py` live in `_guard_vault/`; decoys carrying a
+  `CHEATING DETECTED` notice take their place
+- Reading a decoy shows the warning (still suspicious — the report notes it)
+- Executing or importing a decoy drops `CHEAT_FLAG`; the guard then `POST /shutdown` immediately
+- Cleanup: `deep-clean.ps1` kills the guard too, and restores the sources first
+
+`run.py` itself is never sealed; on startup it checks whether a previous match left the sources
+sealed and restores them automatically.
+
+> The guard only blocks "reading the sources". It cannot stop a model from reasoning over API data —
+> that is the point of the exercise.
+
 ## Deep process cleanup
 
 Run this after a match, or when startup misbehaves (port taken, window never appears):
 
 ```bash
-cd "D:/DeepSeek Harness WorkSpace/TokensMarket-OpenSource-AI-v97"
+cd <project-directory>
 powershell -NoProfile -ExecutionPolicy Bypass -File deep-clean.ps1
 ```
 
 > **When calling from an AI agent or a script, use the command above.** Do not run
-> `进程深度清理.bat` directly: it contains two `pause` calls (stdin piped in will hang) and prints
+> `DeepClean Process.bat` directly: it contains two `pause` calls (stdin piped in will hang) and prints
 > GBK text (garbled in a UTF-8 terminal). `deep-clean.ps1` is the same logic in non-interactive
 > form and forces UTF-8 output; **exit code 0 means success**.
 > Double-clicking the `.bat` still works for humans (pass `-y` to skip the pauses).
@@ -176,9 +233,9 @@ It does two things:
 
 ```
 TokensMarket-OpenSource-AI-v97/
-├── run.py                  entry point (ai / --interactive / server / state)
-├── 启动游戏.bat            Windows double-click launcher
-├── 进程深度清理.bat        manual double-click cleanup (contains pause)
+├── run.py                  entry point (ai / --interactive demo / server / state)
+├── Start Game.bat            Windows double-click launcher
+├── DeepClean Process.bat        manual double-click cleanup (contains pause)
 ├── deep-clean.ps1          cleanup implementation; agents should call this directly
 ├── src/
 │   ├── tm_engine.py        engine (pure logic)

@@ -1,5 +1,5 @@
-# 本项目无第三方依赖，全部使用 Python 标准库。
-# 这个文件只是为了让 pip install -r requirements.txt 不报错（空操作）。
+# This project has no third-party dependencies; everything comes from the Python standard library.
+# This file exists only so `pip install -r requirements.txt` succeeds (it is a no-op).
 #
-# 开发与测试环境：Python 3.14.7 / Windows 10
-# 理论最低版本：Python 3.11（用到的东西更早就有了，但没有完整回归测试）
+# Developed and tested on: Python 3.14.7 / Windows 10
+# Theoretical minimum: Python 3.11 (the features used are older, but there is no regression suite for it)

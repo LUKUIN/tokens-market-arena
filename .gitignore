@@ -19,3 +19,9 @@ python-*.exe
 .vscode/
 .idea/
 *.swp
+
+# source guard vault (temporary, restored after each match)
+_guard_vault/
+
+# 运行日志（每次开局都会写，不该进版本库）
+*.log

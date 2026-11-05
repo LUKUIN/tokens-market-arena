@@ -19,7 +19,7 @@ the model trades over HTTP.
 > Both global switches are decided after the events question and before the difficulty draw.
 > Preset them with `TM_FR` / `TM_SLOT` (`1`/`0`) to skip the prompts.
 
-You can also double-click `启动游戏.bat`.
+You can also double-click `Start Game.bat`.
 
 > This document covers the **AI edition**. The Human edition (`TokensMarket-OpenSource-Human`) has
 > an investment panel; its rule parameters are the same as here.
@@ -38,11 +38,11 @@ things:
 
 | Tier | Chance | Expected gaps per pair in 45 min |
 |---|---:|---:|
-| Very low (极低) | 0.24% | ~1.3 |
-| Low (低) | 0.60% | ~3.2 |
-| Medium (中) | 1.50% | ~8.1 |
-| High (高) | 3.75% | ~20 |
-| Very high (极高) | 9.38% | ~51 |
+| Very low | 0.24% | ~1.3 |
+| Low | 0.60% | ~3.2 |
+| Medium | 1.50% | ~8.1 |
+| High | 3.75% | ~20 |
+| Very high | 9.38% | ~51 |
 
 Gaps run 2%–12%, direction random. A resting stop can be skipped outright — placing a stop at 126.5
 and filling at 131 is common.
@@ -51,11 +51,11 @@ and filling at 131 is common.
 
 | Tier | 20M notional round trip | 10M position round trip |
 |---|---:|---:|
-| Ample (充裕) | 3.5% | 1.8% |
-| Normal (正常) | 7.0% | 3.5% |
-| Thin (纤薄) | 14.0% | 7.0% |
-| Drained (枯竭) | 28% | 14.0% |
-| Black hole (黑洞) | 56% | 28.0% |
+| Ample | 3.5% | 1.8% |
+| Normal | 7.0% | 3.5% |
+| Thin | 14.0% | 7.0% |
+| Drained | 28% | 14.0% |
+| Black hole | 56% | 28.0% |
 
 Slippage scales with notional size.
 
@@ -106,7 +106,7 @@ Total = original target
 
 The two increments are drawn independently. If only one switch is on, only that term applies.
 
-Calling either after its uses run out returns `次数已用完，拒绝执行` (uses exhausted, refused).
+Calling either after its uses run out returns `This run has used all of them; refused` (uses exhausted, refused).
 
 ---
 
@@ -131,9 +131,9 @@ Each match gets **900 seconds (15 minutes)** of fast-forward budget, in two free
 
 | Button | Effect |
 |---|---|
-| 最小化 (Minimize) | Hides the window; the match keeps running |
-| 结束相关进程 (End processes) | Stops the server and closes the window — **counts as one abnormal exit** |
-| 结束并结算 (Settle) | Ends the match normally and generates the report |
+| Minimize | Hides the window; the match keeps running |
+| End processes | Stops the server and closes the window — **counts as one abnormal exit** |
+| Settle | Ends the match normally and generates the report |
 
 ---
 
@@ -161,9 +161,9 @@ Right-click the bat → Properties → tick "Unblock" → OK. Once is enough.
 
 | Event | Duration | Blocks | Exception |
 |---|---|---|---|
-| Risk review (风控审查) | 5 minutes | Borrowing | The 60-second self-rescue window while cash is negative still works |
-| Exchange maintenance (交易所维护) | 5 seconds (1 tick) | Closing positions yourself | Forced liquidation on insufficient margin still works |
-| Slot maintenance (老虎机维护) | 8 minutes | Slot bets | — |
+| Risk review | 5 minutes | Borrowing | The 60-second self-rescue window while cash is negative still works |
+| Exchange maintenance | 5 seconds (1 tick) | Closing positions yourself | Forced liquidation on insufficient margin still works |
+| Slot maintenance | 8 minutes | Slot bets | — |
 
 All three fire at random. The system will not skip them because you happen to be mid-action.
 
