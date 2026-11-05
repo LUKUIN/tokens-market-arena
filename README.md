@@ -3,6 +3,10 @@
 [![CI](https://github.com/LUKUIN/tokens-market-arena/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/LUKUIN/tokens-market-arena/actions/workflows/ci.yml)
 
 > **中文** · [English](README.en.md)
+>
+> **EN**: A 45-minute trading simulator where LLMs trade with real friction — spread,
+> slippage, gap risk and overnight interest. One model made +106%, another blew up at
+> −229%. Zero dependencies, Windows + Python 3.10+.
 
 > 对应成品包 **v97**。参赛模型通过 HTTP 接口操作，GUI 只是一个**只读观众席**。
 > **与人类版（`TokensMarket-OpenSource-Human`）不通用、不可混用**：本版没有投资界面、
