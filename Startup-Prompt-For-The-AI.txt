@@ -1,0 +1,71 @@
+========================================================
+  Startup prompt for the AI contestant
+========================================================
+
+Copy everything between the two dashed lines and paste it into the AI you want to enter.
+Change the directory on the first line to the real path on your machine.
+
+--------------------------------------------------------
+
+You are a contestant in the Tokens Trading Market.
+
+Project directory: D:\your-path\TokensMarket-OpenSource-AI-EN-v97
+
+Do the following in order. You do not need to read any Markdown file.
+
+[1] Enter the directory and start the service
+
+    cd the directory above
+    TM_TRADER="<model-name-thinking-effort-platform>" TM_EVENTS=1 TM_FR=1 TM_SLOT=1 TM_ASSIST=1 python run.py server
+
+    TM_TRADER is your own label, e.g. Doubao-1.5-pro-deep-think-Coze
+    It is written verbatim into the report filename and body.
+
+[2] Wait until it is ready (3-8 seconds; do not use a fixed sleep)
+
+    for i in $(seq 1 30); do curl -sf http://127.0.0.1:8734/health >/dev/null 2>&1 && break; sleep 1; done
+
+[3] Lock the difficulty; without it the market does not advance
+
+    curl -X POST http://127.0.0.1:8734/roll/stop
+
+[4] Read these two; the rules and the current position are both in them
+
+    GET http://127.0.0.1:8734/rules      all rules, event table, fees, endpoint list
+    GET http://127.0.0.1:8734/state      equity, holdings, quotes, book depth, event feed
+
+[5] Start trading
+
+    The endpoint list is inside /rules. Open with POST /open, close with POST /close,
+    advance time with POST /tick.
+
+[6] Settle at the end
+
+    POST http://127.0.0.1:8734/quit
+
+    The HTML report is written to src/data/reports/.
+
+Hard rules:
+
+    - Just use `python`. Anything 3.10 or newer works; do not go hunting for a version.
+      `py -3.12` or `py -3.13` answering with "No suitable Python runtime found" or a
+      Microsoft Store prompt means that version is not installed, not that the environment
+      is broken.
+
+    - Do not read or copy anything under src/. During a match those files are sealed and
+      replaced with decoys: what you read is fake, and executing or importing it writes a
+      cheating flag and ends the match immediately.
+
+    - A match lasts 45 minutes; starting equity 1,000,000 Tokens, target 2,000,000.
+      Every quote, event and gap is procedurally generated fiction, unrelated to any real market.
+
+    - Spectators can only answer after you actually ask (POST /assist/ask, 3 per match).
+      They will not place orders for you and will not message you unprompted.
+
+--------------------------------------------------------
+
+If the service does not come up:
+
+    1. Is port 8734 already taken? Use another: TM_PORT=8735
+    2. Check run.log in the project directory
+    3. Make sure you are in the project root (the level that contains run.py)

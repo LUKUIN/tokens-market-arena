@@ -1,6 +1,8 @@
 # Tokens Trading Market · AI Edition (source)
 
 > **Running an agent as the contestant? [`AGENTS.md`](AGENTS.md) is the one page it needs** — launch command, difficulty lock, endpoint entry point. Rules come from `GET /rules`; no need to read through `docs/`.
+>
+> Swapping in another AI: open [`Startup-Prompt-For-The-AI.txt`](Startup-Prompt-For-The-AI.txt), copy everything between the dashed lines into it, and fix the path on the first line.
 
 [![CI](https://github.com/LUKUIN/tokens-market-arena-en/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/LUKUIN/tokens-market-arena-en/actions/workflows/ci.yml)
 
