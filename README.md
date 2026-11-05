@@ -106,7 +106,7 @@ python run.py server 127.0.0.1 8734
 | `TM_PORT` | 端口号 | 服务端口，默认 `8734`。被占用时改这个，别改代码 |
 | `TM_SIGN_KEY` | 存档 HMAC 密钥，不设则用 dev 占位值 |
 
-要求：Python 3.10+、Windows（观众席依赖 Win32 图标），无第三方依赖。
+要求：Python 3.10+、Windows（观众席依赖 Win32 图标），无第三方依赖。直接用 `python` 即可——`py -3.12` / `py -3.13` 在本机会回「去 Microsoft Store 安装」，那是该版本没装，不是环境问题；`.github/workflows/ci.yml` 里的版本号是测试矩阵，不是运行要求。
 
 ---
 

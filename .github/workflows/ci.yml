@@ -13,6 +13,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # 测试矩阵，不是运行要求。运行只要 Python 3.10+，用 `python` 即可。
+        # 加两档是为了覆盖新旧语法差异，不代表项目要求这两个特定版本。
         python: ["3.11", "3.13"]
 
     steps:
