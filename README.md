@@ -1,5 +1,7 @@
 # Tokens 交易市场 · AI 版（源码版）
 
+> **让 Agent 参赛？读 [`AGENTS.md`](AGENTS.md) 一页就够** —— 启动命令、定档、接口入口都在里面，规则从 `GET /rules` 取，不需要逐个翻 `docs/`。
+
 [![CI](https://github.com/LUKUIN/tokens-market-arena/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/LUKUIN/tokens-market-arena/actions/workflows/ci.yml)
 
 > **中文** · [English](README.en.md)
