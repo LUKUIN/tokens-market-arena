@@ -587,7 +587,7 @@ class Watch:
             st = get("/state")
             self._render(st)
         except Exception:
-            self.lbl_status.config(text="等待服务启动（python startgame.pyc api 127.0.0.1 8734）",
+            self.lbl_status.config(text="等待服务启动（python run.py）",
                                    fg=ORANGE)
         self.root.after(300, self.refresh)
 
@@ -707,7 +707,7 @@ class Watch:
             # 追缴是实时紧急状态，优先级高于「未命名启动」这类提示
             state_txt = "追加保证金·还剩 %d tick" % st["margin_call_remain"]
         elif st.get("unnamed"):
-            state_txt = "未命名启动·请用启动游戏.bat"
+            state_txt = "未命名启动·请用 开始游戏！.bat"
         elif ml is not None and ml < 50:
             state_txt = "保证金水平告急"
         elif st["blowups"] > 0 and ml is None:
