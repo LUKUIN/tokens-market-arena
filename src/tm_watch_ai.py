@@ -288,7 +288,7 @@ class Watch:
             activeforeground=BLUE, font=FONT_SMALL, bd=0,
             padx=14, pady=5, cursor="hand2")
         self.btn_assist.pack(side="right", padx=(0, 8), pady=6)
-        tk.Button(topbar, text="AI 行为", command=self._show_scratch,
+        tk.Button(topbar, text="草稿纸", command=self._show_scratch,
                   bg="#F3EEFF", fg="#6B4E9B", activebackground="#E9E0FF",
                   activeforeground="#6B4E9B", font=FONT_SMALL, bd=0,
                   padx=14, pady=5, cursor="hand2").pack(side="right", padx=(0, 8), pady=6)
