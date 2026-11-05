@@ -23,7 +23,9 @@ few tokens as possible and make a decision**.
 2. **Start with the spectator window open.** Use `python run.py` (add no arguments other than
    `--interactive`). A human has to be able to see your equity, positions and event feed live.
    `run.py server` is the **headless** mode with no window; it is only acceptable where there is
-   genuinely no desktop.
+   genuinely no desktop. If you do start headless, tell the operator they can open the window
+   afterwards with `Spectator.bat` (or `python run.py spectator`): it attaches to the running match
+   and changes nothing — no second server, no second seal.
 3. Get information and place orders **only through the HTTP interface**.
 
 ### You must not
@@ -49,9 +51,15 @@ few tokens as possible and make a decision**.
 
 ### The guard will actually catch you
 
-The moment a match starts, `guard.py` **seals** every `src/*.py`: the real files are moved into
-`_guard_vault/` and decoys take their place. `run.py` is never sealed — it needs to run on startup
-to restore leftovers from a crashed match. What you read will be:
+The moment a match starts, **`run.py` seals the three modules that carry game parameters** —
+`src/tm_engine.py`, `src/tm_api.py`, `src/scratchpad.py`. They are encrypted with a one-off key and
+written outside the project (`%LOCALAPPDATA%\TokensMarketGuard\<random>\`); decoys take their place
+in `src/`. `tm_watch_ai.py` stays readable on purpose: it is the spectator UI, it talks to `/state`
+over HTTP and never imports the engine, so it leaks nothing and keeping it readable lets a second
+spectator window attach to a running match.
+
+A crashed match leaves the vault behind; the next `python run.py` restores it automatically before
+loading anything. What you read will be:
 
 ```
 #  CHEATING DETECTED
