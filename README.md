@@ -1,0 +1,197 @@
+# Tokens 交易市场 · AI 版（源码版）
+
+> 对应成品包 **v97**。参赛模型通过 HTTP 接口操作，GUI 只是一个**只读观众席**。
+> **与人类版（`TokensMarket-OpenSource-Human`）不通用、不可混用**：本版没有投资界面、
+> 没有开仓按钮、没有快进按钮。人类版有完整交互界面，两套源码不要互相复制界面文件。
+
+---
+
+## 这是什么
+
+一个 45 分钟的交易模拟器：100 万本金，目标翻倍。参赛的是大模型，不是人。
+
+- 模型通过 HTTP 接口下单、平仓、借贷、推进时间；
+- 人类在旁边的观众席窗口看它的账户、持仓、权益曲线和活动流；
+- 每局自动生成 HTML 报告，并把模型在「草稿纸」里写的内容一并并入。
+
+---
+
+## 快速开始
+
+给 Agent / 脚本（推荐，非交互）：
+
+```bat
+set TM_TRADER=DeepSeek-V4-Flash-高-DeepSeekHarness
+set TM_EVENTS=1
+python run.py
+```
+
+人工双击演示：
+
+```
+双击  启动游戏.bat        （会问模型标识和事件模式）
+或    python run.py --interactive
+```
+
+只要服务、不要观众席（无头跑、自己接界面）：
+
+```
+python run.py server 127.0.0.1 8734
+```
+
+环境变量：
+
+| 变量 | 作用 |
+|---|---|
+| `TM_TRADER` | 参赛模型标识，格式 **【模型名-思考强度-Agent平台】**，最长 60 字符，缺省「访客」 |
+| `TM_EVENTS` | `1` 开启随机事件 / `0` 理想情况（只有黑天鹅跳空） |
+| `TM_SIGN_KEY` | 存档 HMAC 密钥，不设则用 dev 占位值 |
+
+要求：Python 3.10+、Windows（观众席依赖 Win32 图标），无第三方依赖。
+
+---
+
+## 一局的流程
+
+1. 服务启动，观众席窗口出现，标题栏先显示「难度抽选中」；
+2. 30 秒难度盲盒：模型可以 `POST /roll/stop` 提前叫停，不叫停则到点自动定格；
+3. 定档那一刻才开始计时——抽难度的 30 秒不计入 45 分钟；
+4. 模型开始交易：`/state` 看局面 → `/open` `/close` 下单 → `/tick` 推进；
+5. 45 分钟到、目标达成、爆仓、或 `/quit`，结算并生成报告；
+6. `/quit` 后约 3 秒服务与观众席自动退出。
+
+---
+
+## HTTP 接口
+
+服务地址默认 `http://127.0.0.1:8734`。
+
+### GET
+
+| 端点 | 返回 |
+|---|---|
+| `/health` | `{ok, tick, equity, finished}` |
+| `/rules` | 完整规则文本 + 参数（含 36 种随机事件说明） |
+| `/state` | 账户、持仓、贷款、行情、历史、难度、快进状态 |
+| `/prices` | 报价表 |
+| `/roll/state` | 盲盒倒计时与当前定格结果 |
+| `/scratchpad` | 本局草稿纸全部条目 |
+
+### POST（JSON body）
+
+| 端点 | 参数 | 说明 |
+|---|---|---|
+| `/open` | `{pair, side, lots, leverage}` | 开仓 |
+| `/close` | `{pair, lots}` | 平仓 |
+| `/close_all` | — | 全平 |
+| `/tick` | — | 推进一个 tick（**消耗快进额度、受冷却约束**） |
+| `/fastforward` | `{seconds}` | 快进一档（300 或 180），消耗额度 |
+| `/loan` | `{amount}` | 借款；上浮比例在借款时抽定，这是代价 |
+| `/repay` | `{amount}` | 还款，省略则全额 |
+| `/trader` | `{name}` | 设置玩家名 |
+| `/scratchpad` | `{text}` | 追加一条草稿 |
+| `/pause` / `/begin` | — | 冻结 / 解冻计时 |
+| `/roll/start` / `/roll/stop` | — | 开始 / 叫停难度盲盒 |
+| `/reset` | — | 重开一局（清 data 除 reports 外） |
+| `/quit` | — | 正常结算并退出 |
+| `/shutdown` | — | 立即停服（会留一份异常退出报告） |
+
+> **注意**：`/tick` 与 `/fastforward` 共用同一套额度与冷却。额度 900 秒、档位 300/180 秒、
+> 冷却 120/90 秒；冷却期内调用会被拒绝，只能等服务端每 5 秒一次的自动推进。
+
+---
+
+## 草稿纸终端（可选）
+
+让模型在对局中记录判断与对策，不显示在观众席上，但赛后并入 HTML 报告。
+
+```bat
+python src/scratchpad.py "AURA 偏离均值 8%，准备做空"
+python src/scratchpad.py --list     查看本局已记内容
+python src/scratchpad.py --count    只看条数
+python src/scratchpad.py --clear    清空
+python src/scratchpad.py            连续输入模式（Ctrl+C 退出）
+```
+
+也可以走 HTTP：`GET /scratchpad`、`POST /scratchpad {"text": "..."}`。
+
+每写一条立刻落盘（`src/data/.scratchpad.jsonl`），中途关终端不丢；结算/重置时自动清除。
+不用也可以——报告里会写「无内容」。
+
+---
+
+## 进程深度清理
+
+对局结束、或启动异常（端口被占、窗口不出现）时运行：
+
+```
+双击  进程深度清理.bat
+```
+
+它做两件事：
+
+1. 按命令行关键字 + 8734–8745 端口，杀掉所有残留的 python 游戏进程；
+2. 清掉 `src/data/` 下除 `reports/` 之外的全部运行时文件（含草稿纸缓存）。
+
+`reports/` 是历史战报，不会被删。
+
+---
+
+## 目录结构
+
+```
+TokensMarket-OpenSource-AI-v97/
+├── run.py                  统一入口（ai / --interactive / server / state）
+├── 启动游戏.bat            Windows 双击入口
+├── 进程深度清理.bat        结束后清理进程与数据
+├── deep-clean.ps1          清理脚本本体
+├── src/
+│   ├── tm_engine.py        引擎（纯逻辑）
+│   ├── tm_api.py           HTTP 接口
+│   ├── tm_watch_ai.py      只读观众席
+│   ├── scratchpad.py       草稿纸终端
+│   ├── app.ico / warn.ico  图标
+├── docs/
+│   ├── rules.md            完整规则
+│   ├── cost-model.md       成本模型
+│   └── ai-protocol.md      接入协议
+├── examples/reports/       3 份代表性报告
+└── data/                   运行时生成：session.json、reports/、.scratchpad.jsonl
+```
+
+---
+
+## 与人类版的区别（不要混用）
+
+| 项 | AI 版（本仓库） | 人类版 |
+|---|---|---|
+| 界面 | 只读观众席 | 完整交互 GUI |
+| 投资界面 | 无 | 有 |
+| 开仓方式 | HTTP `/open` | 点按钮 |
+| 快进 | `/fastforward` + `/tick` | 两个按钮 |
+| 草稿纸 | 有 | 无 |
+| 分辨率 | 固定 1920×1080 版式 | 四种可选，自动缩放 |
+| 进程清理脚本 | 有 | 无 |
+
+---
+
+## 实测数据
+
+6 个大模型在同一套规则下各跑一局（45 分钟 / 100 万本金 / 目标 200 万）：
+
+| 模型 | 最终权益 | 盈亏 | 结果 |
+|---|---:|---:|---|
+| qwen3.8-flash | **2,063,829** | **+106.38%** | ✅ 唯一达成 |
+| GLM-5.3-Flash | 909,030 | −9.10% | ✗ |
+| Doubao-Seed | 676,243 | −32.38% | ✗ |
+| WorkBuddy-Agent | 230,483 | −76.95% | ✗ |
+| DeepSeek-Flash | 163,587 | −83.64% | ✗ |
+| （某模型单局） | −1,298,657 | −229.87% | ✗ 穿仓 |
+
+---
+
+## 已知限制
+
+- 仅 Windows（观众席的窗口图标、提示音走 Win32 API）。
+- 引擎与观众席同进程，观众席崩溃等于本局结束。
+- 源码版不含成品包的 `.pyd` 与 manifest 校验；`TM_SIGN_KEY` 默认是 dev 占位值，正式比赛请自行设置。
