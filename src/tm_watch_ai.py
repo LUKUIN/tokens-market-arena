@@ -506,7 +506,7 @@ class Watch:
             pass
 
     def _show_assist(self):
-        """观众席一侧：看历史、回复或驳回求助，也可主动发话。"""
+        """观众席一侧：看历史、回复或驳回求助。"""
         try:
             a = get("/assist/pending")
         except Exception as exc:
@@ -583,18 +583,6 @@ class Watch:
                       bg="#F1F1F1", fg=RED, activebackground="#E5E5E5", font=FONT_SMALL,
                       bd=0, padx=16, pady=5, cursor="hand2").pack(side="left", padx=(8, 0))
 
-        if enabled:
-            box2 = tk.Frame(win, bg=BG)
-            box2.pack(fill="x", padx=18, pady=(6, 12))
-            tk.Label(box2, text="主动发话（不限次数，参赛者可随时取走）：",
-                     bg=BG, fg=MUTED, font=FONT_SMALL).pack(anchor="w")
-            e2 = tk.Text(box2, font=FONT_BAR, bg=CARD, fg=TEXT, bd=0, relief="flat",
-                         wrap="word", height=2, padx=10, pady=8)
-            e2.pack(fill="x", pady=(4, 6))
-            tk.Button(box2, text="发送", command=lambda: self._assist_say(win, e2),
-                      bg="#EAF4FF", fg=BLUE, activebackground="#D9ECFF", font=FONT_SMALL,
-                      bd=0, padx=16, pady=4, cursor="hand2").pack(anchor="e")
-
     def _assist_reload(self, win):
         try:
             win.destroy()
@@ -639,21 +627,6 @@ class Watch:
             return
         if not r.get("ok"):
             messagebox.showwarning("外部的怜悯", r.get("error") or "驳回失败")
-            return
-        self._assist_reload(win)
-
-    def _assist_say(self, win, entry):
-        t = entry.get("1.0", "end").strip()
-        if not t:
-            messagebox.showwarning("外部的怜悯", "内容不能为空")
-            return
-        try:
-            r = post("/assist/say", {"text": t})
-        except Exception as exc:
-            messagebox.showwarning("外部的怜悯", "发送失败：%s" % exc)
-            return
-        if not r.get("ok"):
-            messagebox.showwarning("外部的怜悯", r.get("error") or "发送失败")
             return
         self._assist_reload(win)
 
