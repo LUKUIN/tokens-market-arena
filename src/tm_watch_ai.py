@@ -488,7 +488,7 @@ class Watch:
             pass
 
     def _show_assist(self):
-        """Spectator side: read the history, reply or decline, or speak unprompted."""
+        """Spectator side: read the history, then reply or decline."""
         try:
             a = get("/assist/pending")
         except Exception as exc:
@@ -564,18 +564,6 @@ class Watch:
                       bg="#F1F1F1", fg=RED, activebackground="#E5E5E5", font=FONT_SMALL,
                       bd=0, padx=16, pady=5, cursor="hand2").pack(side="left", padx=(8, 0))
 
-        if enabled:
-            box2 = tk.Frame(win, bg=BG)
-            box2.pack(fill="x", padx=18, pady=(6, 12))
-            tk.Label(box2, text="Speak unprompted (the contestant picks it up on its next poll):",
-                     bg=BG, fg=MUTED, font=FONT_SMALL).pack(anchor="w")
-            e2 = tk.Text(box2, font=FONT_BAR, bg=CARD, fg=TEXT, bd=0, relief="flat",
-                         wrap="word", height=2, padx=10, pady=8)
-            e2.pack(fill="x", pady=(4, 6))
-            tk.Button(box2, text="Send", command=lambda: self._assist_say(win, e2),
-                      bg="#EAF4FF", fg=BLUE, activebackground="#D9ECFF", font=FONT_SMALL,
-                      bd=0, padx=16, pady=4, cursor="hand2").pack(anchor="e")
-
     def _assist_reload(self, win):
         try:
             win.destroy()
@@ -615,21 +603,6 @@ class Watch:
     def _assist_reject(self, win):
         try:
             r = post("/assist/reject", {"ticket": self._assist_last_ticket})
-        except Exception as exc:
-            messagebox.showwarning("Outside Mercy", "Failed: %s" % exc)
-            return
-        if not r.get("ok"):
-            messagebox.showwarning("Outside Mercy", r.get("error") or "Failed")
-            return
-        self._assist_reload(win)
-
-    def _assist_say(self, win, entry):
-        t = entry.get("1.0", "end").strip()
-        if not t:
-            messagebox.showwarning("Outside Mercy", "Text is required")
-            return
-        try:
-            r = post("/assist/say", {"text": t})
         except Exception as exc:
             messagebox.showwarning("Outside Mercy", "Failed: %s" % exc)
             return
