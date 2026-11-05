@@ -27,28 +27,52 @@
 
 ## 快速开始
 
-给 Agent / 脚本（推荐，非交互）：
+**本版全程不询问输入。** 所有配置走环境变量，没设就用默认值——没有 `input()`、没有「按任意键」、没有二次确认。
+
+### 给 Agent / 脚本（常态）
+
+`python run.py` 是**前台阻塞**命令，会一直跑到本局结束（最长 45 分钟）。执行器若把它当普通命令等待返回，必然触发自己的超时并 kill 进程，服务随之消失，之后所有请求都是 `connection refused`。
+
+必须后台启动、再轮询就绪：
+
+```bash
+cd <项目目录>
+
+TM_TRADER="模型名-思考强度-Agent平台" TM_EVENTS=1 TM_FR=0 TM_SLOT=0 \
+  nohup python run.py > run.log 2>&1 &
+
+for i in $(seq 1 30); do
+  curl -sf http://127.0.0.1:8734/health >/dev/null 2>&1 && break
+  sleep 1
+done
+```
+
+Windows `cmd`：
 
 ```bat
-set TM_TRADER=DeepSeek-V4-Flash-高-DeepSeekHarness
-set TM_EVENTS=1
-set TM_FR=1
-set TM_SLOT=0
-python run.py
+cd /d <项目目录>
+start "" /b python run.py
 ```
 
-人工双击演示：
+不要用固定的 `sleep 6 && curl`——启动需要 3~8 秒，机器慢时会假失败。
 
-```
-双击  启动游戏.bat        （会问模型标识和事件模式）
-或    python run.py --interactive
+**启动后立刻定档**，否则 `/tick` 不推进：
+
+```bash
+curl -X POST http://127.0.0.1:8734/roll/stop
 ```
 
-只要服务、不要观众席（无头跑、自己接界面）：
+### 人手动玩（双击）
 
-```
+`启动游戏.bat`——同样不问任何问题，只把即将使用的参数打印出来。
+
+### 只要服务不要窗口
+
+```bash
 python run.py server 127.0.0.1 8734
 ```
+
+无桌面环境必须用这个。默认模式会创建 Tk 窗口，没有桌面时创建失败会带崩整个进程。
 
 环境变量：
 

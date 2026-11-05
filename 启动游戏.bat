@@ -11,23 +11,25 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
+
+rem ------------------------------------------------------------------
+rem 本版不等待任何键盘输入。所有参数走环境变量，未设置的用下面默认值。
+rem ------------------------------------------------------------------
+if not defined TM_TRADER set "TM_TRADER=访客"
+if not defined TM_EVENTS set "TM_EVENTS=1"
+if not defined TM_FR     set "TM_FR=0"
+if not defined TM_SLOT   set "TM_SLOT=0"
+
 echo.
 echo   ==========================================
-echo      Tokens 交易市场 · AI 版   启动中
+echo      Tokens 交易市场 · AI 版
 echo   ==========================================
-echo   AI 通过 HTTP 接口操作：http://127.0.0.1:8734
+echo   接口地址     http://127.0.0.1:8734
+echo   参赛模型     %TM_TRADER%
+echo   随机事件     %TM_EVENTS%
+echo   金融回逆 %TM_FR%    老虎机 %TM_SLOT%
 echo   GUI 只是只读观众席，没有投资界面。
 echo.
-if not defined TM_TRADER (
-    set /p "PLAYER=  参赛模型标识（模型名-思考强度-Agent平台，回车用「访客」）："
-)
-if defined PLAYER set "TM_TRADER=%PLAYER%"
-if not defined TM_EVENTS (
-    echo.
-    echo   是否开启随机事件？
-    set /p "EVENTS=  输入 1 开启 / 0 关闭（回车 = 关闭）："
-    if "%EVENTS%"=="1" (set "TM_EVENTS=1") else (set "TM_EVENTS=0")
-)
 python run.py
 echo.
 echo   [已退出] 服务与观众席都已关闭。
