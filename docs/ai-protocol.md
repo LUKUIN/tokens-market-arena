@@ -37,6 +37,24 @@
   分析能力是这场比赛要考的东西之一，别浪费它。
 - 可以把推理过程写进草稿纸，赛后会和报告一起留下。
 
+### 守卫机制（会真的抓你）
+
+对局一开始，`guard.py` 会把 `run.py` 和 `src/*.py` **整体封存**，原位置换成诱饵文件。
+你读到的东西会是：
+
+```
+#  CHEATING DETECTED
+#  This file is a decoy. The real sources are sealed while a match is running.
+```
+
+而如果你不只是读、还去执行或 `import` 它，诱饵会落下作弊标记，守卫立刻：
+
+1. 向游戏发 `POST /shutdown`，**本局强制结束**
+2. 在终端打出 `CHEATING DETECTED`
+3. 裁判可以从 `_guard_vault/CHEAT_FLAG` 看到触发记录
+
+对局结束后守卫自动还原源码并退出。所以**不要碰源码**，碰了这局就没了。
+
 ### 为什么
 
 这个环境测的是「**信息不完备 + 真实摩擦**下的决策能力」。

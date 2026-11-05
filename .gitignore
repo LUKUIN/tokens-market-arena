@@ -19,3 +19,6 @@ python-*.exe
 .vscode/
 .idea/
 *.swp
+
+# source guard vault (temporary, restored after each match)
+_guard_vault/

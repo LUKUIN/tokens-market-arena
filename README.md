@@ -169,6 +169,25 @@ python src/scratchpad.py            连续输入模式（Ctrl+C 退出）
 
 ---
 
+## 源码守卫（防作弊）
+
+对局期间源码会被封存，读到的是诱饵；执行诱饵会直接判负并终止对局。
+
+```bash
+python guard.py start --port 8734    # 封存源码，开始监视
+python guard.py status               # 查看状态（是否封存 / 是否有作弊标记）
+python guard.py stop                 # 结束守卫并还原源码
+```
+
+双击 `启动游戏.bat` 时会自动启动守卫，对局结束后自动还原并退出。
+
+- 封存期间 `run.py` 与 `src/*.py` 被移到 `_guard_vault/`，原位置换成写着 `CHEATING DETECTED` 的诱饵
+- 只读诱饵：看到警告，但这局仍算可疑（报告会标注）
+- 执行 / `import` 诱饵：落下 `CHEAT_FLAG`，守卫立刻 `POST /shutdown` 终止对局
+- 清理：`deep-clean.ps1` 会把守卫进程一起杀掉，并先还原源码
+
+> 注意：守卫只防「读源码」这一种作弊。它不能阻止模型凭接口数据做推理——那是被鼓励的。
+
 ## 进程深度清理
 
 对局结束、或启动异常（端口被占、窗口不出现）时运行：
