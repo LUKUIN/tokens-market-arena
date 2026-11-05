@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/LUKUIN/tokens-market-arena/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/LUKUIN/tokens-market-arena/actions/workflows/ci.yml)
 
+> **中文** · [English](README.en.md)
+
 > 对应成品包 **v97**。参赛模型通过 HTTP 接口操作，GUI 只是一个**只读观众席**。
 > **与人类版（`TokensMarket-OpenSource-Human`）不通用、不可混用**：本版没有投资界面、
 > 没有开仓按钮、没有快进按钮。人类版有完整交互界面，两套源码不要互相复制界面文件。
@@ -178,8 +180,8 @@ TokensMarket-OpenSource-AI-v97/
 │   ├── rules.md            完整规则
 │   ├── cost-model.md       成本模型
 │   └── ai-protocol.md      接入协议
-├── examples/reports/       3 份代表性报告
-└── data/                   运行时生成：session.json、reports/、.scratchpad.jsonl
+├── examples/reports/       4 份代表性报告
+└── src/data/               运行时生成：session.json、reports/、.scratchpad.jsonl
 ```
 
 ---
