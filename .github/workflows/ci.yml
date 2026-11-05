@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Python ${{ matrix.python }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: 语法检查
+        run: python -m py_compile run.py src/tm_engine.py src/tm_api.py src/tm_watch_ai.py src/scratchpad.py
+
+      - name: 引擎冒烟（临时目录，不碰仓库）
+        shell: python
+        run: |
+          import sys, tempfile
+          sys.path.insert(0, "src")
+          import tm_engine
+
+          home = tempfile.mkdtemp()
+          eng = tm_engine.Engine(home)
+          st = eng.state()
+
+          assert abs(st["equity"] - 1_000_000.0) < 1e-6, st["equity"]
+          assert len(st["prices"]) == 7, len(st["prices"])
+          assert st["target"] == 2_000_000.0, st["target"]
+          print("equity =", st["equity"])
+          print("tick   =", st["tick"])
+          print("pairs  =", len(st["prices"]))
+
+      - name: 精简体（?history 参数）不带历史
+        shell: python
+        run: |
+          import sys, tempfile
+          sys.path.insert(0, "src")
+          import tm_engine
+
+          home = tempfile.mkdtemp()
+          eng = tm_engine.Engine(home)
+          light = eng.state(include_history=False, include_events=False)
+          assert light["price_history"] == {}, "精简状态不该带历史"
+          assert light["events"] == [], "精简状态不该带事件流"
+          assert light["equity"] == eng.state()["equity"]
+          print("light state OK")
+
+      - name: 防误提交签名密钥
+        shell: bash
+        run: |
+          if grep -rn "guard::a8f3c1e7" src/ run.py; then
+            echo "::error::发现成品包的硬编码签名密钥，开源仓库不能包含"
+            exit 1
+          fi
+          echo "未发现硬编码密钥"
