@@ -149,6 +149,17 @@ FONT_LOG = ("Microsoft YaHei UI", 11)   # 活动流专用：比状态栏大一�
 FONT_MONO = ("Consolas", 9)
 FONT_MONO_BIG = ("Consolas", 11, "bold")
 
+# 活动流快捷分类：「黑天鹅」与「流动性枯竭」在引擎里同为 kind="gap"，
+# 靠 "[Liquidity drained]" 文本前缀区分。
+LOG_TABS = (
+    ("all", "全部"),
+    ("gap", "黑天鹅"),
+    ("liq", "流动性枯竭"),
+    ("news", "随机事件"),
+    ("trade", "开仓/平仓"),
+    ("risk", "风险"),
+)
+
 PAIR_ORDER = ["AURA/CORE", "FROST/CORE", "AMBER/CORE", "TIDE/CORE",
               "LUMEN/CORE", "NEON/CORE", "ASH/CORE"]
 PAIR_COLORS = {
@@ -212,6 +223,9 @@ class Watch:
         self._closing = False
         self._last_trader = None
         self._log_seen = set()
+        self._log_events = []
+        self._log_filter = "all"
+        self._log_tabs = {}
         self._log_anchor_init = False
         self._last_tick = -1
         self.st = None
@@ -281,21 +295,26 @@ class Watch:
         for i in range(4):
             metrics.columnconfigure(i, weight=1, uniform="m")
 
-        # ---------- 状态条 ----------
+        # ---------- 状态条第一行：资金面 ----------
         bar = card(root)
-        bar.pack(fill="x", padx=14, pady=(0, 6))
+        bar.pack(fill="x", padx=14, pady=(0, 4))
         self.lbl_loan = tk.Label(bar, text="可贷 Tokens：—", font=FONT, bg=CARD, fg=BLUE)
         self.lbl_loan.pack(side="left", padx=16, pady=7)
         self.lbl_extra = tk.Label(bar, text="", font=FONT_BAR, bg=CARD, fg=MUTED)
         self.lbl_extra.pack(side="left", padx=(0, 16))
-        self.lbl_target_abs = tk.Label(bar, text="目标 —", font=FONT_BAR, bg=CARD, fg=MUTED)
-        self.lbl_target_abs.pack(side="left", padx=(0, 16))
-        self.lbl_stats = tk.Label(bar, text="回撤 — | 夏普 —", font=FONT_BAR, bg=CARD, fg=MUTED)
-        self.lbl_stats.pack(side="left", padx=(0, 16))
-        self.lbl_ff = tk.Label(bar, text="快进 —", font=FONT_BAR, bg=CARD, fg=MUTED)
-        self.lbl_ff.pack(side="left", padx=(0, 16))
         self.lbl_status = tk.Label(bar, text="等待连接…", font=FONT, bg=CARD, fg=MUTED)
         self.lbl_status.pack(side="right", padx=16, pady=7)
+
+        # ---------- 状态条第二行：每 tick 都在变的数字 ----------
+        # 单行塞不下（英文版尤其明显），回撤/夏普/胜率/费用另起一行
+        bar2 = card(root)
+        bar2.pack(fill="x", padx=14, pady=(0, 6))
+        self.lbl_target_abs = tk.Label(bar2, text="目标 —", font=FONT_BAR, bg=CARD, fg=MUTED)
+        self.lbl_target_abs.pack(side="left", padx=16, pady=5)
+        self.lbl_stats = tk.Label(bar2, text="回撤 — | 夏普 —", font=FONT_BAR, bg=CARD, fg=MUTED)
+        self.lbl_stats.pack(side="left", padx=(0, 16))
+        self.lbl_ff = tk.Label(bar2, text="快进 —", font=FONT_BAR, bg=CARD, fg=MUTED)
+        self.lbl_ff.pack(side="right", padx=16, pady=5)
 
         # ---------- 时间进度条 ----------
         tbar = tk.Frame(root, bg=CARD)
@@ -330,9 +349,9 @@ class Watch:
             left, columns=("pair", "side", "lots", "leverage", "entry", "price", "margin", "upnl"),
             show="headings", height=7, style="Tm.Treeview", selectmode="none")
         for col, title, width in (
-                ("pair", "交易对", 296), ("side", "方向", 48), ("lots", "手数", 64),
-                ("leverage", "杠杆", 48), ("entry", "开仓价", 86), ("price", "最新价", 86),
-                ("margin", "保证金", 80), ("upnl", "浮动盈亏", 90)):
+                ("pair", "交易对", 196), ("side", "方向", 50), ("lots", "手数", 62),
+                ("leverage", "杠杆", 62), ("entry", "开仓价", 88), ("price", "最新价", 88),
+                ("margin", "保证金", 82), ("upnl", "浮动盈亏", 96)):
             self.tree.heading(col, text=title)
             self.tree.column(col, width=width, anchor="center")
         self.tree.pack(fill="both", expand=True, padx=10, pady=(0, 10))
@@ -373,7 +392,21 @@ class Watch:
             # 由玩家自己点开，不自动弹。
             return
 
-        self._section_title(bottom, "活动流（可滚动）")
+        # ---------- 活动流头部：标题 + 分类快捷按钮 ----------
+        feed_head = tk.Frame(bottom, bg=CARD)
+        feed_head.pack(fill="x")
+        tk.Label(feed_head, text="活动流", font=FONT, bg=CARD, fg=TEXT, anchor="w",
+                 padx=14, pady=max(3, int(7 * self.V))).pack(side="left")
+        tab_box = tk.Frame(feed_head, bg=CARD)
+        tab_box.pack(side="right", padx=(0, 12), pady=max(2, int(3 * self.V)))
+        for _key, _label in LOG_TABS:
+            _btn = tk.Button(tab_box, text=_label, font=FONT_TINY, bd=0, relief="flat",
+                             cursor="hand2", padx=9, pady=2,
+                             command=lambda k=_key: self._set_log_filter(k))
+            _btn.pack(side="left", padx=(0, 4))
+            self._log_tabs[_key] = _btn
+        self._paint_log_tabs()
+
         log_wrap = tk.Frame(bottom, bg=CARD)
         log_wrap.pack(fill="both", expand=True, padx=0, pady=(0, 10))
         self.log_text = tk.Text(log_wrap, bg=CARD, fg=MUTED, font=FONT_LOG, bd=0,
@@ -617,10 +650,10 @@ class Watch:
                       and now - float(e.get("time", 0)) < 120][-3:]
             if recent:
                 self.tree.insert("", "end", values=(
-                    "（空仓）最近 %d 笔成交：" % len(recent), "", "", "", "", "", "", ""))
+                    "（空仓）最近 %d 笔" % len(recent), "", "", "", "", "", "", ""))
                 for e in reversed(recent):
                     self.tree.insert("", "end", values=(
-                        "  [t%d] %s" % (e["tick"], e["text"][:40]), "", "", "", "", "", "", ""))
+                        "  [t%d] %s" % (e["tick"], e["text"][:26]), "", "", "", "", "", "", ""))
             else:
                 self.tree.insert("", "end", values=("（空仓）", "", "", "", "", "", "", ""))
         else:
@@ -659,14 +692,10 @@ class Watch:
         if self.log_text is None:
             return
         if not events:
-            if self._log_seen:
-                self._log_seen.clear()
-                self.log_text.config(state="normal")
-                self.log_text.delete("1.0", "end")
-                self.log_text.config(state="disabled")
+            if self._log_events:
+                self._log_events = []
+                self._render_log()
             return
-        at_bottom = self.log_text.yview()[1] >= 0.999
-        top = self.log_text.yview()[0]
         fresh = []
         for e in events:
             key = (e.get("tick"), e.get("text"))
@@ -674,37 +703,92 @@ class Watch:
                 continue
             self._log_seen.add(key)
             fresh.append(e)
-        if not fresh:
-            return
         if len(self._log_seen) > 400:
             self._log_seen.clear()
             for e in events:
                 self._log_seen.add((e.get("tick"), e.get("text")))
+        if not fresh:
+            return
+        self._log_events.extend(fresh)
+        if len(self._log_events) > 300:
+            self._log_events = self._log_events[-300:]
+        self._write_log(fresh)
+
+    def _log_cat(self, e):
+        """把一个事件归入某个快捷分类。"""
+        k = e.get("kind", "info")
+        t = e.get("text", "")
+        if k == "gap":
+            return "liq" if "[Liquidity drained]" in t else "gap"
+        if k == "news":
+            return "news"
+        if k in ("open", "close"):
+            return "trade"
+        if k in ("stopout", "blowup", "margin_call", "warn"):
+            return "risk"
+        return "other"
+
+    def _set_log_filter(self, key):
+        if key == self._log_filter:
+            return
+        self._log_filter = key
+        self._paint_log_tabs()
+        self._render_log()
+
+    def _paint_log_tabs(self):
+        for key, btn in self._log_tabs.items():
+            on = (key == self._log_filter)
+            btn.config(bg=BLUE if on else "#F1F1F1",
+                       fg="#FFFFFF" if on else MUTED,
+                       activebackground=BLUE if on else "#E5E5E5",
+                       activeforeground="#FFFFFF" if on else MUTED)
+
+    def _render_log(self):
+        if self.log_text is None:
+            return
+        rows = self._log_events if self._log_filter == "all" else [
+            e for e in self._log_events if self._log_cat(e) == self._log_filter]
         self.log_text.config(state="normal")
-        # 按事件种类上色：危险→红/橙，机会→蓝，成交→绿，资金→紫，氛围→灰
-        kind_color = {
-            "blowup": "#8B0000",      # 爆仓：深红
-            "stopout": RED,           # 强平：红
-            "gap": "#E07000",         # 黑天鹅跳空：橙红
-            "news": PURPLE,           # 突发新闻：紫
-            "warn": ORANGE,           # 警告（资金告负、异常退出）：橙
-            "margin_call": YELLOW,    # 追加保证金：暗金
-            "open": BLUE,             # 开仓成交：蓝
-            "close": GREEN,           # 平仓成交：绿
-            "loan": "#7B2FBE",        # 借贷：紫
-            "end": "#444444",         # 本局结束：深灰
-            "trader": "#44546A",      # 身份识别：蓝灰
-            "info": MUTED,            # 氛围：灰
-        }
-        for e in fresh:
-            k = e.get("kind", "info")
-            self.log_text.insert("end", "[t%d] %s\n" % (e["tick"], e["text"]), k)
-            self.log_text.tag_config(k, foreground=kind_color.get(k, MUTED))
+        self.log_text.delete("1.0", "end")
+        self._write_rows(rows)
+        self.log_text.see("end")
+        self.log_text.config(state="disabled")
+
+    def _write_log(self, fresh):
+        rows = fresh if self._log_filter == "all" else [
+            e for e in fresh if self._log_cat(e) == self._log_filter]
+        if not rows:
+            return
+        at_bottom = self.log_text.yview()[1] >= 0.999
+        top = self.log_text.yview()[0]
+        self.log_text.config(state="normal")
+        self._write_rows(rows)
         if at_bottom:
             self.log_text.see("end")
         else:
             self.log_text.yview_moveto(top)
         self.log_text.config(state="disabled")
+
+    def _write_rows(self, rows):
+        # 按事件类型上色：危险->红/橙，机会->蓝，成交->绿，资金->紫，环境->灰
+        kind_color = {
+            "blowup": "#8B0000",      # 爆仓：深红
+            "stopout": RED,           # 强平：红
+            "gap": "#E07000",         # 黑天鹅跳空：橙红
+            "news": PURPLE,           # 突发消息：紫
+            "warn": ORANGE,           # 警告（负现金、异常退出）：橙
+            "margin_call": YELLOW,    # 追保：暗金
+            "open": BLUE,             # 开仓：蓝
+            "close": GREEN,           # 平仓：绿
+            "loan": "#7B2FBE",        # 借款：紫
+            "end": "#444444",         # 对局结束：深灰
+            "trader": "#44546A",      # 身份：蓝灰
+            "info": MUTED,            # 环境：灰
+        }
+        for e in rows:
+            k = e.get("kind", "info")
+            self.log_text.insert("end", "[t%d] %s\n" % (e["tick"], e["text"]), k)
+            self.log_text.tag_config(k, foreground=kind_color.get(k, MUTED))
 
     def _draw_equity(self):
         c = self.equity_canvas
