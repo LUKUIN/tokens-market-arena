@@ -67,7 +67,7 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 | 方法 | 路径 | 参数 |
 |---|---|---|
 | POST | `/open` | `{"pair":"AURA/CORE","side":"LONG","lots":10,"leverage":100}` |
-| POST | `/close` | `{"pair":"AURA/CORE","lots":10}` |
+| POST | `/close` | `{"pair":"AURA/CORE","lots":10}`；`lots` 超过实际持仓时按实际持仓全平，不报错 |
 | POST | `/loan` | `{"amount":1000000}` |
 | POST | `/repay` | `{"amount":600000}` |
 
@@ -90,6 +90,12 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 | POST | `/shutdown` | 关服务（**会记一次异常退出**） |
 
 ## 四、`/state` 里最该看的字段
+
+> **省 token 的用法**：`GET /state?history=0` 会省掉 `price_history`（每品种最多
+> 2000 个点，随对局膨胀）。只判断局面的模型建议一直带这个参数——
+> 下单类接口（`/open` `/close` `/loan` `/tick` 等）的回包已经是精简版，
+> 不带历史曲线、不带事件流。
+
 
 ```jsonc
 {

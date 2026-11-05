@@ -132,7 +132,7 @@ def _start_server(host="127.0.0.1", port=8734):
     return False
 
 
-def _run_ai(interactive=False):
+def _run_ai(interactive=False, port=None):
     if interactive:
         setup = _interactive_setup()
         if not setup:
@@ -149,11 +149,12 @@ def _run_ai(interactive=False):
     print("  玩家 %s | %s" % (trader, EVENTS_TEXT["1" if events_on else "0"]))
     print(SCRATCHPAD_HINT)
 
-    if not _start_server():
-        print("  服务启动失败：端口 8734 可能被占用，先结束残留的 python 进程再试。")
+    port = int(port or os.environ.get("TM_PORT") or 8734)
+    if not _start_server(port=port):
+        print("  服务启动失败：端口 %d 可能被占用，先结束残留的 python 进程再试。" % port)
         return 1
 
-    print("  HTTP 接口：http://127.0.0.1:8734（/rules 先读规则）")
+    print("  HTTP 接口：http://127.0.0.1:%d（/rules 先读规则）" % port)
     print("  正在拉起只读观众席……")
     import tm_watch_ai
     tm_watch_ai.main()
@@ -173,8 +174,10 @@ def main(argv=None):
 
     if mode == "state":
         import json
-        from tm_api import ENGINE
-        print(json.dumps(ENGINE.state(), ensure_ascii=False, indent=1))
+        from tm_engine import Engine
+        home = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "data")
+        # readonly：只读查询不得写 .running、不得累加异常退出计数
+        print(json.dumps(Engine(home, readonly=True).state(), ensure_ascii=False, indent=1))
         return 0
 
     if mode in ("--interactive", "interactive", "-i"):
