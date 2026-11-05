@@ -1,0 +1,21 @@
+# 运行产物（每次开局都会变，不该进版本库）
+data/
+_agent/
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*.pyd
+*.c
+build/
+
+# 成品包专用（开源版不需要，防止误提交）
+manifest.json
+startgame.pyc
+python-*.exe
+~$*
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
