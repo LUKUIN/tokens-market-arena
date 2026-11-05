@@ -1,0 +1,10 @@
+# Git 的属性规则是「后面的覆盖前面的」，所以通配规则必须写在最前面。
+
+# 默认：自动检测、统一 LF
+* text=auto eol=lf
+
+# 例外：Windows 脚本必须 CRLF。
+# bat 用 LF 存盘时 cmd 会把多行粘成一句，中文全变成「不是内部或外部命令」。
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
