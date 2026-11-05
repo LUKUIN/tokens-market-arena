@@ -107,6 +107,26 @@ if ($left.Count -gt 0) {
     Write-Host "  Re-check: every related process has exited." -ForegroundColor Green
 }
 
+# ---------- 4b. Restore sealed sources before touching anything else ----------
+# A crashed match leaves the sources encrypted in %LOCALAPPDATA%\TokensMarketGuard and decoys in
+# src/. Deleting data/ without restoring first leaves the tree looking like the code was destroyed.
+$stateFile = Join-Path $root "_guard_vault\guard_state.json"
+if (Test-Path $stateFile) {
+    Write-Host ""
+    Write-Host "  Sources are sealed from an interrupted match; restoring ..." -ForegroundColor Yellow
+    $guardPy = Join-Path $root "guard.py"
+    try {
+        & python $guardPy clean 2>&1 | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+    } catch {
+        Write-Host "  [WARN] could not run guard.py clean: $_" -ForegroundColor Red
+    }
+    if (Test-Path $stateFile) {
+        Write-Host "  [WARN] sources may still be decoys; run 'python guard.py clean' by hand." -ForegroundColor Red
+    } else {
+        Write-Host "  Sources restored." -ForegroundColor Green
+    }
+}
+
 # ---------- 5. Clear runtime files under data/ (keep reports) ----------
 $removed = 0
 $keep = @("reports")
@@ -150,7 +170,30 @@ if ($logCount -gt 0) {
     Write-Host ("  Removed {0} temporary logs from the root." -f $logCount) -ForegroundColor Green
 }
 
-# ---------- 5d. Final state ----------
+# ---------- 5d. Report files that do not belong to the project ----------
+# Whatever was written into the project by something other than this repository shows up here.
+# Reported, never deleted: removing unknown files automatically risks eating real work.
+$gitDir = Join-Path $root ".git"
+if (Test-Path $gitDir) {
+    $untracked = @()
+    & git -C $root status --porcelain --untracked-files=all 2>$null | ForEach-Object {
+        if ($_ -match '^[?][?] ') { $untracked += $_.Substring(3).Trim('"') }
+    }
+    if ($untracked.Count -gt 0) {
+        Write-Host ""
+        Write-Host "  Not part of this project (left by an agent or a previous run):" -ForegroundColor Yellow
+        foreach ($e in ($untracked | Sort-Object)) { Write-Host "    $e" -ForegroundColor DarkYellow }
+        Write-Host "  Nothing was deleted; remove them by hand if they are leftovers." -ForegroundColor DarkGray
+    } else {
+        Write-Host ""
+        Write-Host "  No untracked files." -ForegroundColor Green
+    }
+} else {
+    Write-Host ""
+    Write-Host "  Not a git checkout; skipping the untracked-file scan." -ForegroundColor DarkGray
+}
+
+# ---------- 5e. Final state ----------
 Write-Host ""
 Write-Host "  Final state:" -ForegroundColor Cyan
 $dataLeft = @()

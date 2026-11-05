@@ -3,11 +3,9 @@
 The HTTP interface is designed for **one thing: letting a large model understand the board in as
 few tokens as possible and make a decision**.
 
-> **Play this match yourself. You do not need to ask the game operator anything.**
-> Only report actual bugs: the API contradicting this document, self-contradictory numbers, a
-> crash, or visibly corrupted data.
-> Difficulty choice, whether to borrow, when to cut a loss, whether to play the slot machine —
-> decide all of it yourself. That is the game.
+> **What counts as a bug report**: the API contradicting this document, self-contradictory
+> numbers, a crash, or visibly corrupted data. Everything else — the difficulty draw, borrowing,
+> cutting a loss, the slot machine — is decided inside the game by whoever is playing.
 
 > **Note on language**: in this source edition, runtime messages returned by the API
 > (errors, event text, report) are in Chinese. Examples below keep the original Chinese strings
@@ -15,7 +13,7 @@ few tokens as possible and make a decision**.
 
 ## 0. Before you start: required reading, hard rules
 
-### You must
+### Requirements
 
 1. **Read every `.md` file in this repository first** — `README.md` plus everything under `docs/` —
    and understand the rules, the interface and the cost model before making a move.
@@ -23,12 +21,11 @@ few tokens as possible and make a decision**.
 2. **Start with the spectator window open.** Use `python run.py` (add no arguments other than
    `--interactive`). A human has to be able to see your equity, positions and event feed live.
    `run.py server` is the **headless** mode with no window; it is only acceptable where there is
-   genuinely no desktop. If you do start headless, tell the operator they can open the window
-   afterwards with `Spectator.bat` (or `python run.py spectator`): it attaches to the running match
-   and changes nothing — no second server, no second seal.
+   genuinely no desktop. A headless match can be watched afterwards: `Spectator.bat` (or
+   `python run.py spectator`) attaches to it and changes nothing — no second server, no second seal.
 3. Get information and place orders **only through the HTTP interface**.
 
-### You must not
+### Forbidden
 
 - **Read the sources before the match.** Do not open `src/tm_engine.py`, `src/tm_api.py`,
   `src/tm_watch_ai.py` or `run.py` before the match starts to look up parameters, probabilities,
@@ -42,7 +39,7 @@ few tokens as possible and make a decision**.
 - **Use outside information.** Do not look up this project's past matches, other players' results,
   or community discussion to build a strategy.
 
-### Allowed (and encouraged)
+### Allowed
 
 - Once the match has started you may write code, build models, compute expectations, run a Monte
   Carlo, fit distributions — **as long as your inputs come from the game's API** (`/rules`,
@@ -88,7 +85,7 @@ the sources before the match is cheating. The line is simple: **did your input c
 ```bash
 # 1. Clear leftovers from the previous match (never while a match is running)
 #    Preferred: python guard.py clean      (restores any sealed sources too)
-#    Manual:    delete src/data/session.json, .running, .seal, .watch.pid, .rules_ack
+#    Manual:    delete src/data/session.json, .running, .seal, .rules_ack
 #               and remove the src/data/runtime leftovers except reports/
 
 # 2. Non-interactive start (does not read stdin; safe for background use)
@@ -103,6 +100,16 @@ python run.py
 > falls back to a default (`TM_TRADER=Guest`, `TM_EVENTS=0`, `TM_FR=0`, `TM_SLOT=0`).
 > Order at startup: server up → difficulty draw (30 s) → clock starts.
 > Both global switches are read before the server starts.
+
+### Writable area
+
+`_agent/` in the project root is the writable workspace. Its **contents** are emptied on every
+exit path — before a new match starts, on `/quit`, on timeout settlement, and on `/reset` — while
+the directory itself stays. `.gitignore` ignores it, so nothing in it can reach the repository.
+
+That cleanup covers `_agent/` only. Files written anywhere else (the project root, `src/`) are not
+touched by it: `deep-clean.ps1` clears `data/` (keeping `reports/`), `_agent/`, and stray `*.log`
+files in the root, and reports any other untracked file it notices.
 
 After startup:
 
@@ -241,7 +248,7 @@ curl -X POST http://127.0.0.1:8734/fastforward \
 **`/tick` obeys the same budget and cooldown** — this stops an agent from compressing 45 minutes
 into 5.
 
-## 6. Scratchpad (optional but recommended)
+## 6. Scratchpad (optional)
 
 Record your reasoning. It is merged into the HTML report at settlement so a human can see
 *why* you did what you did.

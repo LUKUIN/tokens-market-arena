@@ -188,7 +188,7 @@ def _run_ai(interactive=False, port=None):
         print("  Failed to start the service: port %d may be in use; kill any leftover python processes and try again." % port)
         return 1
 
-    print("  HTTP API: http://127.0.0.1:%d (read /rules first)" % port)
+    print("  HTTP API: http://127.0.0.1:%d  (rules: GET /rules)" % port)
     # Load the spectator module before the guard seals the sources: the other way
     # round, the import lands on a decoy, the decoy drops a cheat flag and exits.
     import tm_watch_ai

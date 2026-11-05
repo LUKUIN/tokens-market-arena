@@ -29,14 +29,14 @@ unset falls back to a default. There is no `input()`, no "press any key", no con
 
 ### For an agent or script (the normal case)
 
-`python run.py` runs **in the foreground for the whole match** — up to 45 minutes. If your harness
-executes it as a blocking command and hits its own timeout, the process is killed and the server
+`python run.py` runs **in the foreground for the whole match** — up to 45 minutes. A harness that
+executes it as a blocking command reaches its own timeout, kills the process, and the server
 disappears; every later request then fails with `connection refused`.
 
-**Use `python run.py`, which also opens the spectator window.** Do not use `run.py server` — that is
-the headless mode with no window, and nobody can watch the match happen.
+`python run.py` opens the spectator window as well; `run.py server` is the headless mode and opens
+no window.
 
-Start it in the background and poll until it answers:
+Background start followed by a readiness poll:
 
 ```bash
 cd <project-directory>
@@ -57,10 +57,10 @@ cd /d <project-directory>
 start "" /b python run.py
 ```
 
-Do **not** use a fixed `sleep 6 && curl` — startup takes 3–8 seconds, and a slow machine makes it
-look like a failure.
+A fixed `sleep 6 && curl` gives false failures: startup takes 3–8 seconds and a slow machine
+finishes later.
 
-**Then lock the difficulty.** Until it is locked, `/tick` does nothing:
+Difficulty locking — `/tick` advances nothing before it is locked:
 
 ```bash
 curl -X POST http://127.0.0.1:8734/roll/stop
@@ -239,8 +239,7 @@ python src/scratchpad.py            continuous input mode (Ctrl+C to exit)
 Over HTTP: `GET /scratchpad`, `POST /scratchpad {"text": "..."}`.
 
 Every entry is flushed to disk (`src/data/.scratchpad.jsonl`) immediately, so closing the terminal
-mid-match loses nothing. Cleared on settle/reset. You may skip it entirely — the report will say
-"no entries".
+mid-match loses nothing. Cleared on settle/reset. Skipping it leaves "no entries" in the report.
 
 ---
 
@@ -319,7 +318,7 @@ TokensMarket-OpenSource-AI-v97/
 ├── Start Match.bat          zero-prompt launcher; same behaviour as python run.py
 ├── Spectator.bat            window only; attaches to a running match, or starts one
 ├── DeepClean Process.bat    interactive cleanup for humans (contains pause)
-├── deep-clean.ps1          cleanup implementation; agents should call this directly
+├── deep-clean.ps1          cleanup implementation (non-interactive; callable from a script)
 ├── src/
 │   ├── tm_engine.py        engine (pure logic)
 │   ├── tm_api.py           HTTP layer
