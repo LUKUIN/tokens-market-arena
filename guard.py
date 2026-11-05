@@ -217,3 +217,8 @@ def restore_if_sealed(quiet=True):
     if n and not quiet:
         print("  [GUARD] previous match left the sources sealed; restored %d file(s)." % n)
     return n
+
+
+def cheated():
+    """本局是否已因执行诱饵而被标记作弊。"""
+    return os.path.isfile(FLAG)
