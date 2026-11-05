@@ -530,13 +530,8 @@ class Watch:
             sub = "已开通 · 参赛者还可求助 %d 次" % remaining
             tk.Label(head, text=sub, bg=BG, fg=MUTED, font=FONT_SMALL).pack(side="left", padx=(12, 0))
         else:
-            sub = "未开通 · 局内开通需 %d 现金（当前 %d）" % (
-                a.get("price", 500000), int(a.get("balance") or 0))
+            sub = "未开通 · 由参赛者自行决定是否花 %d 现金开通" % a.get("price", 500000)
             tk.Label(head, text=sub, bg=BG, fg=ORANGE, font=FONT_SMALL).pack(side="left", padx=(12, 0))
-            tk.Button(head, text="花 %d 开通" % a.get("price", 500000),
-                      command=lambda: self._assist_enable(win),
-                      bg="#EAF4FF", fg=BLUE, activebackground="#D9ECFF", font=FONT_SMALL,
-                      bd=0, padx=12, pady=4, cursor="hand2").pack(side="right")
 
         wrap = tk.Frame(win, bg=BG)
         wrap.pack(fill="both", expand=True, padx=18, pady=(6, 6))
@@ -590,19 +585,6 @@ class Watch:
             pass
         self._poll_assist()
         self._show_assist()
-
-    def _assist_enable(self, win):
-        if not messagebox.askyesno("外部的怜悯", "确认花 500,000 现金开通场外援助？"):
-            return
-        try:
-            r = post("/assist/enable", {})
-        except Exception as exc:
-            messagebox.showwarning("外部的怜悯", "开通失败：%s" % exc)
-            return
-        if not r.get("ok"):
-            messagebox.showwarning("外部的怜悯", r.get("error") or "开通失败")
-            return
-        self._assist_reload(win)
 
     def _assist_reply(self, win, entry):
         t = entry.get("1.0", "end").strip()
