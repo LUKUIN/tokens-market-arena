@@ -1310,15 +1310,6 @@ class Engine:
             self._assist_push("human", "（驳回）", ticket=ticket, kind="reject")
             return {"ok": True, "ticket": ticket}
 
-    def assist_say(self, text):
-        """观众席主动发话，不限次数。"""
-        with LOCK:
-            t = (text or "").strip()
-            if not t:
-                return {"ok": False, "error": "内容不能为空"}
-            self._assist_push("human", t[:2000], kind="chat")
-            return {"ok": True}
-
     def scratch_append(self, text):
         """草稿纸：记录决策思路与对策。可选，用不用由玩家决定。"""
         with LOCK:

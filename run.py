@@ -105,8 +105,8 @@ def _interactive_setup():
         "80% 空 / 15% 返还 5 倍 / 5% 返还 10 倍；中奖金额的 -5%~100% 推高目标")
     assist_on = _ask_special(
         "TM_ASSIST", "是否开启【外部的怜悯】？（开局前免费）",
-        "开启后参赛者可向观众席求助，整局 3 次；观众席可回复或驳回，"
-        "也可主动发话。局内再开启需支付 50 万现金")
+        "开启后参赛者可向观众席求助，整局 3 次；观众席看到后可回复或驳回。"
+        "局内再开启需支付 50 万现金")
     os.environ["TM_FR"] = "1" if fr_on else "0"
     os.environ["TM_SLOT"] = "1" if slot_on else "0"
     os.environ["TM_ASSIST"] = "1" if assist_on else "0"

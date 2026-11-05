@@ -296,7 +296,6 @@ POST /assist/enable                                       # 开局后开通，�
 GET  /assist/pending                                      # 观众席 GUI 用
 POST /assist/reply    {"ticket": "a1", "text": "..."}     # 观众席回复
 POST /assist/reject   {"ticket": "a1"}                    # 观众席驳回
-POST /assist/say      {"text": "..."}                     # 观众席主动发话
 ```
 
 开局前设 `TM_ASSIST=1` 可免费开启。求助不阻塞：`/assist/ask` 立即返回，之后自己轮询

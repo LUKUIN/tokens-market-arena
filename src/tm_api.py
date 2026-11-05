@@ -139,8 +139,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(ENGINE.assist_reply(b.get("ticket"), b.get("text")))
         if path == "/assist/reject":
             return self._send(ENGINE.assist_reject(b.get("ticket")))
-        if path == "/assist/say":
-            return self._send(ENGINE.assist_say(b.get("text")))
         if path == "/reset":
             return self._send(ENGINE.reset())
         if path == "/pause":

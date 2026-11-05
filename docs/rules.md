@@ -181,7 +181,6 @@ A: 源码版没有 `.pyd`，只有 `.bat` 可能被 SmartScreen 拦。右键 bat
 | `GET /assist/inbox` | 取观众席还没被取走的话；取过的不再重复投递 |
 | `POST /assist/reply` `{"ticket": "a1", "text": "..."}` | 观众席回复某次求助 |
 | `POST /assist/reject` `{"ticket": "a1"}` | 观众席驳回某次求助 |
-| `POST /assist/say` `{"text": "..."}` | 观众席主动发话，不限次数 |
 | `GET /assist/pending` | 观众席 GUI 轮询用：还没回复的求助 + 完整对话 |
 
 **求助不阻塞。** `POST /assist/ask` 立刻返回，参赛者接着交易，自己决定什么时候查 `GET /assist/inbox`。
