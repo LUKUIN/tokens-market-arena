@@ -13,6 +13,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Test matrix, not a runtime requirement. Running needs Python 3.10+ only; `python` is fine.
+        # Two entries cover old/new syntax differences; they do not mean the project targets them.
         python: ["3.11", "3.13"]
 
     steps:

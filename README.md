@@ -112,7 +112,7 @@ desktop that fails and takes the process down with it.
 | `TM_PORT` | Service port, default `8734`. Change this instead of editing code |
 | `TM_SIGN_KEY` | HMAC key for save files; a dev placeholder is used when unset |
 
-Requirements: Python 3.10+, Windows (the spectator uses Win32 window-icon APIs), no third-party dependencies.
+Requirements: Python 3.10+, Windows (the spectator uses Win32 window-icon APIs), no third-party dependencies. Just use `python` — `py -3.12` / `py -3.13` answer with a Microsoft Store prompt on some machines, which means that version is not installed, not that the environment is broken. The version numbers in `.github/workflows/ci.yml` are a test matrix, not a runtime requirement.
 
 ---
 

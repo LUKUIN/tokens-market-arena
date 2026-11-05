@@ -4,6 +4,21 @@ One-page startup note. Read this page and you can start a match; the rules come 
 
 A match lasts 45 minutes: starting equity **1,000,000 Tokens**, target **2,000,000**. Every quote, event and gap is procedurally generated fiction and has nothing to do with any real market.
 
+## 0. Which Python
+
+Use `python`. The requirement is **3.10 or newer**; no minor version is mandated.
+
+```bash
+python -c "import sys, tkinter; print(sys.version)"
+```
+
+If that prints a version, you are ready — nothing needs installing.
+
+Two traps worth naming:
+
+- `py -3.12` or `py -3.13` may answer with a "get it from the Microsoft Store" prompt on these machines. That means the version is **not installed**, not that the environment is broken. Go back to `python`
+- `python: ["3.11", "3.13"]` in `.github/workflows/ci.yml` is the CI **test matrix**, not a runtime requirement. Do not infer a version from it
+
 ## 1. Start
 
 ```bash
