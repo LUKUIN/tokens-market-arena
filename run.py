@@ -219,9 +219,10 @@ def _start_guard(port):
 
     def loop():
         try:
-            sealed = guard.seal()
+            sealed = guard.seal(port)
             print("  [GUARD] sealed %d source file(s); decoys are in place." % len(sealed))
-        except Exception:
+        except Exception as exc:
+            print("  [GUARD] sources not sealed for this match: %s" % exc)
             return
         while not stop.is_set():
             try:
@@ -252,11 +253,20 @@ def _self_heal(port=None):
     lift the protection of a running match. Only that match's own exit path may restore
     its sources, which is why this check comes first.
     """
-    try:
-        if _probe(port=int(port or os.environ.get("TM_PORT") or 8734)):
-            return
-    except Exception:
-        pass
+    seen = []
+    for candidate in (port, os.environ.get("TM_PORT"), 8734):
+        try:
+            ip = int(candidate)
+        except Exception:
+            continue
+        if ip not in seen:
+            seen.append(ip)
+    for ip in seen:
+        try:
+            if _probe(port=ip):
+                return
+        except Exception:
+            pass
     try:
         import guard
     except Exception:

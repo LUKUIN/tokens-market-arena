@@ -113,8 +113,29 @@ def _post(port, path, timeout=2.0):
         return None
 
 
-def seal():
-    """Encrypt the sources into a vault outside the project, then drop decoys."""
+def seal(port=None):
+    """Encrypt the sources into a vault outside the project, then drop decoys.
+
+    ``port`` is recorded in the state file so a later process can tell whether the match that
+    sealed these sources is still alive before it thinks about restoring them.
+
+    Refuses when a previous vault is still on disk: sealing twice would encrypt the *decoys*
+    into a new box and overwrite the state file, orphaning the real sources of the match that
+    is still running. That box can only be opened by its own unseal().
+    """
+    if os.path.isfile(STATE):
+        try:
+            with io.open(STATE, encoding="utf-8") as f:
+                prev = json.load(f) or {}
+            prev_box = os.path.join(GUARD_ROOT, prev.get("box") or "")
+            if prev.get("box") and os.path.isdir(prev_box):
+                raise RuntimeError(
+                    "sources are already sealed by a match that has not exited (box %s); "
+                    "sealing again would orphan them" % prev.get("box"))
+        except RuntimeError:
+            raise
+        except Exception:
+            pass
     os.makedirs(VAULT, exist_ok=True)
     os.makedirs(GUARD_ROOT, exist_ok=True)
     session = os.urandom(8).hex()
@@ -137,7 +158,8 @@ def seal():
         with io.open(src, "w", encoding="utf-8", newline="\n") as f:
             f.write(DECOY)
         sealed.append(rel)
-    state = {"sealed": sealed, "started": time.time(), "box": session, "map": mapping}
+    state = {"sealed": sealed, "started": time.time(), "box": session, "map": mapping,
+             "port": core_port(port)}
     with io.open(STATE, "w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False, indent=1)
     return sealed
@@ -285,12 +307,41 @@ def main(argv):
 if __name__ == "__main__":
     sys.exit(main(None))
 
+def core_port(port=None):
+    """Normalise whatever we were handed into an int port, or None."""
+    try:
+        return int(port) if port else None
+    except Exception:
+        return None
+
+
+def _alive(port, timeout=1.0):
+    """Is a match still answering on this port?"""
+    import urllib.request
+    try:
+        urllib.request.urlopen("http://127.0.0.1:%d/health" % int(port), timeout=timeout).read()
+        return True
+    except Exception:
+        return False
+
+
 def restore_if_sealed(quiet=True):
     """If a previous match left the sources sealed, restore them now.
 
-    Safe to call at any time: it does nothing when no vault exists.
+    Safe to call at any time: it does nothing when no vault exists, and does nothing while the
+    match that sealed them is still answering on its port — that seal is live, and only that
+    match's own exit path may lift it.
     """
     if not os.path.isdir(VAULT):
+        return 0
+    port = None
+    try:
+        if os.path.isfile(STATE):
+            with io.open(STATE, encoding="utf-8") as f:
+                port = (json.load(f) or {}).get("port")
+    except Exception:
+        port = None
+    if port and _alive(port):
         return 0
     n = unseal()
     if n and not quiet:

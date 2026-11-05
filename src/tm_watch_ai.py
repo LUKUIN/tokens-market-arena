@@ -152,6 +152,10 @@ FONT_MONO_BIG = ("Consolas", 11, "bold")
 
 # Event feed quick-filter tabs: (key, label).  "gap" and "liq" share the same
 # engine kind "gap", so they are split by the "[Liquidity drained]" text prefix.
+# 流动性事件的前缀（英文版 [Liquidity drained]、中文版【流动性枯竭】，
+# 两种括号都要覆盖——此前只匹配英文，中文事件全被归进「黑天鹅」）
+_LIQ_MARKS = ("[Liquidity drained]", "【流动性枯竭】", "[流动性枯竭]")
+
 LOG_TABS = (
     ("all", "All"),
     ("gap", "Black Swan"),
@@ -721,7 +725,7 @@ class Watch:
         k = e.get("kind", "info")
         t = e.get("text", "")
         if k == "gap":
-            return "liq" if "[Liquidity drained]" in t else "gap"
+            return "liq" if any(m in t for m in _LIQ_MARKS) else "gap"
         if k == "news":
             return "news"
         if k in ("open", "close"):
@@ -886,7 +890,6 @@ class Watch:
         except Exception:
             pass
 
-    @staticmethod
     def _kill_all(self):
         if not messagebox.askyesno("End processes", "The Tokens service will stop immediately and the spectator will close.\nAre you sure?"):
             return
