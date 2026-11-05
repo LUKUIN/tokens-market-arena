@@ -97,10 +97,12 @@ Requirements: Python 3.10+, Windows (the spectator uses Win32 window-icon APIs),
 
 ## How a match runs
 
-0. **Startup Q&A (fixed order)**: player name → random events on/off → **Finance Reversal** on/off →
-   **Slot Machine** on/off. Supply all four via env vars and nothing is asked;
-   `run.py` prompts only for whatever is missing, and `input()` treats EOF as **off**.
-   **Both global switches are decided after the events question and before the difficulty draw.**
+0. **Nothing is asked.** Contestant ID, random events, **Finance Reversal** and **Slot Machine**
+   all come from environment variables; an unset key falls back to its default.
+   `python run.py --interactive` does ask four questions in that order, but it exists for a human
+   demo only — an agent must not use it, because a backgrounded process reads `input()` as EOF and
+   silently turns both global switches off.
+   **Both global switches are decided before the difficulty draw.**
 1. The server starts and the spectator window appears, titled "drawing difficulty".
 2. 30-second difficulty draw: the model may call `POST /roll/stop` to lock it early, otherwise it
    locks automatically when the countdown ends.
@@ -156,6 +158,49 @@ Base URL defaults to `http://127.0.0.1:8734`.
 
 > **Token saving**: add `?history=0` to `/state` to drop `price_history` (up to 2000 points per
 > pair). Order-placing endpoints already return a trimmed state — no history, no event feed.
+
+---
+
+## Agent prompt template (copy this)
+
+Paste the block below into the system prompt (or the first message) of any coding or agent
+harness. It is deliberately short — every number lives in `/rules`, so the agent is told the
+rules of engagement, not the parameters.
+
+```text
+You are a contestant in Tokens Trading Market, a 45-minute leveraged trading simulator.
+
+Setup
+- The server answers at http://127.0.0.1:8734 (the launcher prints the real port).
+- Starting equity is 1,000,000; the target is reported by /state.
+- Call POST /roll/stop once if you want to lock the difficulty early; otherwise it locks
+  automatically when the 30-second draw ends.
+
+Allowed
+- GET /rules, /state, /health, /reports: reading the board is part of the game.
+- POST /open, /close, /close_all, /tick, /fastforward, /loan, /repay, /quit: every action
+  goes through the HTTP API.
+- Record your reasoning with the scratchpad CLI (python scratchpad.py "..."). It is merged
+  into the final HTML report.
+
+Forbidden: doing any of these voids the match
+- Reading, opening, grepping or executing anything under src/, or any file the source guard
+  names. Sources are sealed while a match runs and a decoy records the attempt.
+- Editing session.json, save files or reports to change a result.
+- Asking the human operator how the game works; /rules is the only authority.
+- Disabling or bypassing the source guard.
+
+Fairness
+- Your inputs must come from the game: /rules, /state, and your own reasoning.
+- Public knowledge (market intuition, position sizing, risk control) is fine. Reading this
+  project's source is not: that is the line between reasoning and looking up the answer.
+
+At the end
+- Call /quit, wait for settlement, then read the generated HTML report to review your match.
+```
+
+> A match is scored by the HTML report, not by whether the target was reached. Single matches
+> swing from +106% to −229%, so one match says very little about a model's skill.
 
 ---
 
@@ -234,8 +279,8 @@ It does two things:
 ```
 TokensMarket-OpenSource-AI-v97/
 ├── run.py                  entry point (ai / --interactive demo / server / state)
-├── Start Game.bat            Windows double-click launcher
-├── DeepClean Process.bat        manual double-click cleanup (contains pause)
+├── Start Game.bat            zero-prompt launcher; same behaviour as python run.py
+├── DeepClean Process.bat        interactive cleanup for humans (contains pause)
 ├── deep-clean.ps1          cleanup implementation; agents should call this directly
 ├── src/
 │   ├── tm_engine.py        engine (pure logic)
@@ -292,6 +337,7 @@ Six large models, one match each, same rules (45 minutes / 1,000,000 capital / d
 - This source edition has no `.pyd` and no manifest signature check; `TM_SIGN_KEY` defaults to a dev
   placeholder — set your own for real competitions.
 - A full 45-minute stress run has not been performed; only short matches were verified.
-- This is the English edition. The Chinese edition lives at
-  `https://github.com/LUKUIN/tokens-market-arena`. Runtime messages (errors, event names, the
-  HTML report) are Chinese in both, because they come from the engine.
+- This edition is fully English: README, docs, source comments, and all runtime output
+  (error messages, event names, the HTML report).
+- The Chinese edition lives in the same repository on the `main` branch:
+  `https://github.com/LUKUIN/tokens-market-arena/tree/main`
