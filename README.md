@@ -39,6 +39,9 @@ unset falls back to a default. There is no `input()`, no "press any key", no con
 C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
 ```
 
+> **Every `python` in the rest of this document means that absolute path.** Copy it verbatim; never
+> fall back to whatever `python` happens to resolve to on PATH.
+
 `run.py` validates the version as its first action: anything but 3.14 exits with code 2 and prints
 that command. Do not use `where python`, `py -3.12` or `python3` to find another interpreter — the
 spectator's GUI widgets and the `.pyc` files are built for 3.14, and any other version only yields

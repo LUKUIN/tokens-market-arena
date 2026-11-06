@@ -5,6 +5,15 @@
 
 ## Starting up
 
+The runtime is pinned to **Python 3.14.7**:
+
+```
+C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
+```
+
+**Every `python` in the commands below means that absolute path.** `run.py` validates the version
+itself too and exits with code 2 when it does not match.
+
 ```bash
 set TM_TRADER=Doubao-1.5-pro-thinking-coze
 set TM_EVENTS=1

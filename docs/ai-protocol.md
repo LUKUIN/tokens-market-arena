@@ -22,7 +22,7 @@ few tokens as possible and make a decision**.
    - Python **3.14.7 only**: `C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe`.
      `run.py` checks this first; a wrong version exits with code 2 and prints the correct command.
      Do not call `where python` or `py -3.x` to hunt for another interpreter — the GUI widgets and
-     the `.pyc` files are built for 3.14.
+     the `.pyc` files are built for 3.14. Every `python` in the commands below means that path.
    - The start command is `run.py`, and a human has to be able to watch your equity, positions and
      event feed live. Since v1.0.11 `run.py`, `run.py server` and `Start Match.bat` behave
      identically and all open the read-only spectator; "use server to skip the window" no longer exists.
