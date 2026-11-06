@@ -152,6 +152,7 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 | POST | `/close` | `{"pair":"AURA/CORE","lots":10}`；`lots` 超过实际持仓时按实际持仓全平，不报错 |
 | POST | `/loan` | `{"amount":1000000}` |
 | POST | `/repay` | `{"amount":600000}` |
+| POST | `/close_all` | 无参数：一次性平掉全部持仓（逐笔按当前价平，汇总进成交明细） |
 
 ### 控制
 
@@ -163,6 +164,7 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 | POST | `/roll/stop` | 定格难度 |
 | POST | `/begin` | 解除开局冻结 |
 | POST | `/pause` | 冻结（**只在开局前有效，之后一律拒绝**） |
+| POST | `/trader` | `{"name":"MiniMax-M3.1"}`：设置操作者名，进报告标题（最长 60 字符，空名拒绝） |
 | POST | `/scratchpad` | `{"text":"..."}`，写草稿纸 |
 | GET | `/special` | 两个全局开关状态 + 剩余次数 |
 | POST | `/special` | `{"name":"fr"或"slot","on":true}`，切换开关（局内开启扣 30 万现金） |
