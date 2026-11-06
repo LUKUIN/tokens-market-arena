@@ -2,11 +2,17 @@
 chcp 936 >nul
 cd /d "%~dp0"
 title Tokens Trading Market - Spectator only
-where python >nul 2>nul
-if errorlevel 1 (
+setlocal
+
+rem ==================================================================
+rem Pinned runtime: Python 3.14 only.
+rem ==================================================================
+set "PY=C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe"
+if not exist "%PY%" (
     echo.
-    echo   [ERROR] python command not found.
-    echo   Install Python 3.10 or newer and tick "Add python.exe to PATH" during setup.
+    echo   [ERROR] Pinned runtime not found:
+    echo     %PY%
+    echo   This build requires Python 3.14.7. Do not substitute another Python.
     echo.
     pause
     exit /b 1
@@ -15,9 +21,8 @@ if errorlevel 1 (
 rem ------------------------------------------------------------------
 rem Opens ONLY the read-only spectator window.
 rem
-rem Use it when the match is already running but no window appeared:
-rem   - an agent started the game with "python run.py server"
-rem   - the Tk window failed to open, or was closed by accident
+rem A normal start already opens the spectator; this is a recovery entry
+rem for "I closed the window by accident and the match is still running".
 rem
 rem If a match already answers on the port, this attaches to it and does
 rem nothing else: no server, no guard, no sealing. Attaching must never
@@ -37,7 +42,7 @@ echo   Port           %TM_PORT%
 echo   Read-only      no orders, no fast-forward
 echo.
 
-python run.py spectator 127.0.0.1 %TM_PORT%
+"%PY%" run.py spectator 127.0.0.1 %TM_PORT%
 
 echo.
 echo   [EXITED] Spectator closed. The match itself was not affected.

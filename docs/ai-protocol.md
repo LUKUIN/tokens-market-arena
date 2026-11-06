@@ -18,11 +18,18 @@ few tokens as possible and make a decision**.
 1. **Read every `.md` file in this repository first** — `README.md` plus everything under `docs/` —
    and understand the rules, the interface and the cost model before making a move.
    Do not read them mid-match; that turns the rules into a crutch.
-2. **Start with the spectator window open.** Use `python run.py` (add no arguments other than
-   `--interactive`). A human has to be able to see your equity, positions and event feed live.
-   `run.py server` is the **headless** mode with no window; it is only acceptable where there is
-   genuinely no desktop. A headless match can be watched afterwards: `Spectator.bat` (or
-   `python run.py spectator`) attaches to it and changes nothing — no second server, no second seal.
+2. **Use the pinned runtime, and start with the spectator window open.**
+   - Python **3.14.7 only**: `C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe`.
+     `run.py` checks this first; a wrong version exits with code 2 and prints the correct command.
+     Do not call `where python` or `py -3.x` to hunt for another interpreter — the GUI widgets and
+     the `.pyc` files are built for 3.14.
+   - The start command is `run.py`, and a human has to be able to watch your equity, positions and
+     event feed live. Since v1.0.11 `run.py`, `run.py server` and `Start Match.bat` behave
+     identically and all open the read-only spectator; "use server to skip the window" no longer exists.
+   - `--headless` is the only windowless mode, allowed only where there is genuinely no desktop
+     (CI, containers, pure SSH). It is forbidden for a local match.
+   - If you closed the window by accident, attach again with `Spectator.bat` (or
+     `python run.py spectator`) — it changes nothing: no second server, no second seal.
 3. Get information and place orders **only through the HTTP interface**.
 
 ### Forbidden

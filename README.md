@@ -33,12 +33,25 @@ unset falls back to a default. There is no `input()`, no "press any key", no con
 
 ### For an agent or script (the normal case)
 
-`python run.py` runs **in the foreground for the whole match** — up to 45 minutes. A harness that
+**The only supported runtime** is **Python 3.14.7**:
+
+```
+C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
+```
+
+`run.py` validates the version as its first action: anything but 3.14 exits with code 2 and prints
+that command. Do not use `where python`, `py -3.12` or `python3` to find another interpreter — the
+spectator's GUI widgets and the `.pyc` files are built for 3.14, and any other version only yields
+`bad magic number`.
+
+`run.py` runs **in the foreground for the whole match** — up to 45 minutes. A harness that
 executes it as a blocking command reaches its own timeout, kills the process, and the server
 disappears; every later request then fails with `connection refused`.
 
-`python run.py` opens the spectator window as well; `run.py server` is the headless mode and opens
-no window.
+**The spectator opens with the server and that is mandatory.** Since v1.0.11 `run.py`,
+`run.py server` and double-clicking `Start Match.bat` behave identically and all open the read-only
+spectator. Only `--headless` suppresses the window, and it exists solely for environments without a
+desktop (CI, containers).
 
 Background start followed by a readiness poll:
 
@@ -46,7 +59,7 @@ Background start followed by a readiness poll:
 cd <project-directory>
 
 TM_TRADER="Doubao-1.5-pro-thinking-coze" TM_EVENTS=1 TM_FR=0 TM_SLOT=0 \
-  nohup python run.py > run.log 2>&1 &
+  nohup "C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe" run.py > run.log 2>&1 &
 
 for i in $(seq 1 30); do
   curl -sf http://127.0.0.1:8734/health >/dev/null 2>&1 && break
@@ -58,7 +71,7 @@ On Windows `cmd`:
 
 ```bat
 cd /d <project-directory>
-start "" /b python run.py
+start "" /b "C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe" run.py
 ```
 
 A fixed `sleep 6 && curl` gives false failures: startup takes 3–8 seconds and a slow machine
@@ -72,14 +85,14 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 
 ### Double-click launcher
 
-`Start Match.bat` is just another entry point — it asks nothing either, and only prints the values
-it is about to use. Same zero-prompt behaviour as `python run.py`.
+`Start Match.bat` is the double-click entry point, with exactly the same behaviour as `python run.py`:
+zero prompts, and it opens the spectator too. The batch file pins the runtime to
+`C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe` instead of going through `where python`.
 
-### Spectator only (when no window appeared)
+### Spectator only (when the window was closed by accident)
 
-`Spectator.bat` opens **only** the read-only window. Use it when a match is already running but you
-cannot see it: an agent started it with `run.py server`, the Tk window failed to open, or the window
-was closed by accident.
+`Spectator.bat` opens **only** the read-only window. A normal start already brings a window, so this
+is a recovery entry: you closed the spectator by accident and the match is still running.
 
 ```
 python run.py spectator                 # window only, default port
@@ -93,14 +106,14 @@ running, it starts a server first so you still get a window to look at.
 
 Closing the window does **not** end the match. Settle it with `/quit` or the "End processes" button.
 
-### Server only, no window
+### Service without a window (no-desktop environments only)
 
 ```bash
-python run.py server 127.0.0.1 8734
+python run.py --headless          # same as: run.py server --headless
 ```
 
-Use this in headless environments. The default mode creates a Tk window; on a machine without a
-desktop that fails and takes the process down with it.
+Only for CI, containers and pure-SSH boxes. **Do not use it for a local match**: the spectator must
+be open so a human can watch equity, holdings and the activity feed live.
 
 ### Environment variables
 
@@ -114,7 +127,7 @@ desktop that fails and takes the process down with it.
 | `TM_PORT` | Service port, default `8734`. Change this instead of editing code |
 | `TM_SIGN_KEY` | HMAC key for save files; a dev placeholder is used when unset |
 
-Requirements: Python 3.10+, Windows (the spectator uses Win32 window-icon APIs), no third-party dependencies. Just use `python` — `py -3.12` / `py -3.13` answer with a Microsoft Store prompt on some machines, which means that version is not installed, not that the environment is broken. The version numbers in `.github/workflows/ci.yml` are a test matrix, not a runtime requirement.
+Requirements: **Python 3.14.7** (pinned on this machine at `C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe`), Windows (the spectator uses Win32 window-icon APIs), no third-party dependencies. Do not switch to 3.10-3.13: the `.pyc` magic number and the tkinter widgets are built for 3.14, so another version cannot start. The numbers in `.github/workflows/ci.yml` are the CI test matrix, not a runtime requirement.
 
 ---
 
@@ -315,9 +328,9 @@ It does two things:
 
 ```
 TokensMarket-OpenSource-AI-v97/
-├── run.py                  entry point (ai / --interactive demo / server / state)
-├── Start Match.bat          zero-prompt launcher; same behaviour as python run.py
-├── Spectator.bat            window only; attaches to a running match, or starts one
+├── run.py                  entry point (ai / --interactive demo / server / --headless / state)
+├── Start Match.bat          zero-prompt launcher; same behaviour as python run.py (spectator included)
+├── Spectator.bat            recovery window when you closed the spectator; attaches, or starts one
 ├── DeepClean Process.bat    interactive cleanup for humans (contains pause)
 ├── deep-clean.ps1          cleanup implementation (non-interactive; callable from a script)
 ├── src/

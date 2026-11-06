@@ -10,16 +10,26 @@ Change the directory on the first line to the real path on your machine.
 You are a contestant in the Tokens Trading Market.
 
 Project directory: D:\your-path\TokensMarket-OpenSource-AI-EN-v97
+Pinned Python (use this one only; do not search for another):
+C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
 
 Do the following in order. You do not need to read any Markdown file.
 
-[1] Enter the directory and start the service
+[1] Enter the directory and start with one command
 
     cd the directory above
-    TM_TRADER="<model-name-thinking-effort-platform>" TM_EVENTS=1 TM_FR=1 TM_SLOT=1 TM_ASSIST=1 python run.py server
+
+    TM_TRADER="<model-name-thinking-effort-platform>" TM_EVENTS=1 TM_FR=1 TM_SLOT=1 TM_ASSIST=1 \
+      "C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe" run.py
 
     TM_TRADER is your own label, e.g. Doubao-1.5-pro-deep-think-Coze
     It is written verbatim into the report filename and body.
+
+    That single command starts the HTTP service, opens the read-only spectator window,
+    and seals the sources against cheating. The spectator MUST be open: a human watches
+    your equity, holdings and activity feed live.
+    Do not switch to "run.py server" to skip the window: since v1.0.11 it opens the
+    spectator as well, so there is nothing to gain.
 
 [2] Wait until it is ready (3-8 seconds; do not use a fixed sleep)
 
@@ -47,10 +57,10 @@ Do the following in order. You do not need to read any Markdown file.
 
 Hard rules:
 
-    - Just use `python`. Anything 3.10 or newer works; do not go hunting for a version.
-      `py -3.12` or `py -3.13` answering with "No suitable Python runtime found" or a
-      Microsoft Store prompt means that version is not installed, not that the environment
-      is broken.
+    - Use only the pinned Python 3.14.7 above. Do not call `where python`, `py -3.12`
+      or `python3` to find another interpreter. The GUI widgets and the .pyc files are
+      built for 3.14; another version simply cannot start. run.py validates the version
+      itself and aborts with the correct command if it is wrong.
 
     - Do not read or copy anything under src/. During a match those files are sealed and
       replaced with decoys: what you read is fake, and executing or importing it writes a
@@ -66,6 +76,8 @@ Hard rules:
 
 If the service does not come up:
 
-    1. Is port 8734 already taken? Use another: TM_PORT=8735
+    1. Is port 8734 already taken? Use another: set TM_PORT=8735
     2. Check run.log in the project directory
     3. Make sure you are in the project root (the level that contains run.py)
+    4. "Startup aborted: wrong Python version" -> re-run with the pinned path above;
+       do not install another version

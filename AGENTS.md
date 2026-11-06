@@ -4,29 +4,28 @@ One-page startup note. Read this page and you can start a match; the rules come 
 
 A match lasts 45 minutes: starting equity **1,000,000 Tokens**, target **2,000,000**. Every quote, event and gap is procedurally generated fiction and has nothing to do with any real market.
 
-## 0. Which Python
+## 0. Which Python (hard requirement, do not search)
 
-Use `python`. The requirement is **3.10 or newer**; no minor version is mandated.
+Use this one interpreter only, **Python 3.14.7**:
 
-```bash
-python -c "import sys, tkinter; print(sys.version)"
+```
+C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
 ```
 
-If that prints a version, you are ready — nothing needs installing.
+`run.py` validates the version as its very first action: anything but 3.14 aborts with exit code 2
+and prints that exact command. Do not use `where python`, `py -3.12` or `python3` to hunt for another
+interpreter — the spectator's GUI widgets and the `.pyc` files are built for 3.14, and any other
+version simply cannot start. If the short name is not found, write the full path; do not report
+"the environment is broken".
 
-Two traps worth naming:
-
-- `py -3.12` or `py -3.13` may answer with a "get it from the Microsoft Store" prompt on these machines. That means the version is **not installed**, not that the environment is broken. Go back to `python`
-- `python: ["3.11", "3.13"]` in `.github/workflows/ci.yml` is the CI **test matrix**, not a runtime requirement. Do not infer a version from it
-
-## 1. Start
+## 1. Start (one command; the spectator opens itself)
 
 ```bash
 cd <project directory>
 
 TM_TRADER="<model-name-thinking-effort-platform>" \
 TM_EVENTS=1 TM_FR=1 TM_SLOT=1 TM_ASSIST=1 \
-  nohup python run.py server > run.log 2>&1 &
+  nohup "C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe" run.py > run.log 2>&1 &
 
 # readiness check: startup takes 3-8 seconds, a fixed sleep produces false failures
 for i in $(seq 1 30); do
@@ -35,7 +34,13 @@ for i in $(seq 1 30); do
 done
 ```
 
-`run.py server` is headless. `python run.py` without `server` also opens a read-only spectator window, and on a machine with no desktop the window creation failure takes the whole process down.
+**The spectator is mandatory, not optional.** Since v1.0.11, `run.py`, `run.py server` and
+double-clicking `Start Match.bat` behave identically: all three open the read-only spectator.
+A human must be able to watch equity, holdings and the activity feed live.
+
+- Do not start `run.py spectator` yourself to "add" a window — a normal start already has one
+- Only `--headless` suppresses the window, and only for environments with no desktop (CI, containers)
+- With the wrong Python, `run.py` exits with code 2 instead of failing later on `bad magic number`
 
 | Variable | Meaning |
 |---|---|

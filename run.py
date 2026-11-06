@@ -9,10 +9,16 @@ This build is the version for large-model contestants:
 It is **not compatible with, and cannot be mixed with**, the human edition (TokensMarket-OpenSource-Human):
 the human edition has a full interactive GUI; the AI edition does not.
 
+Runtime (the only supported one):
+    C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe run.py
+
 Usage:
-    python run.py                 start from environment variables (nothing is prompted)
-    python run.py --interactive   prompt for the name and event mode on the command line
-    python run.py server          start only the HTTP service (headless runs, or when you bring your own GUI)
+    python run.py                 start the match AND open the read-only spectator (the normal path)
+    python run.py --interactive   prompt for the name and event mode on the command line (human demo)
+    python run.py server          same as no argument: it opens the spectator too (kept for old scripts)
+    python run.py --headless      true headless: HTTP service without a window,
+                                  for environments with no desktop (CI / containers)
+    python run.py spectator       attach a spectator window only; does not start a new match
 
 Environment variables:
     TM_TRADER      player name, format [model name-reasoning effort-agent platform]
@@ -25,6 +31,31 @@ Environment variables:
 import os
 import sys
 import time
+
+# ---------------------------------------------------------------------------
+# Hard runtime gate. The .pyc / .pyd files and the tkinter spectator are all
+# built against Python 3.14; any other interpreter gives "bad magic number" or
+# fails to create the window. Fail early with the one correct command instead
+# of letting the contestant guess.
+# ---------------------------------------------------------------------------
+PY_REQUIRED = (3, 14)
+PY_PINNED = r"C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe"
+
+if sys.version_info[:2] != PY_REQUIRED:
+    _hint = PY_PINNED if os.path.exists(PY_PINNED) else "py -3.14"
+    print()
+    print("  " + "=" * 62)
+    print("  Startup aborted: wrong Python version.")
+    print("  This match runs on Python 3.14 only (3.14.7 on this machine); current is %d.%d.%d."
+          % tuple(sys.version_info[:3]))
+    print("  The GUI widgets and .pyc files are built for 3.14; another version will fail.")
+    print("  Re-run with:")
+    print()
+    print('    "%s" run.py' % _hint)
+    print()
+    print("  " + "=" * 62)
+    print()
+    sys.exit(2)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "src"))
@@ -298,6 +329,11 @@ def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     mode = argv[0].lower() if argv else "auto"
 
+    # `python run.py --headless` is the same as `python run.py server --headless`
+    if mode in ("--headless", "headless"):
+        mode = "server"
+        argv = ["server", "--headless"] + argv[1:]
+
     if mode == "spectator":
         host = argv[1] if len(argv) > 1 else "127.0.0.1"
         port = int(argv[2]) if len(argv) > 2 else 8734
@@ -305,17 +341,20 @@ def main(argv=None):
 
     if mode == "server":
         from tm_api import serve
-        host = argv[1] if len(argv) > 1 else "127.0.0.1"
-        port = int(argv[2]) if len(argv) > 2 else 8734
-        if "--spectator" in argv:
-            return _run_spectator(host, port)
-        print()
-        print("  " + "!" * 62)
-        print("  WARNING: server mode creates NO spectator window.")
-        print("  A human cannot watch the match. Agents should run `python run.py`")
-        print("  (optionally with --spectator here) so the spectator opens too.")
-        print("  " + "!" * 62)
-        print()
+        # --headless is a switch, not a positional argument. Filter it out before reading
+        # host / port so both `run.py server 127.0.0.1 8737 --headless` and
+        # `run.py --headless 127.0.0.1 8737` work.
+        rest = [a for a in argv[1:] if a != "--headless"]
+        host = rest[0] if rest else "127.0.0.1"
+        port = int(rest[1]) if len(rest) > 1 else 8734
+        if "--headless" not in argv:
+            # Since v1.0.11 `server` no longer means "headless": it behaves exactly like
+            # `python run.py` and opens the read-only spectator. A human must be able to
+            # watch the match live, not attach a window afterwards.
+            print("  server mode now opens the read-only spectator too "
+                  "(same as `python run.py`); add --headless only when there is no desktop.")
+            return _run_ai(interactive=False, port=port)
+        print("  --headless: HTTP service only, no spectator window (no-desktop environments only).")
         guard_stop = _start_guard(port)
         if (os.environ.get("TM_ASSIST") or "0") == "1":
             try:

@@ -13,8 +13,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Test matrix, not a runtime requirement. Running needs Python 3.10+ only; `python` is fine.
-        # Two entries cover old/new syntax differences; they do not mean the project targets them.
+        # Test matrix, not a runtime requirement. **The runtime is pinned to Python 3.14.7** (see AGENTS.md).
+        # These two deliberately non-3.14 entries verify that run.py's version guard actually blocks them.
         python: ["3.11", "3.13"]
 
     steps:
@@ -23,6 +23,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+
+      - name: Version guard (non-3.14 must exit with code 2)
+        shell: bash
+        run: |
+          set +e
+          python run.py state > /dev/null 2>&1
+          rc=$?
+          if [ "$rc" -ne 2 ]; then
+            echo "::error::version guard broken: expected exit code 2, got $rc"
+            exit 1
+          fi
+          echo "version guard OK (exit code 2)"
 
       - name: Syntax check
         run: python -m py_compile run.py src/tm_engine.py src/tm_api.py src/tm_watch_ai.py src/scratchpad.py
