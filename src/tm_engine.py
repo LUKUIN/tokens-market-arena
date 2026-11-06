@@ -1421,7 +1421,7 @@ class Engine:
                     "state": st, "ff": self.ff_plan()}
 
     def manual_tick(self):
-        """AI 版逐 tick 推进：同样消耗快进额度，但不设冷却。"""
+        """AI 版逐 tick 推进：消耗快进额度、会被正在生效的快进冷却挡住，但自身不产生冷却。"""
         with LOCK:
             if self.s.get("finished"):
                 return {"ok": False, "error": "本局已结束"}
@@ -2174,8 +2174,17 @@ class Engine:
             # 快进使用情况
             _ffr = [int(x) for x in (self.s.get("ff_records") or [])]
             _ff_used = float(self.s.get("ff_used") or 0.0)
-            _ff_txt = (" + ".join("%d′" % (x // 60) for x in _ffr) if _ffr
-                       else "未使用")
+            _ff_parts = []
+            _i = 0
+            while _i < len(_ffr):
+                _v = _ffr[_i]
+                _n = 1
+                while _i + _n < len(_ffr) and _ffr[_i + _n] == _v:
+                    _n += 1
+                _ff_parts.append("%d′%02d″%s" % (
+                    _v // 60, _v % 60, ("×%d" % _n) if _n > 1 else ""))
+                _i += _n
+            _ff_txt = (" + ".join(_ff_parts) if _ff_parts else "未使用")
             # ---------- 成本归因：把净盈亏拆成可核对的五项 ----------
             _slip_c = float(m.get("slip_cost") or 0.0)
             _spread_c = float(m.get("spread_cost") or 0.0)
