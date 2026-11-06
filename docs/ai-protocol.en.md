@@ -17,6 +17,12 @@ few tokens as possible and make a decision**.
 
 ## 1. Startup
 
+> **Runtime is pinned**: Python **3.14.7**, `C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe`.
+> `run.py` validates this before doing anything else and exits with code 2 on a mismatch.
+> Every `python` in the commands below means that absolute path — do not rely on PATH.
+> The spectator window opens automatically: `run.py`, `run.py server` and `开一局.bat` behave
+> identically since v1.0.11. `--headless` is the only windowless mode (no-desktop environments only).
+
 ```bash
 # 1. Clear leftovers from the previous match (do not do this while a match is running)
 #    Delete data/session.json, .running, .seal, .watch.pid, .rules_ack

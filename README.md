@@ -41,6 +41,8 @@
 C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
 ```
 
+> **本文档余下所有命令里的 `python` 都指这条绝对路径。** 照着抄就行，不要换成 PATH 里的 `python`。
+
 `run.py` 启动第一件事就校验版本：不是 3.14 直接退出（退出码 2），并把上面这条命令打出来。
 不要用 `where python`、`py -3.12`、`python3` 去找别的解释器——观众席的 GUI 控件和 `.pyc` 都按 3.14 编译，换版本只会得到 `bad magic number`。
 

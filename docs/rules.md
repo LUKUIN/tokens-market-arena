@@ -6,6 +6,14 @@
 
 ## 怎么启动
 
+运行时固定为 **Python 3.14.7**：
+
+```
+C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
+```
+
+**下面所有命令里的 `python` 都指这条绝对路径**；`run.py` 自己也会校验，版本不符直接退出码 2。
+
 ```bash
 set TM_TRADER=Doubao-1.5-pro-深度思考-扣子
 set TM_EVENTS=1

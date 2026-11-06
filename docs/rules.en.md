@@ -7,6 +7,15 @@
 
 ## Starting up
 
+The runtime is pinned to **Python 3.14.7**:
+
+```
+C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
+```
+
+**Every `python` below means that absolute path.** `run.py` also validates the version itself and
+exits with code 2 on a mismatch.
+
 ```bash
 set TM_TRADER=<model>-<effort>-<agent-platform>
 set TM_EVENTS=1

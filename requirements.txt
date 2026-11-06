@@ -1,5 +1,6 @@
 # 本项目无第三方依赖，全部使用 Python 标准库。
 # 这个文件只是为了让 pip install -r requirements.txt 不报错（空操作）。
 #
-# 开发与测试环境：Python 3.14.7 / Windows 10
-# 理论最低版本：Python 3.11（用到的东西更早就有了，但没有完整回归测试）
+# 运行时固定：Python 3.14.7 / Windows（唯一支持版本，不要换）
+#   路径：C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
+#   AI 版 run.py 会校验版本，不符直接退出码 2

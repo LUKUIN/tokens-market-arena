@@ -17,6 +17,7 @@
    - Python 只用 **3.14.7**：`C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe`。
      `run.py` 启动时自己校验，版本不对直接退出（码 2）并打印这条命令。
      不要用 `where python` / `py -3.x` 另找解释器；GUI 控件与 `.pyc` 都按 3.14 编译。
+     下文所有命令里的 `python` 均指这条路径。
    - 启动命令是 `run.py`，人类要能在屏幕上看到这一局的实时权益、持仓和活动流。
      从 v1.0.11 起 `run.py`、`run.py server`、`开一局.bat` 三个入口**行为完全一致**，
      都会拉开只读观众席；不存在「用 server 就省掉窗口」这回事了。
