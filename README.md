@@ -32,7 +32,10 @@
 
 要求：
 
-- **Python 3.10 以上**（成品包用 3.14 编译，源码版不限小版本，库全部是标准库）
+- **Python 3.14.7（固定，唯一）**：`C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe`
+  - 成品包（`TokensMarketHuman V117`）是 3.14 编译的 `.pyd` / `.pyc`，换版本必然 `bad magic number`
+  - 开源源码版本本身只用标准库，3.10+ 理论上也能跑；但**本机一律用 3.14.7**，不要用 `where python` 或 `py -3.x` 另找解释器
+  - 本文档里所有命令的 `python` 都指上面这条绝对路径
 - **Windows**：界面依赖 `tkinter` + Win32 的窗口图标与提示音，Linux/macOS 未适配
 - 不需要 `pip install` 任何东西（依赖清单为空）
 
