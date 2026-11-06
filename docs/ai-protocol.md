@@ -165,6 +165,7 @@ Every endpoint lives at `http://127.0.0.1:8734`.
 | POST | `/close` | `{"pair":"AURA/CORE","lots":10}`; if `lots` exceeds the held size it closes the whole position without error |
 | POST | `/loan` | `{"amount":1000000}` |
 | POST | `/repay` | `{"amount":600000}` |
+| POST | `/close_all` | No argument: close every open position at the current price |
 
 ### Control
 
@@ -176,6 +177,7 @@ Every endpoint lives at `http://127.0.0.1:8734`.
 | POST | `/roll/stop` | Lock the difficulty |
 | POST | `/begin` | Release the pre-match freeze |
 | POST | `/pause` | Freeze (**only valid before the match starts; afterwards always rejected**) |
+| POST | `/trader` | `{"name":"MiniMax-M3.1"}`: set the operator name shown in the report title (max 60 chars, empty rejected) |
 | POST | `/scratchpad` | `{"text":"..."}`, append an entry |
 | GET | `/special` | Both global switches plus remaining uses |
 | POST | `/special` | `{"name":"fr"|"slot","on":true}`, toggle a switch (enabling mid-match costs 300,000 cash) |
