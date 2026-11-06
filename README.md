@@ -10,7 +10,7 @@
 >
 > **EN**: A 45-minute trading simulator where LLMs trade with real friction — spread,
 > slippage, gap risk and overnight interest. One model made +106%, another blew up at
-> −229%. Zero dependencies, Windows + Python 3.10+.
+> −229%. Zero dependencies, Windows + Python 3.14.7.
 
 > 对应成品包 **v97**。参赛模型通过 HTTP 接口操作，GUI 只是一个**只读观众席**。
 > **与人类版（`TokensMarket-OpenSource-Human`）不通用、不可混用**：本版没有投资界面、
@@ -35,9 +35,18 @@
 
 ### 给 Agent / 脚本（常态）
 
-`python run.py` 是**前台阻塞**命令，会一直跑到本局结束（最长 45 分钟）：执行器若把它当普通命令等待返回，会触发自己的超时并 kill 进程，服务随之消失，之后所有请求都是 `connection refused`。
+**唯一的运行时**是 **Python 3.14.7**：
 
-`python run.py` 同时打开观众席窗口；`run.py server` 是无头模式，不打开窗口。
+```
+C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
+```
+
+`run.py` 启动第一件事就校验版本：不是 3.14 直接退出（退出码 2），并把上面这条命令打出来。
+不要用 `where python`、`py -3.12`、`python3` 去找别的解释器——观众席的 GUI 控件和 `.pyc` 都按 3.14 编译，换版本只会得到 `bad magic number`。
+
+`run.py` 是**前台阻塞**命令，会一直跑到本局结束（最长 45 分钟）：执行器若把它当普通命令等待返回，会触发自己的超时并 kill 进程，服务随之消失，之后所有请求都是 `connection refused`。
+
+**观众席会随服务自动打开，这是强制项。** 从 v1.0.11 起，`run.py`、`run.py server`、双击 `开一局.bat` 三个入口行为完全一致，都会拉起只读观众席。只有加 `--headless` 才是真正的无窗口模式，仅供没有桌面环境的 CI / 容器使用。
 
 后台启动后轮询就绪：
 
@@ -45,7 +54,7 @@
 cd <项目目录>
 
 TM_TRADER="Doubao-1.5-pro-深度思考-扣子" TM_EVENTS=1 TM_FR=0 TM_SLOT=0 \
-  nohup python run.py > run.log 2>&1 &
+  nohup "C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe" run.py > run.log 2>&1 &
 
 for i in $(seq 1 30); do
   curl -sf http://127.0.0.1:8734/health >/dev/null 2>&1 && break
@@ -57,7 +66,7 @@ Windows `cmd`：
 
 ```bat
 cd /d <项目目录>
-start "" /b python run.py
+start "" /b "C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe" run.py
 ```
 
 固定的 `sleep 6 && curl` 会假失败：启动需要 3~8 秒，慢机器还要更久。
@@ -70,12 +79,13 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 
 ### 双击启动
 
-`开一局.bat` 只是另一个入口——同样不问任何问题，只把即将使用的参数打印出来，零交互行为和 `python run.py` 完全一致。
+`开一局.bat` 是双击入口，行为与 `python run.py` 完全一致：同样零交互、同样自动打开观众席。
+脚本里写死了固定运行时 `C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe`，不经过 `where python`。
 
-### 只开观众席（窗口没出来时用）
+### 只开观众席（窗口被误关时用）
 
-`只开观众席.bat` **只**打开只读观众席窗口。用在「对局已经在跑，但你看不到」的时候：Agent 用
-`run.py server` 起的服务、Tk 窗口没弹出来、或者窗口被误关了。
+`只开观众席.bat` **只**打开只读观众席窗口。正常启动本来就会带窗口，它是补救入口——
+用在你手动关掉了观众席窗口、而对局还在跑的时候。
 
 ```
 python run.py spectator                 # 只开窗口，默认端口
@@ -88,13 +98,14 @@ python run.py spectator 127.0.0.1 8734  # 指定地址与端口
 
 关掉这个窗口**不会**结束对局。要结算用 `/quit`，或点窗口里的「结束相关进程」。
 
-### 只要服务不要窗口
+### 只要服务不要窗口（仅无桌面环境）
 
 ```bash
-python run.py server 127.0.0.1 8734
+python run.py --headless          # 等价于 run.py server --headless
 ```
 
-无桌面环境必须用这个。默认模式会创建 Tk 窗口，没有桌面时创建失败会带崩整个进程。
+只有 CI、容器、纯 SSH 这类确实没有桌面的环境才用这个。**本机比赛不要用**：
+观众席必须开着，人类要能实时看见这一局的权益、持仓和活动流。
 
 环境变量：
 
@@ -108,7 +119,8 @@ python run.py server 127.0.0.1 8734
 | `TM_PORT` | 端口号 | 服务端口，默认 `8734`。被占用时改这个，别改代码 |
 | `TM_SIGN_KEY` | 存档 HMAC 密钥，不设则用 dev 占位值 |
 
-要求：Python 3.10+、Windows（观众席依赖 Win32 图标），无第三方依赖。直接用 `python` 即可——`py -3.12` / `py -3.13` 在本机会回「去 Microsoft Store 安装」，那是该版本没装，不是环境问题；`.github/workflows/ci.yml` 里的版本号是测试矩阵，不是运行要求。
+要求：**Python 3.14.7**（本机固定为 `C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe`）、Windows（观众席依赖 Win32 图标），无第三方依赖。
+不要改用 3.10~3.13：`.pyc` 的 magic number 与 tkinter 控件都按 3.14 编译，换版本必然起不来；`.github/workflows/ci.yml` 里的版本号是 CI 测试矩阵，不是运行要求。
 
 ---
 
@@ -281,9 +293,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File deep-clean.ps1
 
 ```
 TokensMarket-OpenSource-AI-v97/
-├── run.py                  统一入口（ai / --interactive 仅演示 / server / state）
-├── 开一局.bat            双击入口，等价于 python run.py
-├── 只开观众席.bat        只挂窗口；对局在跑就静默附上，没跑就先起服务
+├── run.py                  统一入口（ai / --interactive 仅演示 / server / --headless / state）
+├── 开一局.bat            双击入口，等价于 python run.py（自动带观众席）
+├── 只开观众席.bat        窗口被误关时补挂；对局在跑就静默附上，没跑就先起服务
 ├── 进程深度清理.bat        人工双击用（含 pause）
 ├── deep-clean.ps1          清理本体；AI 请直接调用它（非交互）
 ├── src/

@@ -9,10 +9,16 @@
 它与人类版（TokensMarket-OpenSource-Human）**不通用、不可混用**：
 人类版有完整交互 GUI，AI 版没有。
 
+运行时（唯一）：
+    C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe run.py
+
 用法：
-    python run.py                 按环境变量启动（全程不询问输入）
-    python run.py --interactive   在命令行里问名字与事件模式
-    python run.py server          只起 HTTP 服务（无头跑、自己接 GUI 时用）
+    python run.py                 开局 + 自动打开只读观众席（常态，Agent 就用这个）
+    python run.py --interactive   在命令行里问名字与事件模式（人工演示）
+    python run.py server          等价于不带参数：一样会打开观众席（保留旧写法）
+    python run.py --headless      真的无头：只起 HTTP 服务，不开窗口，
+                                  仅限确实没有桌面的环境（CI / 容器）使用
+    python run.py spectator       只挂一个观众席窗口，不新开对局
 
 环境变量：
     TM_TRADER      玩家名，格式【大模型型号-思考强度-Agent平台】，例：Doubao-1.5-pro-深度思考-扣子
@@ -24,6 +30,30 @@
 import os
 import sys
 import time
+
+# ---------------------------------------------------------------------------
+# 运行时硬门槛：本项目的 .pyc / .pyd / tkinter 观众席全部按 Python 3.14 编译，
+# 换成别的版本会直接 "bad magic number"，或者窗口控件起不来。
+# 与其让参赛者去猜，不如在这里拦下并给出唯一正确的命令。
+# ---------------------------------------------------------------------------
+PY_REQUIRED = (3, 14)
+PY_PINNED = r"C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe"
+
+if sys.version_info[:2] != PY_REQUIRED:
+    _hint = PY_PINNED if os.path.exists(PY_PINNED) else "py -3.14"
+    print()
+    print("  " + "=" * 62)
+    print("  启动中止：Python 版本不对。")
+    print("  本局只能用 Python 3.14（本机是 3.14.7），当前是 %d.%d.%d。"
+          % tuple(sys.version_info[:3]))
+    print("  GUI 控件与 .pyc 都按 3.14 编译，换版本会直接报错。")
+    print("  改成这条命令重试：")
+    print()
+    print('    "%s" run.py' % _hint)
+    print()
+    print("  " + "=" * 62)
+    print()
+    sys.exit(2)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "src"))
@@ -297,6 +327,11 @@ def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     mode = argv[0].lower() if argv else "auto"
 
+    # `python run.py --headless` 等价于 `python run.py server --headless`
+    if mode in ("--headless", "headless"):
+        mode = "server"
+        argv = ["server", "--headless"] + argv[1:]
+
     if mode == "spectator":
         host = argv[1] if len(argv) > 1 else "127.0.0.1"
         port = int(argv[2]) if len(argv) > 2 else 8734
@@ -304,17 +339,19 @@ def main(argv=None):
 
     if mode == "server":
         from tm_api import serve
-        host = argv[1] if len(argv) > 1 else "127.0.0.1"
-        port = int(argv[2]) if len(argv) > 2 else 8734
-        if "--spectator" in argv:
-            return _run_spectator(host, port)
-        print()
-        print("  " + "!" * 62)
-        print("  警告：server 模式不会创建观众席窗口。")
-        print("  人类看不到这一局。Agent 请改用 `python run.py`，")
-        print("  或在此命令后加 --spectator 让观众席一起打开。")
-        print("  " + "!" * 62)
-        print()
+        # --headless 是开关，不占位置参数；过滤掉再取 host / port，
+        # 这样 `run.py server 127.0.0.1 8737 --headless` 和
+        # `run.py --headless 127.0.0.1 8737` 两种写法都成立。
+        rest = [a for a in argv[1:] if a != "--headless"]
+        host = rest[0] if rest else "127.0.0.1"
+        port = int(rest[1]) if len(rest) > 1 else 8734
+        if "--headless" not in argv:
+            # v1.0.11 起统一：server 不再等于「无头」，行为与 `python run.py` 完全一致，
+            # 一样把只读观众席拉起来。人类必须能当场看见这一局，不能等事后补窗口。
+            print("  server 模式已统一为「开只读观众席」（与 python run.py 相同）；"
+                  "确实没有桌面环境时才加 --headless。")
+            return _run_ai(interactive=False, port=port)
+        print("  --headless：只起 HTTP 服务，不打开观众席窗口（仅限无桌面环境）。")
         guard_stop = _start_guard(port)
         if (os.environ.get("TM_ASSIST") or "0") == "1":
             try:

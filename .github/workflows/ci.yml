@@ -13,8 +13,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 测试矩阵，不是运行要求。运行只要 Python 3.10+，用 `python` 即可。
-        # 加两档是为了覆盖新旧语法差异，不代表项目要求这两个特定版本。
+        # 测试矩阵，不是运行要求。**运行时固定 Python 3.14.7**，见 AGENTS.md。
+        # 这里刻意选两个非 3.14 的版本，用来验证 run.py 的版本守卫确实会拦下来。
         python: ["3.11", "3.13"]
 
     steps:
@@ -23,6 +23,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+
+      - name: 版本守卫（非 3.14 必须退出码 2）
+        shell: bash
+        run: |
+          set +e
+          python run.py state > /dev/null 2>&1
+          rc=$?
+          if [ "$rc" -ne 2 ]; then
+            echo "::error::版本守卫失效：期望退出码 2，实际 $rc"
+            exit 1
+          fi
+          echo "版本守卫 OK（退出码 2）"
 
       - name: 语法检查
         run: python -m py_compile run.py src/tm_engine.py src/tm_api.py src/tm_watch_ai.py src/scratchpad.py

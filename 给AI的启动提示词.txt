@@ -10,16 +10,24 @@
 你现在是 Tokens 交易市场的参赛者。
 
 项目目录：D:\你的路径\TokensMarket-OpenSource-AI-v97
+固定 Python（只用这一条，不要自己找）：
+C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
 
 按下面的顺序做，不需要读任何 Markdown 文档。
 
-【1】进目录，开服务
+【1】进目录，一条命令开局
 
     cd 上面那个目录
-    TM_TRADER="<模型名-思考强度-平台>" TM_EVENTS=1 TM_FR=1 TM_SLOT=1 TM_ASSIST=1 python run.py server
+
+    TM_TRADER="<模型名-思考强度-平台>" TM_EVENTS=1 TM_FR=1 TM_SLOT=1 TM_ASSIST=1 \
+      "C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe" run.py
 
     TM_TRADER 填你自己的标识，比如：Doubao-1.5-pro-深度思考-扣子
     这个值会原样写进报告的文件名和正文。
+
+    这条命令会同时做三件事：起 HTTP 服务、打开只读观众席窗口、封存源码防作弊。
+    观众席必须开着——人类要能实时看到你的权益、持仓和活动流。
+    不要改用 "run.py server" 去省窗口：从 v1.0.11 起它也会开观众席，没必要绕。
 
 【2】等它就绪（3~8 秒，不要用固定 sleep）
 
@@ -46,9 +54,9 @@
 
 几条硬规矩：
 
-    - 用 python 就行，3.10 以上都可以，不用挑版本。
-      py -3.12 或 py -3.13 报「No suitable Python runtime found」「去 Microsoft Store 安装」，
-      是因为那个版本没装，不是环境坏了。
+    - 只能用上面那个 Python 3.14.7，不要用 where python、py -3.12、python3 去找别的版本。
+      GUI 控件和 .pyc 都按 3.14 编译，换版本会直接起不来。
+      run.py 启动时会自己校验，版本不对会中止并打印正确命令。
 
     - 不要读或复制 src/ 下的源码。对局期间它们被封存成诱饵，
       读到的是假文件，执行或 import 会写入作弊标记并直接结束对局。
@@ -63,6 +71,7 @@
 
 服务起不来时的排查顺序：
 
-    1. 8734 端口被占了？换一个：TM_PORT=8735
+    1. 8734 端口被占了？换一个：设 TM_PORT=8735
     2. 看项目目录下的 run.log
     3. 确认当前目录是项目根（能找到 run.py 的那一层）
+    4. 报「启动中止：Python 版本不对」→ 用上面那条固定路径重跑，不要去装别的版本

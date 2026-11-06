@@ -2,11 +2,19 @@
 chcp 936 >nul
 cd /d "%~dp0"
 title Tokens 交易市场 · AI 版 · 观众席
-where python >nul 2>nul
-if errorlevel 1 (
+setlocal
+
+rem ==================================================================
+rem 固定运行时：只能用下面这个 Python 3.14.7。
+rem GUI 控件与 .pyc 都按 3.14 编译，换成 where python / py -3.x
+rem 找到的别的版本会直接起不来。换机时只改这一行。
+rem ==================================================================
+set "PY=C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe"
+if not exist "%PY%" (
     echo.
-    echo   [错误] 没有找到 python 命令。
-    echo   请先安装 Python 3.10 或更高版本，安装时勾选 "Add python.exe to PATH"。
+    echo   [错误] 找不到固定运行时：
+    echo     %PY%
+    echo   本版只支持 Python 3.14.7，不要改用其它 Python。
     echo.
     pause
     exit /b 1
@@ -19,21 +27,22 @@ if not defined TM_TRADER set "TM_TRADER=访客"
 if not defined TM_EVENTS set "TM_EVENTS=1"
 if not defined TM_FR     set "TM_FR=0"
 if not defined TM_SLOT   set "TM_SLOT=0"
+if not defined TM_ASSIST set "TM_ASSIST=0"
+if not defined TM_PORT   set "TM_PORT=8734"
 
 echo.
 echo   ==========================================
 echo      Tokens 交易市场 · AI 版
 echo   ==========================================
-echo   接口地址     http://127.0.0.1:8734
+echo   接口地址     http://127.0.0.1:%TM_PORT%
 echo   参赛模型     %TM_TRADER%
 echo   随机事件     %TM_EVENTS%
-echo   金融回逆 %TM_FR%    老虎机 %TM_SLOT%
-echo   GUI 只是只读观众席，没有投资界面。
+echo   金融回逆 %TM_FR%    老虎机 %TM_SLOT%    外部的怜悯 %TM_ASSIST%
+echo   观众席会随服务一起打开，GUI 只读。
 echo.
-if not defined TM_PORT set "TM_PORT=8734"
-rem run.py 自己会封存源码、退出时还原。这里不要再起一份 guard.py：
+rem run.py 自己会封存源码、退出时还原。这里不要再起一份守卫：
 rem 起两份守卫会封两次，第二次封的是已经换上去的诱饵，真源码就再也还原不回来了。
-python run.py
+"%PY%" run.py
 echo.
 echo   [已退出] 服务与观众席都已关闭。
 pause

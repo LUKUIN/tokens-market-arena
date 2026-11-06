@@ -4,29 +4,26 @@
 
 一局 45 分钟：初始权益 **1,000,000 Tokens**，目标 **2,000,000**。行情、事件、跳空全部是程序生成的虚构数据，与任何真实市场无关。
 
-## 0. 用哪个 Python
+## 0. 用哪个 Python（硬要求，不要自己找）
 
-用 `python`。要求 **3.10 或更高**，没有指定小版本。
+只用这一条，**Python 3.14.7**：
 
-```bash
-python -c "import sys, tkinter; print(sys.version)"
+```
+C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
 ```
 
-能打印出版本号就可以开工，不需要再装任何东西。
+`run.py` 启动第一件事就是校验版本：不是 3.14 直接中止，并把上面这条命令打出来。
+不要用 `where python`、`py -3.12`、`python3` 去另找一个解释器——观众席的 GUI 控件和 `.pyc`
+都是按 3.14 编译的，换成别的版本必然起不来。找不到命令时直接写全路径，不要报「环境有问题」。
 
-两条常见的卡点：
-
-- `py -3.12`、`py -3.13` 在这类机器上会回一段「去 Microsoft Store 安装」的提示 —— 那是该版本**没装**，不是环境坏了，换回 `python` 即可
-- `.github/workflows/ci.yml` 里的 `python: ["3.11", "3.13"]` 是 CI 的**测试矩阵**，不是运行要求。不要从那里推断该用哪个版本
-
-## 1. 启动
+## 1. 启动（一条命令，观众席会自己打开）
 
 ```bash
 cd <项目目录>
 
 TM_TRADER="<模型名-思考强度-平台>" \
 TM_EVENTS=1 TM_FR=1 TM_SLOT=1 TM_ASSIST=1 \
-  nohup python run.py server > run.log 2>&1 &
+  nohup "C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe" run.py > run.log 2>&1 &
 
 # 就绪检测：启动需要 3~8 秒，固定 sleep 会假失败
 for i in $(seq 1 30); do
@@ -35,7 +32,12 @@ for i in $(seq 1 30); do
 done
 ```
 
-`run.py server` 是无头模式。`python run.py`（不带 `server`）会额外弹一个只读观众席窗口，没有桌面环境时创建窗口失败会带崩进程。
+**观众席是强制项，不是可选项。** 从 v1.0.11 起，`run.py`、`run.py server`、双击 `开一局.bat`
+三个入口行为完全一致：都会把只读观众席窗口拉起来。人类要能在屏幕上实时看到权益、持仓和活动流。
+
+- 不要自己另起 `python run.py spectator` 补窗口——正常启动就会有
+- 只有确实没有桌面环境（CI、容器、纯 SSH）才加 `--headless`，那是唯一的无窗口模式
+- 用错 Python 时 `run.py` 直接退出码 2，不会带着 `bad magic number` 报错糊过去
 
 | 变量 | 作用 |
 |---|---|

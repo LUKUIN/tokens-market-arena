@@ -2,11 +2,17 @@
 chcp 936 >nul
 cd /d "%~dp0"
 title Tokens 交易市场 - 只开观众席
-where python >nul 2>nul
-if errorlevel 1 (
+setlocal
+
+rem ==================================================================
+rem 固定运行时：只能用这个 Python 3.14.7。
+rem ==================================================================
+set "PY=C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe"
+if not exist "%PY%" (
     echo.
-    echo   [错误] 没有找到 python 命令。
-    echo   先安装 Python 3.10 或更高版本，安装时勾选 "Add python.exe to PATH"。
+    echo   [错误] 找不到固定运行时：
+    echo     %PY%
+    echo   本版只支持 Python 3.14.7，不要改用其它 Python。
     echo.
     pause
     exit /b 1
@@ -15,9 +21,8 @@ if errorlevel 1 (
 rem ------------------------------------------------------------------
 rem 只打开只读观众席窗口，不启动新的一局。
 rem
-rem 用在「对局已经在跑，但窗口没出来」的时候：
-rem   - Agent 用了 "python run.py server" 启动，本来就没有窗口
-rem   - Tk 窗口没弹出来，或者被误关了
+rem 用在「窗口没弹出来，或者被误关了」的时候。
+rem 正常启动本来就会带观众席，这个脚本是补救入口，不是常规入口。
 rem
 rem 如果端口上已经有一局在应答，本脚本只挂窗口，别的什么都不做：
 rem 不起服务、不起守卫、不封存源码。挂载一旦去封存，就会把诱饵加密进新箱子，
@@ -36,7 +41,7 @@ echo   端口         %TM_PORT%
 echo   只读窗口     不能下单、不能快进
 echo.
 
-python run.py spectator 127.0.0.1 %TM_PORT%
+"%PY%" run.py spectator 127.0.0.1 %TM_PORT%
 
 echo.
 echo   [已退出] 观众席已关闭，对局不受影响。

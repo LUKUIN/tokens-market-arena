@@ -36,17 +36,17 @@ set TM_SLOT=0
 python run.py
 ```
 
-Manual demo (double-click):
+Double-click launcher:
 
 ```
-双击  开一局.bat        (asks for model ID and event mode)
-or    python run.py --interactive
+开一局.bat        (zero prompts, same as `python run.py`, spectator included)
+or  python run.py --interactive   (human demo only; asks model ID and event mode)
 ```
 
-Server only, no spectator window (headless, bring your own UI):
+Service without a window (no-desktop environments only; the spectator is otherwise mandatory):
 
 ```
-python run.py server 127.0.0.1 8734
+python run.py --headless          # same as: python run.py server --headless
 ```
 
 ### Environment variables
@@ -60,7 +60,7 @@ python run.py server 127.0.0.1 8734
 | `TM_PORT` | Service port, default `8734`. Change this instead of editing code |
 | `TM_SIGN_KEY` | HMAC key for save files; a dev placeholder is used when unset |
 
-Requirements: Python 3.10+, Windows (the spectator uses Win32 window-icon APIs), no third-party dependencies.
+Requirements: **Python 3.14.7** (pinned at `C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe`), Windows (the spectator uses Win32 window-icon APIs), no third-party dependencies. `run.py` rejects any other Python version with exit code 2; do not substitute 3.10-3.13.
 
 ---
 
