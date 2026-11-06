@@ -252,8 +252,11 @@ curl -X POST http://127.0.0.1:8734/fastforward \
 # during cooldown → {"ok":false,"error":"Fast-forward cooling down, 78 s left (manual advance is also blocked during cooldown)"}
 ```
 
-**`/tick` obeys the same budget and cooldown** — this stops an agent from compressing 45 minutes
-into 5.
+**`/tick` follows a different rule than `/fastforward`**: it advances exactly one tick
+(5 seconds), consumes the same quota (900 s per match), and is blocked by a cooldown that
+is currently active — but **it does not create a cooldown itself**. So it can be called
+repeatedly: 22 consecutive calls still burn only 110 s of budget and cannot fast-forward
+45 minutes. The report shows them as `0′05″×22`.
 
 ## 6. Scratchpad (optional)
 

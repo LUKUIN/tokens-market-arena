@@ -1419,7 +1419,8 @@ class Engine:
                     "state": st, "ff": self.ff_plan()}
 
     def manual_tick(self):
-        """AI mode advances tick by tick: consumes the same fast-forward quota, but has no cooldown."""
+        """AI mode advances tick by tick: it consumes the fast-forward quota and is blocked by an
+        active cooldown, but it does not create one itself."""
         with LOCK:
             if self.s.get("finished"):
                 return {"ok": False, "error": "Session ended"}
@@ -2162,8 +2163,17 @@ class Engine:
             # Fast-forward usage
             _ffr = [int(x) for x in (self.s.get("ff_records") or [])]
             _ff_used = float(self.s.get("ff_used") or 0.0)
-            _ff_txt = (" + ".join("%d′" % (x // 60) for x in _ffr) if _ffr
-                       else "Unused")
+            _ff_parts = []
+            _i = 0
+            while _i < len(_ffr):
+                _v = _ffr[_i]
+                _n = 1
+                while _i + _n < len(_ffr) and _ffr[_i + _n] == _v:
+                    _n += 1
+                _ff_parts.append("%d′%02d″%s" % (
+                    _v // 60, _v % 60, ("×%d" % _n) if _n > 1 else ""))
+                _i += _n
+            _ff_txt = (" + ".join(_ff_parts) if _ff_parts else "Unused")
             # ---------- cost attribution: split net PnL into five verifiable parts ----------
             _slip_c = float(m.get("slip_cost") or 0.0)
             _spread_c = float(m.get("spread_cost") or 0.0)
