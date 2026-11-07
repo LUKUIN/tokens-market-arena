@@ -30,6 +30,7 @@ jobs:
           set +e
           python run.py state > /dev/null 2>&1
           rc=$?
+          echo "guard exit code: $rc"
           if [ "$rc" -ne 2 ]; then
             echo "::error::version guard broken: expected exit code 2, got $rc"
             exit 1

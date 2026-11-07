@@ -32,6 +32,16 @@ import os
 import sys
 import time
 
+# Console encoding fallback: an English Windows console or redirected output
+# defaults to cp1252/GBK, and printing non-ASCII text raises
+# UnicodeEncodeError, which turns the guard's exit code 2 into 1 and makes
+# CI report a false "guard failure".
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 # ---------------------------------------------------------------------------
 # Hard runtime gate. The .pyc / .pyd files and the tkinter spectator are all
 # built against Python 3.14; any other interpreter gives "bad magic number" or
