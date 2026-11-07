@@ -1385,23 +1385,22 @@ def _acquire_single_instance():
 
 
 def _warn_already_open():
-    root = tk.Tk()
-    root.withdraw()
-    try:
-        messagebox.showwarning("Tokens 交易市场", "已打开观众席！")
-    finally:
-        try:
-            root.destroy()
-        except Exception:
-            pass
+    """已有观众席在跑时的提示。不弹框：无人值守时弹窗会卡住或被误点，
+    而这里只是「显示层重复打开」，不该让对局付出代价。"""
+    sys.stderr.write("观众席已在运行，本次不重复打开（对局服务不受影响）%s" % chr(10))
 
 
 def main():
+    """返回 True 表示观众席窗口正常关闭，False 表示没能打开。
+
+    调用方（run.py）据此决定是否继续跑服务：窗口只是显示层，不是对局宿主。
+    """
     if not _acquire_single_instance():
         _warn_already_open()
-        return
+        return False
     size = (1920, 1080)   # AI 版固定 1920 版式
     Watch(size).run()
+    return True
 
 
 if __name__ == "__main__":

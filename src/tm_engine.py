@@ -1531,7 +1531,7 @@ class Engine:
             "left3": int(remain // 180),
         }
 
-    def fast_forward(self, seconds=300):
+    def fast_forward(self, seconds=None):
         """快进一个档位：300 秒（5 分钟）或 180 秒（3 分钟）。
 
         每局总额度 900 秒，两档可混用。每次之后按刚用的那一档冷却
@@ -1542,6 +1542,8 @@ class Engine:
                 return {"ok": False, "error": "本局已结束"}
             if self.s.get("paused"):
                 return {"ok": False, "error": "本局尚未开始，请先确认规则"}
+            if seconds is None:
+                return {"ok": False, "error": "秒数必填：seconds=300（5 分钟）或 180（3 分钟）"}
             try:
                 sec = int(round(float(seconds)))
             except (TypeError, ValueError, OverflowError):
@@ -1854,6 +1856,8 @@ class Engine:
                                  % (pair, "、".join(PAIRS.keys()))}
             if side not in ("LONG", "SHORT"):
                 return {"ok": False, "error": "方向只能是 LONG 或 SHORT"}
+            if leverage is None:
+                return {"ok": False, "error": "杠杆必填：leverage 字段，例 100"}
             try:
                 lots = float(lots)
                 leverage = int(leverage)
@@ -1861,6 +1865,8 @@ class Engine:
                 return {"ok": False, "error": "手数/杠杆必须是数字"}
             if not math.isfinite(lots) or not math.isfinite(leverage):
                 return {"ok": False, "error": "手数/杠杆必须是有限数值"}
+            if leverage < 1:
+                return {"ok": False, "error": "杠杆必填且至少为 1：leverage 字段，例 100"}
             if lots <= 0:
                 return {"ok": False, "error": "手数必须大于 0"}
             cap = min(MAX_LEVERAGE, int(self._mod("leverage_cap")))
@@ -2638,6 +2644,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             self.s["abnormal_exits"] = int(self.s.get("abnormal_exits", 0)) + 1
             self._event("【异常退出】%s：未做结算，已生成快照报告" % reason, "warn")
             self._save()
+            self._clear_running()   # 这一笔已经记过了，别让下次启动再记一次
             return self._write_report(reason, eq, abnormal=True)
 
     def quit_session(self):
@@ -2830,5 +2837,21 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 LOAN_POOL, LOAN_RATE_PER_TICK * 100, "随借随还，到期强制清算"),
             "会话时长": "%d 分钟" % SESSION_MINUTES,
             "tick 间隔": "%d 秒" % TICK_SECONDS,
+            "接口": {
+                "GET /state": "当前局面：权益、持仓、报价、盘口深度、事件流、快进额度",
+                "GET /rules": "本规则表（含这份接口清单）",
+                "POST /open": {"pair": "AURA/CORE", "side": "LONG 或 SHORT",
+                               "lots": 10, "leverage": 100},
+                "POST /close": {"pair": "AURA/CORE", "lots": "可选，缺省全平该品种"},
+                "POST /close_all": {},
+                "POST /fastforward": {"seconds": "300（5 分钟）或 180（3 分钟），必填"},
+                "POST /loan": {"amount": 100000},
+                "POST /repay": {"amount": 100000},
+                "POST /slot": {"amount": 1000},
+                "POST /special": {"name": "老虎机 或 金融回逆", "on": True},
+                "POST /roll/stop": {},
+                "POST /quit": {},
+                "POST /assist/ask": {"text": "需要观众席帮忙看的内容"},
+            },
             "货币对": {s: PAIR_NAMES[s] for s in PAIRS},
         }

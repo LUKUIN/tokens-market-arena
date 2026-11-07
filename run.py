@@ -347,10 +347,30 @@ def _run_ai(interactive=False, port=None):
     import tm_watch_ai
     guard_stop = _start_guard(port)
     print("  正在拉起只读观众席……")
+    shown = False
     try:
-        tm_watch_ai.main()
-    finally:
-        guard_stop.set()
+        shown = bool(tm_watch_ai.main())
+    except Exception as exc:
+        print("  观众席异常退出：%s" % exc)
+    if not shown:
+        # 窗口只是显示层，不是对局宿主。它没能打开（例如已有另一个观众席占着 8735 锁）时，
+        # 服务必须继续跑——否则进程会 exit 0，对局一开局就被记一笔「异常退出」。
+        print("  观众席未能打开，服务继续运行（对局不受影响）。")
+        from tm_api import serve as _serve
+        try:
+            _serve("127.0.0.1", port)
+        finally:
+            guard_stop.set()
+        return 0
+    # 窗口正常关闭 = 玩家主动收工。没结算就补一份快照，并清掉 .running，
+    # 这样下一局不会再把它当成「上一局被强杀」重复计数。
+    try:
+        import tm_api
+        if not (tm_api.ENGINE.state() or {}).get("finished"):
+            tm_api.ENGINE.abnormal_exit_report("观众席被关闭")
+    except Exception as exc:
+        print("  收尾快照失败：%s" % exc)
+    guard_stop.set()
     return 0
 
 
