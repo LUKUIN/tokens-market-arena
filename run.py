@@ -3,7 +3,7 @@
 
 This build is the version for large-model contestants:
     · The GUI has only a **read-only spectator stand** for humans to watch; no investment panel, no open-position button, no fast-forward button
-    · Every contestant operates through the HTTP API: /open /close /close_all /loan /repay /tick /fastforward /quit
+    · Every contestant operates through the HTTP API: /open /close /close_all /loan /repay /fastforward /quit
     · It additionally provides a hidden "scratchpad terminal" (scratchpad.py) where a model can record its reasoning during a match
 
 It is **not compatible with, and cannot be mixed with**, the human edition (TokensMarket-OpenSource-Human):
@@ -208,10 +208,10 @@ def _start_server(host="127.0.0.1", port=8734):
     for _ in range(40):
         try:
             urllib.request.urlopen("http://%s:%d/health" % (host, port), timeout=0.5).read()
-            return True
+            return t
         except Exception:
             time.sleep(0.05)
-    return False
+    return None
 
 
 def _enable_assist_from_env():
@@ -248,42 +248,52 @@ def _run_ai(interactive=False, port=None):
     print(SCRATCHPAD_HINT)
 
     port = int(port or os.environ.get("TM_PORT") or 8734)
-    if not _start_server(port=port):
+    server_thread = _start_server(port=port)
+    if not server_thread:
         print("  Failed to start the service: port %d may be in use; kill any leftover python processes and try again." % port)
         return 1
 
     print("  HTTP API: http://127.0.0.1:%d  (rules: GET /rules)" % port)
     _enable_assist_from_env()
-    # Load the spectator module before the guard seals the sources: the other way
-    # round, the import lands on a decoy, the decoy drops a cheat flag and exits.
-    import tm_watch_ai
+    # The spectator runs in its own subprocess. It is a display layer, not the host of
+    # the match: closing it, crashing it, or failing to open it (another instance holds
+    # port 8735) must never touch the service. Two preconditions before changing this:
+    #   1. tm_watch_ai.py is not sealed (the guard seals engine / api / scratchpad only)
+    #   2. that module imports nothing but the standard library, so it starts on its own
+    base = os.path.dirname(os.path.abspath(__file__))
+    spectator = None
+    try:
+        spectator = subprocess.Popen(
+            [sys.executable, "-c",
+             "import sys, os; sys.path.insert(0, os.path.join(os.getcwd(), 'src')); "
+             "import tm_watch_ai; tm_watch_ai.main()"],
+            cwd=base)
+        print("  Launching the read-only spectator stand (pid %d)..." % spectator.pid)
+    except Exception as exc:
+        print("  Spectator failed to start: %s (the match service keeps running)" % exc)
+
     guard_stop = _start_guard(port)
-    print("  Launching the read-only spectator stand...")
-    shown = False
     try:
-        shown = bool(tm_watch_ai.main())
-    except Exception as exc:
-        print("  Spectator exited abnormally: %s" % exc)
-    if not shown:
-        # The window is only a display layer, not the host of the match. When it cannot
-        # open (another spectator already holds port 8735), the service must keep running —
-        # otherwise the process exits 0 and the match is recorded as an abnormal exit.
-        print("  Spectator could not open; the service keeps running (the match is unaffected).")
-        from tm_api import serve as _serve
+        server_thread.join()      # returns once /quit or /shutdown stops the service
+    except KeyboardInterrupt:
+        print("  Interrupted, shutting down...")
+    finally:
+        guard_stop.set()
+        if spectator is not None:
+            try:
+                spectator.terminate()
+            except Exception:
+                pass
+        # The service has exited: clean this match's temp files if it settled.
+        # _start_autoclean alone is not enough — it waits for two confirmations plus
+        # two more seconds, while /quit shuts the service down after three, so the
+        # main process usually leaves first and strands session.json.
         try:
-            _serve("127.0.0.1", port)
-        finally:
-            guard_stop.set()
-        return 0
-    # Closing the window is the player calling it a day. If nothing was settled yet,
-    # write a snapshot and clear .running so the next match does not count it twice.
-    try:
-        import tm_api
-        if not (tm_api.ENGINE.state() or {}).get("finished"):
-            tm_api.ENGINE.abnormal_exit_report("spectator window closed")
-    except Exception as exc:
-        print("  Failed to write the closing snapshot: %s" % exc)
-    guard_stop.set()
+            import tm_api
+            if (tm_api.ENGINE.state() or {}).get("finished"):
+                _autoclean(os.path.join(base, "src", "data"))
+        except Exception as exc:
+            print("  Failed to clean up: %s" % exc)
     return 0
 
 

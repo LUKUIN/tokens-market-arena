@@ -37,7 +37,7 @@ _UI_SCALE = {"v": 1.0}
 def _fmt_ff(sec):
     """Render fast-forward budget as "Xm YYs".
 
-    Minutes alone are not enough: the pool is 900 s while one /tick advances 5 s,
+    Minutes alone are not enough: the pool is 900 s and a step is 180 s or 300 s,
     so truncating to whole minutes shows 895 s as "14 min" and 5 s used as "0 min",
     and the two numbers cannot add up to 15. Keep the seconds.
     """

@@ -82,7 +82,7 @@ start "" /b "C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe" r
 A fixed `sleep 6 && curl` gives false failures: startup takes 3–8 seconds and a slow machine
 finishes later.
 
-Difficulty locking — `/tick` advances nothing before it is locked:
+Difficulty locking — `/fastforward` is refused before it is locked:
 
 ```bash
 curl -X POST http://127.0.0.1:8734/roll/stop
@@ -177,7 +177,7 @@ Sections, top to bottom:
    locks automatically when the countdown ends.
 3. The clock starts the moment difficulty is locked — the 30 seconds of drawing do not count
    against the 45 minutes.
-4. Trading begins: `/state` to read the board → `/open` `/close` to trade → `/tick` to advance.
+4. Trading begins: `/state` to read the board → `/open` `/close` to trade → `/fastforward` to advance time.
 5. At 45 minutes, on hitting the target, on liquidation, or on `/quit`, the match settles and the
    report is written.
 6. About 3 seconds after `/quit` the server and spectator exit on their own.
@@ -208,7 +208,6 @@ Base URL defaults to `http://127.0.0.1:8734`.
 | `/open` | `{pair, side, lots, leverage}` | Open a position |
 | `/close` | `{pair, lots}` | Close; lots above the held size closes the whole position |
 | `/close_all` | — | Close everything |
-| `/tick` | — | Advance one tick (**consumes fast-forward budget, subject to cooldown**) |
 | `/fastforward` | `{seconds}` | Jump one tier (300 or 180), consumes budget |
 | `/loan` | `{amount}` | Borrow; the target-uplift percentage is drawn at borrow time — that is the cost |
 | `/repay` | `{amount}` | Repay; omit the amount to repay in full |
@@ -222,9 +221,9 @@ Base URL defaults to `http://127.0.0.1:8734`.
 | `/quit` | — | Settle normally and exit (response carries `settled` / `warnings`) |
 | `/shutdown` | — | Stop immediately (leaves an abnormal-exit report) |
 
-> **Note**: `/tick` and `/fastforward` share one budget and one cooldown. Budget is 900 seconds,
-> tiers are 300/180 seconds, cooldowns are 120/90 seconds. Calls during cooldown are rejected;
-> the server also advances on its own every 5 seconds.
+> **Note**: `/fastforward` is the only way to advance time — 300 or 180 seconds per call.
+> Budget is 900 seconds, cooldowns are 120/90 seconds. Calls during cooldown are rejected;
+> the server also advances on its own every 5 seconds, so time does not need to be pushed.
 
 > **Token saving**: add `?history=0` to `/state` to drop `price_history` (up to 2000 points per
 > pair). Order-placing endpoints already return a trimmed state — no history, no event feed.
@@ -247,7 +246,7 @@ Setup
 
 Interface
 - GET /rules, /state, /health, /reports
-- POST /open, /close, /close_all, /tick, /fastforward, /loan, /repay, /quit
+- POST /open, /close, /close_all, /fastforward, /loan, /repay, /quit
 - Scratchpad: python scratchpad.py "..." — merged into the final HTML report
 
 One thing sits outside the game
@@ -391,7 +390,7 @@ TokensMarket-OpenSource-AI-v97/
 | UI | Read-only spectator | Full interactive GUI |
 | Investment panel | None | Yes |
 | Opening positions | HTTP `/open` | Buttons |
-| Fast-forward | `/fastforward` + `/tick` | Two buttons |
+| Fast-forward | `/fastforward` | Two step buttons (5 min / 3 min) |
 | Scratchpad | Yes | No |
 | Resolution | Fixed 1920×1080 layout | Four options with scaling |
 | Process cleanup script | Yes | No |

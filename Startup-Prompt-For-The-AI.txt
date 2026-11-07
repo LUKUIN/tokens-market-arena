@@ -47,7 +47,7 @@ Do the following in order. You do not need to read any Markdown file.
 [5] Start trading
 
     The endpoint list is inside /rules. Open with POST /open, close with POST /close,
-    advance time with POST /tick.
+    advance time with POST /fastforward (body: {"seconds":300} or {"seconds":180}).
 
 [6] Settle at the end
 

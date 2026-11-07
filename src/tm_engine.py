@@ -232,7 +232,7 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.0.19"   # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.1.0"   # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -1577,29 +1577,6 @@ class Engine:
             self._save()
             return {"ok": True, "ticks": done, "seconds": real,
                     "state": st, "ff": self.ff_plan()}
-
-    def manual_tick(self):
-        """AI mode advances tick by tick: it consumes the fast-forward quota and is blocked by an
-        active cooldown, but it does not create one itself."""
-        with LOCK:
-            if self.s.get("finished"):
-                return {"ok": False, "error": "Session ended"}
-            if self.s.get("paused"):
-                return {"ok": False, "error": "This run has not started yet; confirm the rules first"}
-            p = self.ff_plan()
-            if p["cool_left"] > 0:
-                return {"ok": False, "ff": p,
-                        "error": "Fast-forward cooling down, %.0f s left (manual advance is also blocked during cooldown)" % p["cool_left"]}
-            if p["remain"] < TICK_SECONDS:
-                return {"ok": False, "ff": p,
-                        "error": "Fast-forward quota exhausted (%d s all used this run); wait for time to pass" % p["total"]}
-            st = self.tick(manual=True)
-            self.s["ff_used"] = float(self.s.get("ff_used") or 0.0) + TICK_SECONDS
-            recs = list(self.s.get("ff_records") or [])
-            recs.append(TICK_SECONDS)
-            self.s["ff_records"] = recs
-            self._save()
-            return {"ok": True, "state": st, "ff": self.ff_plan()}
 
     # ---------------- global switch special events ----------------
     def _special(self):

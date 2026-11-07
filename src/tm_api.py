@@ -8,7 +8,6 @@ Endpoints:
     POST /open             open a position
     POST /close            close a position
     POST /close_all        close all
-    POST /tick             advance one tick
     POST /loan             take a loan {"amount": 500000} (the uplift ratio is only rolled when you borrow — that is the cost)
     POST /repay            repay {"amount": 500000} (omit amount to repay in full)
     POST /quit             end this match
@@ -104,13 +103,11 @@ class Handler(BaseHTTPRequestHandler):
     def _route_post(self, path, b):
         if path == "/open":
             return self._send(ENGINE.open_position(b.get("pair"), b.get("side"),
-                                                   b.get("lots"), b.get("leverage", 1)))
+                                                   b.get("lots"), b.get("leverage")))
         if path == "/close":
             return self._send(ENGINE.close_position(b.get("pair"), b.get("lots")))
         if path == "/close_all":
             return self._send(ENGINE.close_all())
-        if path == "/tick":
-            return self._send(ENGINE.manual_tick())
         if path == "/loan":
             return self._send(ENGINE.borrow(b.get("amount")))
         if path == "/repay":
@@ -150,7 +147,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/begin":
             return self._send(ENGINE.begin())
         if path == "/fastforward":
-            return self._send(ENGINE.fast_forward(b.get("seconds", 300)))
+            return self._send(ENGINE.fast_forward(b.get("seconds")))
         if path == "/roll/stop":
             return self._send(ENGINE.roll_stop())
         if path == "/roll/start":

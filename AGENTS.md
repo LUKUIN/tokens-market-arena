@@ -81,7 +81,8 @@ A human must be able to watch equity, holdings and the activity feed live.
 
 ## 3. Lock the difficulty
 
-Difficulty is rolled at the start, and `/tick` does not advance until it is locked.
+Difficulty is rolled at the start; before it is locked `/fastforward` is refused too
+(`Session has not started, confirm the rules first`).
 
 ```bash
 curl -X POST http://127.0.0.1:8734/roll/stop
