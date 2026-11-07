@@ -233,7 +233,7 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.0.13"   # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.0.14"   # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -2415,6 +2415,13 @@ class Engine:
                 "evrows": "".join(ev_rows) or '<li class="muted">No key events</li>',
                 "attrib": _attr_html,
             }
+            # The audit verdict goes into the report body: a warning that lives only in
+            # /state is a warning nobody reads.
+            _audit = self._audit_ledger()
+            body["auditline"] = ("Ledger audit: passed (fees / loan / positions / equity all reconcile)"
+                                 if not _audit else
+                                 "Ledger audit FAILED: " + "; ".join(_audit))
+            body["auditcolor"] = "var(--up)" if not _audit else "var(--down)"
 
             html = """<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
@@ -2508,7 +2515,8 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
   <div class="kv"><span>Margin calls</span><span>{mcall} times</span></div>
   <div class="kv"><span>Abnormal exits</span><span>{abn} times</span></div>
   <div class="kv"><span>Total borrowed</span><span>{borrowed_txt}</span></div>
-</div></section>
+</div>
+<div class="note" style="color:{auditcolor}">{auditline}</div></section>
 <section id="p2"><h2>Cost attribution</h2><div class="kvbox">{attrib}</div>
 <div class="note">Net P&L = gross P&L − slippage − spread − commission − overnight interest + Slot Machine payouts. Gross P&L covers direction calls and gap shocks: what you should have made or lost if costs did not exist.</div></section>
 <section id="p3"><h2>Trade details ({rowsn} rows)</h2>

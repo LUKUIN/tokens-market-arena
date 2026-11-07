@@ -227,6 +227,7 @@ class Watch:
         self.price_history = {}
         self._closing = False
         self._last_trader = None
+        self._last_audit = None
         self._log_seen = set()
         self._log_events = []
         self._log_filter = "all"
@@ -317,6 +318,10 @@ class Watch:
         self.lbl_loan.pack(side="left", padx=16, pady=7)
         self.lbl_extra = tk.Label(bar, text="", font=FONT_BAR, bg=CARD, fg=MUTED)
         self.lbl_extra.pack(side="left", padx=(0, 16))
+        # Ledger-audit warning slot: empty by default, turns red only when /state reports a problem.
+        # A warning that exists only inside the API is a warning nobody sees.
+        self.lbl_audit = tk.Label(bar, text="", font=FONT_BAR, bg=CARD, fg=RED)
+        self.lbl_audit.pack(side="right", padx=16, pady=7)
         self.lbl_status = tk.Label(bar, text="Waiting for connection...", font=FONT, bg=CARD, fg=MUTED)
         self.lbl_status.pack(side="right", padx=16, pady=7)
 
@@ -694,6 +699,18 @@ class Watch:
                                fg=_purple if _fr_on else TEXT)
             self.lbl_slot.config(font=self._f_on if _slot_on else self._f_off,
                                  fg=_purple if _slot_on else TEXT)
+
+        # Ledger audit: empty array = all four identities hold; otherwise surface the first issue.
+        # Only reconfigure the widget when the content changes (this runs every 120 ms).
+        _audit = st.get("audit") or []
+        _sig_a = tuple(_audit)
+        if self._last_audit != _sig_a:
+            self._last_audit = _sig_a
+            if _audit:
+                self.lbl_audit.config(
+                    text="! ledger warning (%d): %s" % (len(_audit), _audit[0]), fg=RED)
+            else:
+                self.lbl_audit.config(text="", fg=RED)
 
         eq, pnl = st["equity"], st["pnl"]
         up = pnl >= 0
