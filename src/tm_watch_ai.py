@@ -901,7 +901,12 @@ class Watch:
             _recent = [e for e in st.get("events", [])
                        if e["kind"] in ("open", "close")
                        and _now - float(e.get("time", 0)) < 120][-3:]
-        if len(_pos) > 7:
+        # 实际可见行数少于持仓数时才需要「更多」，不写死 7
+        try:
+            _visible = int(self.tree.cget("height"))
+        except Exception:
+            _visible = 7
+        if len(_pos) > _visible:
             self.btn_hold_more.place(relx=1.0, x=-14, y=8, anchor="ne")
         else:
             self.btn_hold_more.place_forget()
