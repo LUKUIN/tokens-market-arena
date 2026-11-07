@@ -16,7 +16,35 @@ C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
 不要用 `where python`、`py -3.12`、`python3` 去另找一个解释器——观众席的 GUI 控件和 `.pyc`
 都是按 3.14 编译的，换成别的版本必然起不来。找不到命令时直接写全路径，不要报「环境有问题」。
 
-## 1. 启动（一条命令，观众席会自己打开）
+## 1. 清理重置（先做这一步，再启动）
+
+上一局的存档会让服务接着旧局跑，**必须先清干净**。服务是否还在跑，两种情况都覆盖：
+
+```bash
+cd <项目目录>
+
+# 若上一局服务还在：先重置再停服（/reset 会清 data/ 下除 reports/ 外的所有文件）
+curl -s -X POST http://127.0.0.1:8734/reset    >/dev/null 2>&1 || true
+curl -s -X POST http://127.0.0.1:8734/shutdown >/dev/null 2>&1 || true
+
+# 保险：服务没跑时直接删存档（reports/ 是历史战报，不要删）
+rm -f src/data/session.json
+rm -f src/data/.scratchpad.jsonl
+rm -rf src/data/_agent
+```
+
+Windows PowerShell 等价写法：
+
+```powershell
+Remove-Item -Force src/data/session.json            -ErrorAction SilentlyContinue
+Remove-Item -Force src/data/.scratchpad.jsonl       -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force src/data/_agent         -ErrorAction SilentlyContinue
+```
+
+**不要删 `src/data/reports/`** —— 那是历史战报，每局结算后会往里写新文件。
+清完确认 `src/data/` 下只剩 `reports/`，再进下一步。
+
+## 2. 启动（一条命令，观众席会自己打开）
 
 ```bash
 cd <项目目录>
@@ -48,7 +76,7 @@ done
 | `TM_ASSIST` | `1` 开启【外部的怜悯】：整局可向观众席求助 3 次 |
 | `TM_PORT` | 服务端口，默认 `8734` |
 
-## 2. 定档
+## 3. 定档
 
 难度是开局抽的，未定档时 `/tick` 不推进。
 
@@ -56,7 +84,7 @@ done
 curl -X POST http://127.0.0.1:8734/roll/stop
 ```
 
-## 3. 开局读这两样
+## 4. 开局读这两样
 
 | 接口 | 内容 |
 |---|---|
@@ -65,7 +93,7 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 
 拿到这两个之后，参赛过程中不需要再读任何 Markdown。
 
-## 4. 结算
+## 5. 结算
 
 ```bash
 curl -X POST http://127.0.0.1:8734/quit
