@@ -30,6 +30,7 @@ jobs:
           set +e
           python run.py state > /dev/null 2>&1
           rc=$?
+          echo "guard exit code: $rc"
           if [ "$rc" -ne 2 ]; then
             echo "::error::版本守卫失效：期望退出码 2，实际 $rc"
             exit 1

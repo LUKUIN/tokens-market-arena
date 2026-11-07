@@ -31,6 +31,15 @@ import os
 import sys
 import time
 
+# 控制台编码兜底：英文 Windows 或输出被重定向到文件时，默认编码可能是
+# cp1252 / GBK，直接 print 中文会抛 UnicodeEncodeError —— 那会把版本守卫
+# 的退出码从 2 变成 1，让 CI 误判成「守卫失效」。
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 # ---------------------------------------------------------------------------
 # 运行时硬门槛：本项目的 .pyc / .pyd / tkinter 观众席全部按 Python 3.14 编译，
 # 换成别的版本会直接 "bad magic number"，或者窗口控件起不来。
