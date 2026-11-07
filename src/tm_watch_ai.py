@@ -1073,20 +1073,22 @@ class Watch:
             return
 
         eqs = [p["equity"] for p in self.curve]
-        lo, hi = min(eqs), max(eqs)
-        span = hi - lo
-        # 权益一次都没动过（开局等首次交易）时单独提示，
-        # 否则 5 条刻度会全部折算成同一个整数，看起来像图表坏了。
-        _flat = span < 0.5
-        if _flat:
-            # 完全水平时给一个固定的可视窗口（±2000），刻度才落在可读的整数上
-            lo = eqs[0] - 2000.0
-            hi = eqs[0] + 2000.0
-        else:
-            if span < 1:
-                span = 1.0
-            lo -= span * 0.10
-            hi += span * 0.10
+        # 固定刻度：以 50 万为步长。0 / 100 万（本金）/ 200 万（目标）都正好落在刻度上，
+        # 负值同样按 50 万向下延伸。刻度数超过 12 条时才退回自适应，避免一屏几十条线。
+        _STEP = 500_000.0
+        _BASE = 1_000_000.0
+        _TARGET = 2_000_000.0
+        _vmin = min(min(eqs), 0.0)
+        _vmax = max(max(eqs), _BASE, _TARGET)
+        lo = (int(_vmin // _STEP) - 1) * _STEP
+        hi = (int(_vmax // _STEP) + 1) * _STEP
+        _flat = (max(eqs) - min(eqs)) < 0.5
+        if (hi - lo) / _STEP > 12:
+            _vmin2 = min(eqs)
+            _vmax2 = max(eqs)
+            _sp = (_vmax2 - _vmin2) or 1.0
+            lo = _vmin2 - _sp * 0.10
+            hi = _vmax2 + _sp * 0.10
         pad_l, pad_r, pad_t, pad_b = 96, 18, 16, 26
         n = len(eqs)
 
@@ -1095,20 +1097,20 @@ class Watch:
             y = h - pad_b - (h - pad_t - pad_b) * ((v - lo) / (hi - lo))
             return (x, y)
 
-        # 刻度精度随可视跨度自适应：跨度小时固定 0 位小数会把不同刻度显示成同一个数
+        # 固定 50 万步长；超过 12 条时退回 5 等分自适应
         _span = hi - lo
-        if _span >= 10_000:
-            _fmt = "{:,.0f}"
-        elif _span >= 100:
-            _fmt = "{:,.2f}"
+        if _span / _STEP <= 12:
+            _vals = []
+            _v = lo
+            while _v <= hi + 1e-9:
+                _vals.append(_v)
+                _v += _STEP
         else:
-            _fmt = "{:,.4f}"
-        # 水平网格 + 刻度
-        for i in range(5):
-            v = lo + (hi - lo) * i / 4
+            _vals = [lo + _span * i / 4 for i in range(5)]
+        for v in _vals:
             _, gy = xy(0, v)
             c.create_line(pad_l, gy, w - pad_r, gy, fill="#EEEEEE")
-            c.create_text(pad_l - 8, gy, text=_fmt.format(v), anchor="e",
+            c.create_text(pad_l - 8, gy, text="{:,.0f}".format(v), anchor="e",
                           fill=MUTED, font=FONT_TINY)
         if _flat:
             c.create_text(w / 2, pad_t + 16, text="暂无资产变化，等待首次交易",
