@@ -233,6 +233,7 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
+ENGINE_VERSION = "1.0.12"   # 发布版本号：报告页脚与文档口径以此为准
 
 # ---------------- fast-forward quota ----------------
 # 15 minutes total per round. Both tiers can be mixed; each use starts a cooldown for the tier just used.
@@ -338,14 +339,24 @@ def purge_agent_dir(home):
     return removed
 
 
-def _new_session():
+def _new_session(seed=None, apply_rng=True):
+    """Build a new run.
+
+    Seed priority: explicit argument > TM_SEED > generated.
+    Whatever the source, the global random stream is reseeded here - the
+    report's "reproduce with TM_SEED=..." line is only truthful when this
+    seed actually drives the stream that produced the run.
+    """
     trader, unnamed = _env_trader()
     events_on = _env_events()
+    seed = _new_seed() if seed is None else int(seed)
+    if apply_rng:
+        random.seed(seed)
     return {
         "version": 2,
         "created_at": time.time(),
         "session_id": os.urandom(8).hex(),
-        "seed": _new_seed(),
+        "seed": seed,
         "tick": 0,
         "balance": STARTER_CASH,
         "genesis": STARTER_CASH,
@@ -388,6 +399,7 @@ def _new_session():
         "total_swap": 0.0,
         "order_count": 0,
         "abnormal_exits": 0,
+        "last_settle": None,   # 最近一次结算的结果（settled / warnings）
         "difficulty": None,          # {"gap": i, "liq": j}, filled once locked
         "roll_started_at": 0.0,      # draw start time (time.time())
         "roll_phase": random.uniform(0, ROLL_COMBOS),   # scatter phase for modulo (see _roll_index)
@@ -510,10 +522,13 @@ class Engine:
                     fresh = _new_session()
                     fresh["tampered"] = True
                     return fresh
-                base = _new_session()
+                base = _new_session(apply_rng=False)
                 for k, v in base.items():
                     s.setdefault(k, v)
                 s["session_id"] = s.get("session_id") or os.urandom(8).hex()
+                # 重启后随机流无法回到存档时刻，报告必须诚实标注复现边界
+                if not s.get("finished"):
+                    s["rng_resumed"] = True
                 return s
             except Exception:
                 pass
@@ -767,6 +782,65 @@ class Engine:
         # Events like "quote delay" add another layer of slippage on top of this
         return min(cap, cost / delta + self._mod("slip_add"))
 
+    def _close_fill(self, pair, side, qty, price=None):
+        """Closing fill price: mid price minus/plus (half spread + slippage).
+
+        Regular close, blow-up liquidation and end-of-run settlement all go
+        through this single path. No liquidation path may skip spread or
+        slippage, otherwise forced liquidation would be cheaper than a
+        voluntary close and the simulation would contradict itself.
+
+        Returns (fill, half_spread, slip_rate).
+        """
+        px = self.s["prices"][pair] if price is None else price
+        half = self._eff_spread(pair) / 2
+        total = self._account_notional()
+        per = qty * LOTS_SIZE * px
+        slip = self._slip_rate(max(0.0, total - per), total, pair)
+        if side == "LONG":
+            fill = px * (1 - half - slip)
+        else:
+            fill = px * (1 + half + slip)
+        return fill, half, slip
+
+    def _settle_lot(self, pos, qty, forced=False):
+        """Close one lot-batch (possibly partial) under the unified cost model.
+
+        Only books the trade; the caller decides how to update the positions
+        list, so close / blow-up / settlement share one cost path.
+        """
+        pair = pos["pair"]
+        fill, half, slip = self._close_fill(pair, pos["side"], qty)
+        ref = self.s["prices"][pair]
+        pnl = self._position_pnl(pos, fill)
+        fee = qty * LOTS_SIZE * fill * FEE_RATE * self._mod("fee_mult")
+        self.s["balance"] += pnl - fee
+        self.s["total_fees"] += fee
+        self.s["order_count"] += 1
+        rec = {
+            "tick": self.s["tick"], "type": "close", "pair": pair, "side": pos["side"],
+            "lots": qty, "fill": round(fill, 6), "pnl": round(pnl, 2),
+            "fee": round(fee, 2), "slip": round(slip, 6),
+            "slip_cost": round(qty * LOTS_SIZE * ref * slip, 2),
+            "spread_cost": round(qty * LOTS_SIZE * ref * half, 2),
+            "entry": pos["entry"], "leverage": pos["leverage"],
+        }
+        if forced:
+            rec["forced"] = True
+        self.s.setdefault("trades", []).append(rec)
+        return rec
+
+    def _force_close_all(self, forced=False):
+        """Force-close every position: not blocked by halt_close_until / halt_until.
+
+        Used by end-of-run settlement and loan-maturity clearance.
+        Returns the positions still open (normally empty); callers must check.
+        """
+        for p in list(self.s["positions"]):
+            self._settle_lot(p, p["lots"], forced=forced)
+            self.s["positions"].remove(p)
+        return list(self.s["positions"])
+
     def loan_limit(self):
         """Remaining loan headroom = loan pool (temporarily scaled by credit crunch / central bank easing) - amount already lent out."""
         pool = LOAN_POOL * self._mod("loan_pool_mult")
@@ -966,11 +1040,28 @@ class Engine:
         return False
 
     def _end_session(self, reason):
-        """Shared run-ending routine (the caller must already hold LOCK)."""
-        for p in list(self.s["positions"]):
-            self.close_position(p["pair"], p["lots"])
+        """Shared run-ending routine (the caller must already hold LOCK).
+
+        Settlement is three steps: force-close all -> clear the loan ->
+        verify invariants. Any failure is reported through warnings with
+        settled=False; the engine must never claim a clean settlement while
+        positions remain on the books.
+        """
+        warnings = []
+        residual = self._force_close_all()
+        if residual:
+            warnings.append("%d position(s) could not be settled: %s" % (
+                len(residual), ", ".join(sorted({p["pair"] for p in residual}))))
         self._settle_loan()
         self.s["finished"] = True
+        self.s["last_settle"] = {
+            "at": time.time(), "reason": reason,
+            "settled": not warnings, "warnings": list(warnings),
+        }
+        if self.s["loan"]["balance"] > 1e-9:
+            warnings.append("Loan not repaid: %.2f Tokens" % self.s["loan"]["balance"])
+        if self.s["positions"]:
+            warnings.append("%d position(s) still open after settlement" % len(self.s["positions"]))
         eq = self.equity()
         tgt = self.s.get("target", TARGET_EQUITY)
         hit = eq >= tgt and self._qualified()
@@ -988,7 +1079,8 @@ class Engine:
                "disqualified": not self._qualified(),
                "total_borrowed": round(borrowed, 2),
                "report": report, "auto_reset": False,
-               "reason": reason}
+               "reason": reason,
+               "settled": not warnings, "warnings": warnings}
         # Ended is ended: no auto restart after the round settles.
         # A new round requires an explicit POST /reset from the player.
         self._save()
@@ -1025,17 +1117,23 @@ class Engine:
                 self._event("[Margin call] Cleared; margin level back to %.0f%%" % (ml * 100), "margin_call")
 
     def _blowup(self):
-        px = self.s["prices"]
+        """Forced liquidation after a margin shortfall.
+
+        Shares _settle_lot with regular closes: spread, slippage and fees all
+        apply, and every fill is written to the trade log - otherwise the
+        report cannot rebuild the ledger, and "forced liquidation is cheaper
+        than closing yourself" becomes an exploitable edge.
+        """
         loss = 0.0
         n = 0
         for p in list(self.s["positions"]):
-            pnl = self._position_pnl(p, px[p["pair"]])
-            fee = p["lots"] * LOTS_SIZE * px[p["pair"]] * FEE_RATE * self._mod("fee_mult")
-            self.s["balance"] += pnl - fee
-            self.s["total_fees"] += fee
-            loss += pnl
+            rec = self._settle_lot(p, p["lots"], forced=True)
+            self.s["positions"].remove(p)
+            net = rec["pnl"] - rec["fee"]
+            loss += net
             n += 1
-            self._event("[Forced liquidation] %s %s %.0f lots, P&L %+.0f" % (p["pair"], p["side"], p["lots"], pnl), "stopout")
+            self._event("[Forced liquidation] %s %s %.0f lots, P&L %+.0f (after costs)" % (
+                p["pair"], p["side"], p["lots"], net), "stopout")
         self.s["positions"] = []
         self.s["margin_call_at"] = None
         self.s["blowups"] += 1
@@ -1667,8 +1765,8 @@ class Engine:
         debt = self.s["loan"]["balance"]
         if debt <= 0:
             return
-        for p in list(self.s["positions"]):
-            self.close_position(p["pair"], p["lots"])
+        # Loan-maturity clearance must not be blocked by trading halts either
+        self._force_close_all()
         _cash_before = self.s["balance"]
         self.s["balance"] -= debt
         self.s["loan"]["repaid"] += debt
@@ -1789,30 +1887,16 @@ class Engine:
                     break
                 p = self.s["positions"][i]
                 qty = p["lots"] if remaining is None else min(p["lots"], remaining)
-                half = self._eff_spread(pair) / 2
-                total = self._account_notional()
-                slip = self._slip_rate(max(0.0, total - qty * LOTS_SIZE * price), total, pair)
-                fill = price * (1 - half - slip) if p["side"] == "LONG" else price * (1 + half + slip)
-                pnl = self._position_pnl(p, fill)
-                fee = qty * LOTS_SIZE * fill * FEE_RATE * self._mod("fee_mult")
-                self.s["balance"] += pnl - fee
-                self.s["total_fees"] += fee
-                self.s["order_count"] += 1
+                rec = self._settle_lot(p, qty)
                 if qty >= p["lots"]:
                     self.s["positions"].pop(i)
                 else:
                     p["lots"] -= qty
                     p["margin"] = self._position_margin(p)
-                closed.append({"pair": pair, "side": p["side"], "lots": qty,
-                               "fill": round(fill, 6), "pnl": round(pnl, 2)})
-                self.s.setdefault("trades", []).append({
-                    "tick": self.s["tick"], "type": "close", "pair": pair, "side": p["side"],
-                    "lots": qty, "fill": round(fill, 6), "pnl": round(pnl, 2),
-                    "fee": round(fee, 2), "slip": round(slip, 6),
-                    "slip_cost": round(qty * LOTS_SIZE * price * slip, 2),
-                    "spread_cost": round(qty * LOTS_SIZE * price * half, 2),
-                    "entry": p["entry"], "leverage": p["leverage"]})
-                self._event("Closed %s %s %.0f lots @%.4f, P&L %+.0f" % (pair, p["side"], qty, fill, pnl), "close")
+                closed.append({"pair": rec["pair"], "side": rec["side"], "lots": qty,
+                               "fill": rec["fill"], "pnl": rec["pnl"]})
+                self._event("Closed %s %s %.0f lots @%.4f, P&L %+.0f" % (
+                    pair, p["side"], qty, rec["fill"], rec["pnl"]), "close")
                 if remaining is not None:
                     remaining -= qty
             self._save()
@@ -1862,6 +1946,7 @@ class Engine:
             "curves": curve, "start": eqs[0], "peak": max(eqs), "low": min(eqs),
             "end": eqs[-1], "mdd": mdd, "sharpe": sharpe,
             "trades_n": len(closes), "win_n": len(wins),
+            "forced_n": len([t for t in closes if t.get("forced")]),
             "win_rate": (len(wins) / len(closes)) if closes else 0.0,
             "best": (max(gains) if gains else None),
             "worst": (min(losses) if losses else None),
@@ -2037,7 +2122,7 @@ class Engine:
                         return "manifest v%d" % int(json.load(fh).get("version"))
         except Exception:
             pass
-        return "Engine internal version %d" % int(self.s.get("version", 0))
+        return "v%s" % ENGINE_VERSION
 
     def _write_report(self, reason, final_eq, abnormal=False):
         """Generate the after-action report (HTML only). No exception may disturb gameplay."""
@@ -2052,8 +2137,13 @@ class Engine:
             dur = max(0, int(self._elapsed()))
             target = self.s.get("target", TARGET_EQUITY)
             hit = final_eq >= target and self._qualified()
+            _residual = len(self.s.get("positions") or [])
             if abnormal:
                 verdict = "Unsettled (abnormal exit)"
+                hit = False
+            elif _residual:
+                # A settlement that left positions open cannot be called a result
+                verdict = "Settlement error (%d position(s) left open)" % _residual
                 hit = False
             elif final_eq >= target and not self._qualified():
                 verdict = "Target reached but run ineligible"
@@ -2237,9 +2327,14 @@ class Engine:
                 "sharpe": "%.2f" % m["sharpe"],
                 "trades_n": str(m["trades_n"]),
                 "trades_all": str(m.get("trades_all", 0)),
+                "forced_n": str(m.get("forced_n", 0)),
+                "settle_pos": ("All positions settled" if not _residual
+                               else "%d position(s) left open (error)" % _residual),
                 "verline": "Tokens Trading Market · %s · This report is generated automatically" % self._manifest_version(),
-                "seedline": "Random seed %s · reproduce with: TM_SEED=%s and start a new run" % (
-                    self.s.get("seed") or "—", self.s.get("seed") or "—"),
+                "seedline": "Random seed %s · reproduce with: TM_SEED=%s and start a new run%s" % (
+                    self.s.get("seed") or "—", self.s.get("seed") or "—",
+                    " (note: this run resumed after a restart, so the seed only reproduces "
+                    "the part before the restart)" if self.s.get("rng_resumed") else ""),
                 "winrate": "%.1f" % (m["win_rate"] * 100),
                 "best": fmt(m["best"]) if m["best"] is not None else "—",
                 "worst": fmt(m["worst"]) if m["worst"] is not None else "—",
@@ -2339,7 +2434,9 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
   <div class="kv"><span>Max drawdown</span><span>{mdd}%</span></div>
   <div class="kv"><span>Sharpe ratio</span><span>{sharpe}</span></div>
   <div class="kv"><span>Closed positions</span><span>{trades_n}</span></div>
+  <div class="kv"><span>└ Forced liquidation</span><span>{forced_n}</span></div>
   <div class="kv"><span>Orders (incl. opens)</span><span>{trades_all}</span></div>
+  <div class="kv"><span>Positions after settlement</span><span>{settle_pos}</span></div>
   <div class="kv"><span>Win rate</span><span>{winrate}%</span></div>
   <div class="kv"><span>Largest single win</span><span class="up">{best}</span></div>
   <div class="kv"><span>Largest single loss</span><span class="down">{worst}</span></div>
@@ -2450,6 +2547,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "tick": self.s["tick"],
                 "session_id": self.s.get("session_id", ""),
                 "abnormal_exits": int(self.s.get("abnormal_exits", 0)),
+                "settlement": self.s.get("last_settle"),
                 "paused": bool(self.s.get("paused")),
                 "ff": self.ff_plan(),
                 "loan_pool_event": (lambda _m: (

@@ -186,6 +186,11 @@ Every endpoint lives at `http://127.0.0.1:8734`.
 | POST | `/quit` | Settle voluntarily and generate the report |
 | POST | `/shutdown` | Stop the server (**records one abnormal exit**) |
 
+> `POST /quit` returns two settlement fields: `settled` (boolean, whether settlement was
+> complete) and `warnings` (string array listing leftover positions or unpaid loans).
+> When `settled=false` the report header reads "Settlement error"; do not treat it as a
+> clean result.
+
 ## 4. The `/state` fields that matter
 
 > **Token saving**: `GET /state?history=0` drops `price_history` (up to 2000 points per pair,
@@ -221,6 +226,7 @@ Every endpoint lives at `http://127.0.0.1:8734`.
   "gap_level": "low", "liq_level": "normal",
   "ff_remain": 900,                     // remaining fast-forward budget (seconds)
   "finished": false,
+  "settlement": null,                   // settlement result: {settled, warnings, reason}; null before the run ends
   "events": [ ... ]                     // recent events, full text included
 }
 ```

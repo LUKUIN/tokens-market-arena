@@ -72,6 +72,10 @@ jobs:
           assert light["equity"] == eng.state()["equity"]
           print("light state OK")
 
+      - name: Settlement and cost-model invariant tests
+        shell: bash
+        run: python -m unittest discover -s tests -v
+
       - name: Guard against committing the signing key
         shell: bash
         run: |

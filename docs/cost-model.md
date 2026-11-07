@@ -79,6 +79,28 @@ stop placed at 137   → filled at 139.28 (1.7% slippage)
 
 Closing during drained liquidity also incurs about 2.3% slippage (`80.02 → 78.19`).
 
+## Forced liquidation and settlement
+
+A regular close, a blow-up liquidation and end-of-match settlement share **one** execution path:
+
+```
+fill = mid price minus/plus (half spread + slippage)
+fee  = filled notional x fee rate
+```
+
+- **Blow-up liquidation** (margin level below the stop-out line, or a margin call timing out):
+  spread, slippage and fees all apply, and the fill is written to the trade log with a `forced`
+  flag. The report lists "Forced liquidation" under "Closed positions".
+- **End-of-match settlement**: not blocked by "exchange maintenance" or any other trading halt.
+  Final equity is computed only after positions are cleared:
+  final equity = cash - debt, with **no floating P&L**.
+- **Failed settlement**: `POST /quit` returns `settled=false` plus `warnings`, and the report
+  header reads "Settlement error (N position(s) left open)". It is never treated as a clean result.
+
+> Before v1.0.12 the blow-up path charged fees only (no spread, no slippage), and settlement
+> closes were silently skipped while "exchange maintenance" was active. Historical reports use a
+> different cost basis and are not directly comparable with v1.0.12 and later.
+
 ## How overnight interest accumulates
 
 `LOAN_RATE_PER_TICK = 0.0001` (loan interest), while `swap` is charged on holdings.

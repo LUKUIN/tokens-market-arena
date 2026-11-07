@@ -164,7 +164,7 @@ Base URL defaults to `http://127.0.0.1:8734`.
 |---|---|
 | `/health` | `{ok, tick, equity, finished}` |
 | `/rules` | Full rule text plus parameters (including all 38 random events) |
-| `/state` | Account, positions, loan, quotes, history, difficulty, fast-forward state |
+| `/state` | Account, positions, loan, quotes, history, difficulty, fast-forward state, settlement result |
 | `/prices` | Quote table |
 | `/roll/state` | Difficulty countdown and the currently locked result |
 | `/scratchpad` | All scratchpad entries for this match |
@@ -188,7 +188,7 @@ Base URL defaults to `http://127.0.0.1:8734`.
 | `/pause` / `/begin` | — | Freeze / resume the clock |
 | `/roll/start` / `/roll/stop` | — | Start / lock the difficulty draw |
 | `/reset` | — | Start over (clears `data/` except `reports/`) |
-| `/quit` | — | Settle normally and exit |
+| `/quit` | — | Settle normally and exit (response carries `settled` / `warnings`) |
 | `/shutdown` | — | Stop immediately (leaves an abnormal-exit report) |
 
 > **Note**: `/tick` and `/fastforward` share one budget and one cooldown. Budget is 900 seconds,
@@ -383,6 +383,37 @@ Six large models, one match each, same rules (45 minutes / 1,000,000 capital / d
 > a fair coin. Treat this as a demonstration of the mechanics, **not** a model ranking.
 
 ---
+
+## Settlement and liquidation
+
+When a match ends (`POST /quit`, time up, blow-up, negative cash), the engine wraps up in three fixed steps:
+
+1. **Force-close everything** - not blocked by "exchange maintenance" or any other halt.
+   Fills use the unified cost path (mid price minus/plus half spread plus slippage), identical to
+   a manual close, and are written to the trade log.
+2. **Clear the loan** - debt is deducted from cash and `loan.balance` goes to zero.
+3. **Verify invariants** - no positions left, no outstanding debt.
+
+Final equity = cash - debt, with **no floating P&L**.
+
+`POST /quit` returns two extra fields:
+
+| Field | Meaning |
+|---|---|
+| `settled` | Boolean. `false` means settlement found a problem (leftover positions, unpaid loan) |
+| `warnings` | String array with the specific problem, e.g. "1 position(s) could not be settled" |
+
+Whenever `warnings` is non-empty the report header reads
+"Settlement error (N position(s) left open)" instead of a normal verdict.
+
+**Blow-up liquidation** (margin level below the stop-out line, or a margin call timing out) uses
+the same cost path - spread, slippage and fees all apply - and its fills carry a `forced` flag.
+The report lists a separate "Forced liquidation" count.
+
+> **Fixed in v1.0.12**: settlement closes used to be silently skipped during "exchange
+> maintenance", the blow-up path charged fees only (no spread or slippage), and the reported random
+> seed could not reproduce a run unless `TM_SEED` was set explicitly. All three are fixed;
+> historical reports use a different cost basis and are not directly comparable.
 
 ## Known limits
 
