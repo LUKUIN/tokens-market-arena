@@ -265,6 +265,7 @@ ORANGE = "#CA5010"
 YELLOW = "#B8860B"
 PURPLE = "#7B2FBE"   # 紫：欠款区（净值 < 0）
 HEAD = "#F7F7F7"
+TOPBAR = "#11213E"   # Fluent 深色标题栏
 
 FONT = ("Microsoft YaHei UI", 10)
 FONT_SMALL = ("Microsoft YaHei UI", 9)
@@ -366,61 +367,66 @@ class Watch:
     def _build(self):
         root = self.root
 
-        # ---------- 工具栏 ----------
-        topbar = tk.Frame(root, bg=CARD, highlightbackground=BORDER, highlightthickness=1)
-        topbar.pack(fill="x", padx=14, pady=(12, 6))
+        # ---------- 顶栏（Fluent 深色标题栏）----------
+        # 深色条把「身份 / 模式 / 全局状态」与正文分开；正文继续用浅色卡片，
+        # 层次靠色差就够了，不依赖 Tk 做不出的圆角与阴影。
+        topbar = tk.Frame(root, bg=TOPBAR)
+        topbar.pack(fill="x")
 
-        tk.Label(topbar, text="  Tokens 交易市场", font=(FONT[0], 12, "bold"),
-                 bg=CARD, fg=TEXT).pack(side="left", padx=(6, 4), pady=8)
-        self.lbl_trader = tk.Label(topbar, text="", font=(FONT[0], 12, "bold"),
-                                   bg=CARD, fg=BLUE)
-        self.lbl_trader.pack(side="left", padx=(10, 0))
-        self.lbl_mode = tk.Label(topbar, text="", font=FONT_SMALL, bg=CARD, fg=MUTED)
+        _brand = tk.Frame(topbar, bg=TOPBAR)
+        _brand.pack(side="left", padx=(18, 0), pady=10)
+        tk.Label(_brand, text="TOKENS 交易市场", font=(FONT[0], 12, "bold"),
+                 bg=TOPBAR, fg="#FFFFFF").pack(side="left")
+        self.lbl_trader = tk.Label(_brand, text="", font=(FONT[0], 11, "bold"),
+                                   bg=TOPBAR, fg="#8CC4F8")
+        self.lbl_trader.pack(side="left", padx=(14, 0))
+        self.lbl_mode = tk.Label(_brand, text="", font=FONT_SMALL, bg=TOPBAR, fg="#AEBBD0")
         self.lbl_mode.pack(side="left", padx=(8, 0))
-        tk.Label(topbar, text="人类玩家版 | 投资终端", font=FONT_SMALL, bg=CARD, fg=MUTED).pack(
-            side="left", pady=8)
+        tk.Label(_brand, text="投资终端", font=FONT_SMALL,
+                 bg=TOPBAR, fg="#7E8CA3").pack(side="left", padx=(10, 0))
 
-        # 两个全局开关型事件的状态：开启=紫色粗体；未开启=黑色粗体+删除线
         self._f_on = tkfont.Font(root=root, family=FONT[0], size=10, weight="bold")
         self._f_off = tkfont.Font(root=root, family=FONT[0], size=10, weight="bold",
                                   overstrike=1)
-        self.lbl_fr = tk.Label(topbar, text="金融回逆", font=self._f_off, bg=CARD, fg=TEXT)
-        self.lbl_fr.pack(side="left", padx=(16, 0), pady=8)
-        self.lbl_slot = tk.Label(topbar, text="老虎机", font=self._f_off, bg=CARD, fg=TEXT)
-        self.lbl_slot.pack(side="left", padx=(10, 0), pady=8)
+        self.lbl_fr = tk.Label(topbar, text="金融回逆", font=self._f_off,
+                               bg=TOPBAR, fg="#D6DFEC")
+        self.lbl_fr.pack(side="left", padx=(22, 0))
+        self.lbl_slot = tk.Label(topbar, text="老虎机", font=self._f_off,
+                                 bg=TOPBAR, fg="#D6DFEC")
+        self.lbl_slot.pack(side="left", padx=(10, 0))
         self._last_special = None
         self.btn_slot = tk.Button(topbar, text="老虎机", command=self._open_slot,
                                   font=FONT_SMALL, bd=0, padx=12, pady=4,
-                                  bg="#F3EEFF", fg="#6B4E9B", activebackground="#E9E0FF",
-                                  activeforeground="#6B4E9B", cursor="hand2")
+                                  bg="#2B3E5C", fg="#C9B8EE", activebackground="#36506F",
+                                  activeforeground="#FFFFFF", cursor="hand2")
 
         btn_style = dict(font=FONT_SMALL, bd=0, relief="flat", cursor="hand2",
                          padx=12, pady=4)
         tk.Button(topbar, text="最小化", command=self.root.iconify,
-                  bg="#F1F1F1", fg=TEXT, activebackground="#E5E5E5",
-                  **btn_style).pack(side="right", padx=(0, 8), pady=6)
+                  bg="#1E3050", fg="#D5DFEC", activebackground="#2B3E5C",
+                  activeforeground="#FFFFFF", **btn_style).pack(side="right", padx=(0, 8), pady=8)
         tk.Button(topbar, text="投资界面", command=self._open_trade_panel,
-                  bg=BLUE, fg="white", activebackground="#106EBE",
-                  activeforeground="white", **btn_style).pack(side="right", padx=(0, 8), pady=6)
+                  bg="#0F6CBD", fg="white", activebackground="#115EA3",
+                  activeforeground="white", **btn_style).pack(side="right", padx=(0, 8), pady=8)
         if self.narrow:
             tk.Button(topbar, text="活动流", command=self._open_log_panel,
-                      bg="#F3EEFF", fg="#6B4E9B", activebackground="#E4D9FB",
-                      activeforeground="#6B4E9B",
-                      **btn_style).pack(side="right", padx=(0, 8), pady=6)
+                      bg="#2B3E5C", fg="#C9B8EE", activebackground="#36506F",
+                      activeforeground="#FFFFFF",
+                      **btn_style).pack(side="right", padx=(0, 8), pady=8)
         tk.Button(topbar, text="查看规则", command=lambda: self._show_rules(False),
-                  bg="#EEF4FF", fg=BLUE, activebackground="#DCE8FB",
-                  activeforeground=BLUE, **btn_style).pack(side="right", padx=(0, 8), pady=6)
+                  bg="#2B3E5C", fg="#A9C8EE", activebackground="#36506F",
+                  activeforeground="#FFFFFF", **btn_style).pack(side="right", padx=(0, 8), pady=8)
         tk.Button(topbar, text="结束相关进程", command=self._kill_all,
-                  bg="#FDEDED", fg=RED, activebackground="#F8D7D7",
-                  activeforeground=RED, **btn_style).pack(side="right", padx=(0, 10), pady=6)
+                  bg="#1E3050", fg="#F2A6A0", activebackground="#2B3E5C",
+                  activeforeground="#FFFFFF", **btn_style).pack(side="right", padx=(0, 10), pady=8)
 
         # ---------- 指标卡 ----------
         metrics = tk.Frame(root, bg=BG)
-        metrics.pack(fill="x", padx=14, pady=(0, 6))
-        self.lbl_equity = self._metric(metrics, 0, "账户权益（Tokens）", BLUE)
-        self.lbl_pnl = self._metric(metrics, 1, "累计盈亏", TEXT)
-        self.lbl_margin = self._metric(metrics, 2, "保证金水平", TEXT)
-        self.lbl_target = self._metric(metrics, 3, "目标进度", BLUE)
+        metrics.pack(fill="x", padx=14, pady=(10, 6))
+        self.lbl_equity = self._metric(metrics, 0, "账户权益（Tokens）", BLUE, "当前账户净值")
+        self.lbl_pnl = self._metric(metrics, 1, "累计盈亏", TEXT, "相对初始本金")
+        self.lbl_margin = self._metric(metrics, 2, "保证金水平", TEXT, "低于 100% 触发追缴")
+        self.lbl_target = self._metric(metrics, 3, "目标进度", BLUE, "距离获胜目标")
         for i in range(4):
             metrics.columnconfigure(i, weight=1, uniform="m")
 
@@ -450,13 +456,44 @@ class Watch:
         self.lbl_time.pack(side="left", padx=(10, 12))
         self.cv_time.bind("<Configure>", lambda e: self._draw_time_bar())
 
-        # ---------- 中部：持仓 + 曲线 ----------
+        # ---------- 中部：权益曲线（左，主视觉） + 运行状态（右） ----------
         mid = tk.Frame(root, bg=BG)
         mid.pack(fill="both", expand=True, padx=14, pady=(0, 6))
 
         left = card(mid)
         left.pack(side="left", fill="both", expand=True)
-        self._section_title(left, "持仓明细")
+        self._section_title(left, "权益曲线（Tokens）")
+        self.equity_canvas = tk.Canvas(left, bg=CARD, height=236, bd=0,
+                                       highlightthickness=0)
+        self.equity_canvas.pack(fill="both", expand=True, padx=14, pady=(0, 12))
+
+        # 右栏只放引擎真实给出的状态，不编造没有数据源的指标。
+        right = card(mid)
+        right.pack(side="left", fill="y", padx=(8, 0))
+        right.configure(width=300)
+        right.pack_propagate(False)
+        self._section_title(right, "运行状态")
+        self._panel_rows = {}
+        for _key, _title in (
+                ("audit", "账本自检"),
+                ("gap", "黑天鹅频率"),
+                ("liq", "流动性枯竭"),
+                ("ff", "快进额度"),
+                ("special", "全局事件"),
+                ("last", "最新动态")):
+            _row = tk.Frame(right, bg=CARD)
+            _row.pack(fill="x", padx=14, pady=3)
+            tk.Label(_row, text=_title, font=FONT_TINY, bg=CARD, fg=MUTED,
+                     anchor="w").pack(anchor="w")
+            _val = tk.Label(_row, text="—", font=FONT_SMALL, bg=CARD, fg=TEXT,
+                            anchor="w", justify="left", wraplength=262)
+            _val.pack(anchor="w")
+            self._panel_rows[_key] = _val
+
+        # ---------- 持仓明细（全宽） ----------
+        hold = card(root)
+        hold.pack(fill="x", padx=14, pady=(0, 6))
+        self._section_title(hold, "持仓明细")
 
         style = ttk.Style()
         try:
@@ -470,22 +507,15 @@ class Watch:
         style.map("Tm.Treeview", background=[("selected", "#BFD9F2")],
                   foreground=[("selected", TEXT)])
         self.tree = ttk.Treeview(
-            left, columns=("pair", "side", "lots", "leverage", "entry", "price", "margin", "upnl"),
-            show="headings", height=7, style="Tm.Treeview", selectmode="none")
+            hold, columns=("pair", "side", "lots", "leverage", "entry", "price", "margin", "upnl"),
+            show="headings", height=3, style="Tm.Treeview", selectmode="none")
         for col, title, width in (
                 ("pair", "交易对", 296), ("side", "方向", 48), ("lots", "手数", 64),
                 ("leverage", "杠杆", 48), ("entry", "开仓价", 86), ("price", "最新价", 86),
                 ("margin", "保证金", 80), ("upnl", "浮动盈亏", 90)):
             self.tree.heading(col, text=title)
             self.tree.column(col, width=width, anchor="center")
-        self.tree.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-
-        right = card(mid)
-        right.pack(side="left", fill="both", expand=True, padx=(8, 0))
-        self._section_title(right, "权益曲线（Tokens）")
-        self.equity_canvas = tk.Canvas(right, bg=CARD, height=330, bd=0,
-                                       highlightthickness=0)
-        self.equity_canvas.pack(fill="both", expand=True, padx=14, pady=(0, 12))
+        self.tree.pack(fill="x", padx=10, pady=(0, 10))
 
         # ---------- 底部：报价台 + 活动流 ----------
         bottom = card(root)
@@ -516,7 +546,13 @@ class Watch:
             # 由玩家自己点开，不自动弹。
             return
 
-        self._section_title(bottom, "活动流（可滚动）")
+        # ---------- 活动流头部 ----------
+        # 人类版没有分类筛选，只有标题（AI 版才有 tab）
+        feed_head = tk.Frame(bottom, bg=CARD)
+        feed_head.pack(fill="x")
+        tk.Label(feed_head, text="活动流", font=FONT, bg=CARD, fg=TEXT, anchor="w",
+                 padx=14, pady=max(3, int(7 * self.V))).pack(side="left")
+
         log_wrap = tk.Frame(bottom, bg=CARD)
         log_wrap.pack(fill="both", expand=True, padx=0, pady=(0, 10))
         self.log_text = tk.Text(log_wrap, bg=CARD, fg=MUTED, font=FONT_LOG, bd=0,
@@ -528,65 +564,7 @@ class Watch:
         self.log_text.pack(side="left", fill="both", expand=True)
         self.log_vbar.pack(side="right", fill="y")
 
-    def _open_log_panel(self):
-        """窄屏下用独立窗口显示活动流，可与主窗口共存。
-
-        只由工具栏「活动流」按钮触发，启动时不会自动弹出。
-        """
-        if self._log_win is not None and self._log_win.winfo_exists():
-            self._log_win.deiconify()
-            self._log_win.lift()
-            return
-        win = tk.Toplevel(self.root)
-        win.title("活动流 | Tokens 交易市场")
-        # 不允许点 X 关闭，只能点下面的「关闭」按钮
-        win.protocol("WM_DELETE_WINDOW", lambda: None)
-        win.after(120, lambda: _hide_close_button(win))
-        w, h = int(self.W * 0.62), int(self.H * 0.5)
-        win.geometry("%dx%d+%d+%d" % (
-            max(620, w), max(320, h),
-            self.root.winfo_x() + 60, self.root.winfo_y() + 80))
-        win.configure(bg=BG)
-        _apply_icon(win)
-
-        card_ = card(win)
-        card_.pack(fill="both", expand=True, padx=12, pady=12)
-        tk.Label(card_, text="活动流（可滚动）", font=FONT, bg=CARD, fg=TEXT,
-                 anchor="w", padx=14, pady=max(3, int(7 * self.V))).pack(fill="x")
-
-        # 按钮先 pack 到底部，否则会被下面 expand=True 的文本区挤出去
-        tk.Button(card_, text="关闭", command=self._close_log_panel, bg="#EEF4FF", fg=BLUE,
-                  font=FONT_SMALL, bd=0, padx=16, pady=4, cursor="hand2").pack(
-            side="bottom", pady=(0, 8))
-        wrap = tk.Frame(card_, bg=CARD)
-        wrap.pack(fill="both", expand=True, padx=0, pady=(0, 10))
-        txt = tk.Text(wrap, bg=CARD, fg=MUTED, font=FONT_LOG, bd=0,
-                      height=14, insertbackground=TEXT, padx=14, pady=4,
-                      wrap="none", state="disabled")
-        bar = tk.Scrollbar(wrap, orient="vertical", command=txt.yview)
-        txt.configure(yscrollcommand=bar.set)
-        txt.pack(side="left", fill="both", expand=True)
-        bar.pack(side="right", fill="y")
-
-        self._log_win = win
-        self.log_text = txt
-        self._log_seen.clear()
-        try:
-            self._append_log((self.st or {}).get("events", []))
-        except Exception:
-            pass
-
-    def _close_log_panel(self):
-        if self._log_win is not None:
-            try:
-                self._log_win.destroy()
-            except Exception:
-                pass
-        self._log_win = None
-        self.log_text = None
-        self._log_seen.clear()
-
-    def _metric(self, parent, col, title, color):
+    def _metric(self, parent, col, title, color, sub=""):
         c = card(parent)
         c.grid(row=0, column=col, sticky="nsew",
                padx=(0, 8) if col < 3 else (0, 0), pady=2)
@@ -668,9 +646,9 @@ class Watch:
             _fr_on, _slot_on = _sig
             _purple = "#7B3FB8"
             self.lbl_fr.config(font=self._f_on if _fr_on else self._f_off,
-                               fg=_purple if _fr_on else TEXT)
+                               fg=_purple if _fr_on else "#8A97A8")
             self.lbl_slot.config(font=self._f_on if _slot_on else self._f_off,
-                                 fg=_purple if _slot_on else TEXT)
+                                 fg=_purple if _slot_on else "#8A97A8")
             if _slot_on:
                 self.btn_slot.pack(side="right", padx=(0, 8), pady=6)
             else:
@@ -740,6 +718,29 @@ class Watch:
         self.lbl_extra.config(text="已借 {:,.0f} | 欠款 {:,.0f} | 利息 {:,.0f} | {:.3f}%/tick".format(
             borrowed, loan["balance"], loan["interest"], loan["rate_pct"]),
             fg=RED if borrowed > 0 else BLUE)
+
+        # 右栏「运行状态」：同样只放引擎真实给出的值，不编造没有数据源的指标。
+        if getattr(self, "_panel_rows", None):
+            _pr = self._panel_rows
+            try:
+                _pr["audit"].config(
+                    text=("%d 项告警" % len(_audit)) if _audit else "通过（4 条恒等式）",
+                    fg=RED if _audit else GREEN)
+                _pr["gap"].config(text="%s（%s/tick）" % (
+                    gap_lv or "—", _GAP_PCT.get(gap_lv, "?")))
+                _pr["liq"].config(text="%s（%s 往返）" % (
+                    liq_lv or "—", _LIQ_PCT.get(liq_lv, "?")))
+                _f2 = st.get("ff") or {}
+                _rm2 = float(_f2.get("remain") or 0)
+                _pr["ff"].config(
+                    text=("%d 分钟" % int(_rm2 // 60)) if _rm2 >= 60 else ("%d 秒" % int(_rm2)))
+                _on = [n for n, v in (("金融回逆", sp.get("fr")), ("老虎机", sp.get("slot"))) if v]
+                _pr["special"].config(text="、".join(_on) if _on else "无")
+                _ev = st.get("events") or []
+                _last = (_ev[-1].get("text") or "—") if _ev else "—"
+                _pr["last"].config(text=_last[-46:])
+            except Exception as exc:
+                sys.stderr.write("panel rows: %r\n" % (exc,))
 
         state_txt = "正常交易中"
         if st.get("negative_remain") is not None:
