@@ -346,7 +346,7 @@ TokensMarket-OpenSource-AI-v97/
 │   ├── rules.md            full rules
 │   ├── cost-model.md       cost model
 │   └── ai-protocol.md      agent integration protocol
-├── examples/reports/       4 representative reports
+├── examples/reports/       6 representative reports
 └── src/data/               generated at runtime: session.json, reports/, .scratchpad.jsonl
 ```
 
