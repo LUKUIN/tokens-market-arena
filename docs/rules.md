@@ -61,15 +61,20 @@ and filling at 131 is common.
 
 ### Liquidity · slippage cost
 
-| Tier | 20M notional round trip | 10M position round trip |
+| Tier (market depth) | 10M notional round trip | % of 1M principal |
 |---|---:|---:|
-| Ample | 3.5% | 1.8% |
-| Normal | 7.0% | 3.5% |
-| Thin | 14.0% | 7.0% |
-| Drained | 28% | 14.0% |
-| Black hole | 56% | 28.0% |
+| Ample (32M) | 17,500 | 1.75% |
+| Normal (16M) | 25,000 | 2.50% |
+| Thin (8M) | 40,000 | 4.00% |
+| Drained (4M) | 70,000 | 7.00% |
+| Black hole (2M) | 130,000 | 13.0% |
 
-Slippage scales with notional size.
+The table is 10M notional at an AURA-grade spread (0.06%) and includes commission (4,000),
+spread (6,000) and slippage. **It is cost as a share of the 1M starting principal**, not of notional.
+
+**Slippage grows with the SQUARE of notional**: cost = `SLIP_K / (2 × market depth) × notional²`,
+`SLIP_K = 0.0024`. Doubling the notional quadruples the slippage cost. One-sided slippage is capped
+at 1.4% (6% during a liquidity shock).
 
 Difficulty is shown in the window title:
 

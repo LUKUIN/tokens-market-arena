@@ -14,7 +14,7 @@ not from estimates.
 
 ## Measured round-trip cost
 
-At "liquidity: normal" (LIQ = 16,000,000), opening and closing immediately (price unchanged, pure
+At "liquidity: thin" (LIQ = 8,000,000, also the default before difficulty is locked), opening and closing immediately (price unchanged, pure
 cost):
 
 | Notional | Round-trip cost | As share of 1M starting capital |
@@ -32,13 +32,13 @@ cost):
 
 Same 10M notional, different liquidity tiers:
 
-| Tier | LIQ | Round-trip cost |
-|---|---:|---:|
-| Ample | 32,000,000 | ~2.0% |
-| Normal | 16,000,000 | ~4.0% |
-| Thin | 8,000,000 | ~8.0% |
-| Drained | 4,000,000 | ~16% |
-| Black hole | 2,000,000 | ~32% |
+| Tier | LIQ | Round-trip cost | % of 1M principal |
+|---|---:|---:|---:|
+| Ample | 32,000,000 | 17,500 | 1.75% |
+| Normal | 16,000,000 | 25,000 | 2.50% |
+| Thin | 8,000,000 | 40,000 | 4.00% |
+| Drained | 4,000,000 | 70,000 | 7.00% |
+| Black hole | 2,000,000 | 130,000 | 13.0% |
 
 **So "bad liquidity" does not forbid trading — it forces you to size down.**
 
