@@ -183,7 +183,7 @@ Every endpoint lives at `http://127.0.0.1:8734`.
 | POST | `/special` | `{"name":"fr"|"slot","on":true}`, toggle a switch (enabling mid-match costs 300,000 cash) |
 | POST | `/slot` | `{"amount":10000}`, slot bet (1~200000, ≤ current equity, 3 plays) |
 | POST | `/reset` | Start a new match |
-| POST | `/quit` | Settle voluntarily and generate the report |
+| POST | `/quit` | Settle voluntarily and generate the report; **about 3 seconds later the service cleans up**: temp files removed, leftover port holders stopped |
 | POST | `/shutdown` | Stop the server (**records one abnormal exit**) |
 
 > `POST /quit` returns two settlement fields: `settled` (boolean, whether settlement was

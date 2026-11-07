@@ -18,35 +18,33 @@ interpreter — the spectator's GUI widgets and the `.pyc` files are built for 3
 version simply cannot start. If the short name is not found, write the full path; do not report
 "the environment is broken".
 
-## 1. Clean and reset (do this BEFORE launching)
+## 1. Check for leftovers (clean only if needed)
 
-A leftover save file makes the service resume the previous match — **clean it first**. Both cases
-are covered (service still running, or already stopped):
+**After a normal match this step does nothing**: once settlement finishes, `run.py` deletes the
+temporary files and shuts the related processes down by itself, leaving only `reports/` under
+`src/data/`. You only need to act after a manual interrupt, a crash, or a window that never closed.
+
+Check first — one command tells you which case you are in:
 
 ```bash
-cd <project dir>
+cd <project directory>
+ls -A src/data/ | grep -v '^reports$' | grep -q . && echo "leftovers found - clean" || echo "clean - go to step 2"
+```
 
-# If the previous service is still running: reset, then shut down
-# (/reset wipes everything under data/ except reports/)
+**If it says "clean", skip this section and start.** Only when it reports leftovers:
+
+```bash
+# The previous service may still hold the port: reset, then shut down
 curl -s -X POST http://127.0.0.1:8734/reset    >/dev/null 2>&1 || true
 curl -s -X POST http://127.0.0.1:8734/shutdown >/dev/null 2>&1 || true
 
-# Belt and braces: delete the save directly when the service is not running
-rm -f src/data/session.json
-rm -f src/data/.scratchpad.jsonl
+# Service not running: delete the save directly
+rm -f src/data/session.json src/data/.scratchpad.jsonl
 rm -rf src/data/_agent
 ```
 
-PowerShell equivalent:
-
-```powershell
-Remove-Item -Force src/data/session.json            -ErrorAction SilentlyContinue
-Remove-Item -Force src/data/.scratchpad.jsonl       -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force src/data/_agent         -ErrorAction SilentlyContinue
-```
-
 **Never delete `src/data/reports/`** — that is the match archive; every settlement writes a new
-file there. When done, `src/data/` should contain only `reports/`.
+file there.
 
 ## 2. Start (one command; the spectator opens itself)
 

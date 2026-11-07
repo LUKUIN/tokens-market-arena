@@ -147,8 +147,8 @@ nothing. Sections, top to bottom:
 | KPI cards | equity, total P&L, margin level, progress to target |
 | Status row | credit / cash / borrowed / owed / interest; target / drawdown / Sharpe / trades / win rate / fees; ledger-audit slot; previous-run abnormal-exit banner |
 | Equity curve | primary visual, fixed 500k Y ticks (0 / 1M / 2M land on grid lines) |
-| Runtime status | ledger audit, black-swan rate, liquidity, fast-forward, global events, latest |
-| Positions | table when holding (2-6 rows adaptive), explicit empty state when flat |
+| Runtime status | ledger audit, black-swan rate, liquidity, fast-forward, global events |
+| Positions | fixed 7 rows with a scrollbar; a `More` button appears above 7 rows and opens a live full table; explicit empty state when flat |
 | Prices | 7 pairs with price, change and a sparkline drawn from `price_history` |
 | Event feed | filters: all / black swan / liquidity / random events / open-close / risk |
 
