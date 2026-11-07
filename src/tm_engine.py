@@ -233,7 +233,7 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.0.13"   # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.0.14"   # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -2424,6 +2424,12 @@ class Engine:
                 "evrows": "".join(ev_rows) or '<li class="muted">无关键事件</li>',
                 "attrib": _attr_html,
             }
+            # 账本自检结论直接进报告正文：只在 /state 里有的告警没人看得到。
+            _audit = self._audit_ledger()
+            body["auditline"] = ("账本自检：通过（手续费 / 贷款 / 持仓 / 权益四条恒等式全部成立）"
+                                 if not _audit else
+                                 "账本自检未通过：" + "；".join(_audit))
+            body["auditcolor"] = "var(--up)" if not _audit else "var(--down)"
 
             html = """<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
@@ -2517,7 +2523,8 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
   <div class="kv"><span>追加保证金</span><span>{mcall} 次</span></div>
   <div class="kv"><span>异常退出</span><span>{abn} 次</span></div>
   <div class="kv"><span>累计借款</span><span>{borrowed_txt}</span></div>
-</div></section>
+</div>
+<div class="note" style="color:{auditcolor}">{auditline}</div></section>
 <section id="p2"><h2>成本归因</h2><div class="kvbox">{attrib}</div>
 <div class="note">净盈亏 = 毛盈亏 − 滑点 − 点差 − 手续费 − 隔夜利息 + 老虎机返还。毛盈亏含方向判断与跳空冲击，是「不看成本时本该赚/亏多少」。</div></section>
 <section id="p3"><h2>交易明细（共 {rowsn} 条）</h2>

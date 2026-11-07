@@ -226,6 +226,7 @@ class Watch:
         self.price_history = {}
         self._closing = False
         self._last_trader = None
+        self._last_audit = None
         self._log_seen = set()
         self._log_events = []
         self._log_filter = "all"
@@ -316,6 +317,10 @@ class Watch:
         self.lbl_loan.pack(side="left", padx=16, pady=7)
         self.lbl_extra = tk.Label(bar, text="", font=FONT_BAR, bg=CARD, fg=MUTED)
         self.lbl_extra.pack(side="left", padx=(0, 16))
+        # 账本自检告警位：默认空着，只有 /state 报出问题时才亮红。
+        # 只放在 API 里的告警等于没人看得到，所以这里必须让它出现在人眼前。
+        self.lbl_audit = tk.Label(bar, text="", font=FONT_BAR, bg=CARD, fg=RED)
+        self.lbl_audit.pack(side="right", padx=16, pady=7)
         self.lbl_status = tk.Label(bar, text="等待连接…", font=FONT, bg=CARD, fg=MUTED)
         self.lbl_status.pack(side="right", padx=16, pady=7)
 
@@ -692,6 +697,18 @@ class Watch:
                                fg=_purple if _fr_on else TEXT)
             self.lbl_slot.config(font=self._f_on if _slot_on else self._f_off,
                                  fg=_purple if _slot_on else TEXT)
+
+        # 账本自检：空数组=四条恒等式全部成立；非空时把第一条顶到状态条上。
+        # 只在内容变化时重设，避免每 120ms 刷一次控件。
+        _audit = st.get("audit") or []
+        _sig_a = tuple(_audit)
+        if self._last_audit != _sig_a:
+            self._last_audit = _sig_a
+            if _audit:
+                self.lbl_audit.config(
+                    text="⚠ 账本告警 %d 项：%s" % (len(_audit), _audit[0]), fg=RED)
+            else:
+                self.lbl_audit.config(text="", fg=RED)
 
         eq, pnl = st["equity"], st["pnl"]
         up = pnl >= 0

@@ -280,6 +280,12 @@ Before settlement and on every `/state`, four identities are checked:
 At settlement the audit verdict is merged into `warnings`, so `settled` becomes `false` — a mismatch
 is never reported as a clean settlement.
 
+The same verdict has three exits, so nobody has to dig through JSON:
+
+- the `audit` field of `/state` (for agents and scripts)
+- the spectator status bar (red text on failure, empty when clean)
+- one line under the report's key metrics (green = passed, red = failed with the exact identity)
+
 ### Event sequence
 
 Every event carries `seq` (monotonic) and `session` (session id), so reports and audit logs can be
