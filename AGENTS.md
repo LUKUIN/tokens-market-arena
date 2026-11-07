@@ -16,33 +16,31 @@ C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
 不要用 `where python`、`py -3.12`、`python3` 去另找一个解释器——观众席的 GUI 控件和 `.pyc`
 都是按 3.14 编译的，换成别的版本必然起不来。找不到命令时直接写全路径，不要报「环境有问题」。
 
-## 1. 清理重置（先做这一步，再启动）
+## 1. 检查上一局残留（有则清，无则直接开始）
 
-上一局的存档会让服务接着旧局跑，**必须先清干净**。服务是否还在跑，两种情况都覆盖：
+**正常打完一局时，这一步什么都不用做**：结算完成后 `run.py` 会自己删掉临时文件、收掉相关进程，
+`src/data/` 下只会剩下 `reports/`。只有手动中断、进程崩溃、或窗口没关干净时才需要动手。
+
+先看一眼，有没有残留一看便知：
 
 ```bash
 cd <项目目录>
+ls -A src/data/ | grep -v '^reports$' | grep -q . && echo "有残留，需要清理" || echo "干净，直接进第 2 步"
+```
 
-# 若上一局服务还在：先重置再停服（/reset 会清 data/ 下除 reports/ 外的所有文件）
+**显示「干净」就跳过本节，直接启动。** 显示「有残留」时再执行：
+
+```bash
+# 上一局服务可能还占着端口：先重置再停服（/reset 会清 data/ 下除 reports/ 外的文件）
 curl -s -X POST http://127.0.0.1:8734/reset    >/dev/null 2>&1 || true
 curl -s -X POST http://127.0.0.1:8734/shutdown >/dev/null 2>&1 || true
 
-# 保险：服务没跑时直接删存档（reports/ 是历史战报，不要删）
-rm -f src/data/session.json
-rm -f src/data/.scratchpad.jsonl
+# 服务没跑时直接删存档
+rm -f src/data/session.json src/data/.scratchpad.jsonl
 rm -rf src/data/_agent
 ```
 
-Windows PowerShell 等价写法：
-
-```powershell
-Remove-Item -Force src/data/session.json            -ErrorAction SilentlyContinue
-Remove-Item -Force src/data/.scratchpad.jsonl       -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force src/data/_agent         -ErrorAction SilentlyContinue
-```
-
-**不要删 `src/data/reports/`** —— 那是历史战报，每局结算后会往里写新文件。
-清完确认 `src/data/` 下只剩 `reports/`，再进下一步。
+**不要删 `src/data/reports/`** —— 那是历史战报，每局结算会往里写新文件。
 
 ## 2. 启动（一条命令，观众席会自己打开）
 

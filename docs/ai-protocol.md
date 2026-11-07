@@ -170,7 +170,7 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 | POST | `/special` | `{"name":"fr"或"slot","on":true}`，切换开关（局内开启扣 30 万现金） |
 | POST | `/slot` | `{"amount":10000}`，老虎机下注（1~200000，≤当前权益，整局 3 次） |
 | POST | `/reset` | 开新一局 |
-| POST | `/quit` | 主动结算并生成报告 |
+| POST | `/quit` | 主动结算并生成报告；**约 3 秒后服务自动收尾**：删本局临时文件、收掉占用端口的残留进程 |
 | POST | `/shutdown` | 关服务（**会记一次异常退出**） |
 
 > `POST /quit` 的回包带两个结算字段：`settled`（布尔，结算是否完整）与

@@ -27,9 +27,14 @@
     TM_SIGN_KEY    存档签名密钥（不设则用 dev 占位值）
 """
 
+import json
 import os
+import shutil
+import subprocess
 import sys
+import threading
 import time
+import urllib.request
 
 # 控制台编码兜底：英文 Windows 或输出被重定向到文件时，默认编码可能是
 # cp1252 / GBK，直接 print 中文会抛 UnicodeEncodeError —— 那会把版本守卫
@@ -213,6 +218,88 @@ def _start_server(host="127.0.0.1", port=8734):
     return False
 
 
+def _listening_pids(port):
+    """返回监听该端口的 PID 列表（Windows 走 netstat -ano；其它平台尽力而为）。"""
+    pids = []
+    try:
+        out = subprocess.run(["netstat", "-ano"], capture_output=True, text=True,
+                             timeout=8).stdout
+    except Exception:
+        return pids
+    for line in out.splitlines():
+        if "LISTENING" not in line.upper():
+            continue
+        parts = line.split()
+        if len(parts) < 5:
+            continue
+        if parts[1].endswith(":%d" % port):
+            try:
+                pids.append(int(parts[-1]))
+            except ValueError:
+                pass
+    return pids
+
+
+def _autoclean(home):
+    """结算后的自动收尾：删本局临时文件（保留 reports/），再收掉占着端口的残留进程。"""
+    if os.path.isdir(home):
+        for name in os.listdir(home):
+            if name == "reports":
+                continue          # 历史战报必须保留
+            p = os.path.join(home, name)
+            try:
+                if os.path.isdir(p):
+                    shutil.rmtree(p, ignore_errors=True)
+                else:
+                    os.remove(p)
+            except Exception:
+                pass
+    me = os.getpid()
+    for port in (8734, 8735):
+        for pid in _listening_pids(port):
+            if pid == me:
+                continue
+            try:
+                subprocess.run(["taskkill", "/F", "/PID", str(pid)],
+                               capture_output=True, timeout=8)
+            except Exception:
+                pass
+
+
+def _start_autoclean(home, host="127.0.0.1", port=8734):
+    """轮询 /state，本局结束后自动清理并退出。
+
+    放在 run.py 而不是引擎里：只有这里同时知道数据目录和服务端口，
+    也不受源码封存影响（守卫只封 src/*.py）。
+    """
+    def watch():
+        url = "http://%s:%d/state" % (host, port)
+        hits = 0
+        while True:
+            time.sleep(2.0)
+            try:
+                with urllib.request.urlopen(url, timeout=2) as r:
+                    st = json.loads(r.read().decode("utf-8"))
+            except Exception:
+                continue
+            if not st.get("finished"):
+                hits = 0
+                continue
+            hits += 1
+            if hits < 2:
+                continue          # 连续两次确认，避开结算瞬间的抖动
+            time.sleep(2.0)       # 留时间给客户端读回包、写报告
+            print("\n  [自动清理] 本局已结束：删除临时文件并收尾相关进程。")
+            try:
+                _autoclean(home)
+            except Exception as exc:
+                print("  [自动清理] 失败：%s" % exc)
+            finally:
+                os._exit(0)
+
+    threading.Thread(target=watch, daemon=True).start()
+
+
 def _run_ai(interactive=False, port=None):
     if interactive:
         setup = _interactive_setup()
@@ -236,6 +323,8 @@ def _run_ai(interactive=False, port=None):
         return 1
 
     print("  HTTP 接口：http://127.0.0.1:%d  （规则：GET /rules）" % port)
+    _start_autoclean(os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "data"),
+                     port=port)
     if (os.environ.get("TM_ASSIST") or "0") == "1":
         try:
             import tm_api
@@ -369,6 +458,8 @@ def main(argv=None):
                 print("  外部的怜悯：已开启（参赛者可向观众席求助，整局 3 次）")
             except Exception as exc:
                 print("  外部的怜悯：开启失败 %s" % exc)
+        _start_autoclean(os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "data"),
+                         host=host, port=port)
         try:
             serve(host, port)
         finally:
