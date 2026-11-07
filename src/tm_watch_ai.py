@@ -410,6 +410,20 @@ class Watch:
             self.tree.column(col, width=width, anchor="center")
         self.tree.pack(fill="x", padx=10, pady=(0, 10))
 
+        # Flat state: when there are no positions and no recent fills, collapse the table
+        # into one clear message instead of a "(Flat)" row plus empty space.
+        self.hold_empty = tk.Frame(hold, bg=CARD)
+        tk.Label(self.hold_empty, text="◇", font=(FONT[0], 17), bg=CARD,
+                 fg="#C2C8D2").pack(pady=(12, 0))
+        tk.Label(self.hold_empty, text="No open positions", font=(FONT[0], 11, "bold"),
+                 bg=CARD, fg=TEXT).pack(pady=(4, 1))
+        tk.Label(self.hold_empty, text="The agent has not opened a position yet, or all positions are closed",
+                 font=FONT_SMALL, bg=CARD, fg=MUTED).pack()
+        self.hold_empty_n = tk.Label(self.hold_empty, text="0 active positions",
+                                     font=FONT_TINY, bg=CARD, fg="#8A94A6")
+        self.hold_empty_n.pack(pady=(3, 12))
+        self._hold_mode = None
+
         # ---------- Bottom: prices + event feed ----------
         bottom = card(root)
         bottom.pack(fill="both", expand=True, padx=14, pady=(0, max(4, int(12 * self.V))))
@@ -424,14 +438,20 @@ class Watch:
             row, col = divmod(idx, 4)
             cell = tk.Frame(price_grid, bg=CARD)
             cell.grid(row=row, column=col, sticky="w", padx=(0, 10), pady=2)
-            tk.Frame(cell, bg=PAIR_COLORS.get(sym, MUTED), width=3, height=30).pack(side="left")
+            tk.Frame(cell, bg=PAIR_COLORS.get(sym, MUTED), width=3, height=40).pack(side="left")
             inner = tk.Frame(cell, bg=CARD)
             inner.pack(side="left", padx=(7, 0))
-            name = tk.Label(inner, text="—", font=FONT_SMALL, bg=CARD, fg=TEXT, anchor="w")
-            name.pack(anchor="w")
-            val = tk.Label(inner, text="—", font=FONT_MONO, bg=CARD, fg=MUTED, anchor="w")
-            val.pack(anchor="w")
-            self.price_labels[sym] = (name, val)
+            _top = tk.Frame(inner, bg=CARD)
+            _top.pack(anchor="w")
+            name = tk.Label(_top, text="—", font=FONT_SMALL, bg=CARD, fg=TEXT, anchor="w")
+            name.pack(side="left")
+            val = tk.Label(_top, text="—", font=FONT_MONO, bg=CARD, fg=MUTED, anchor="w")
+            val.pack(side="left", padx=(6, 0))
+            # Sparkline: data comes from /state price_history (real engine records), not a mock curve
+            spark = tk.Canvas(inner, width=150, height=20, bg=CARD, bd=0,
+                              highlightthickness=0)
+            spark.pack(anchor="w")
+            self.price_labels[sym] = (name, val, spark)
 
         if self.narrow:
             # Narrow window: the feed moves to a separate window opened from the toolbar.
@@ -858,27 +878,39 @@ class Watch:
         # Positions table
         for row in self.tree.get_children():
             self.tree.delete(row)
-        if not st["positions"]:
-            # When flat, keep trades from the last 2 minutes here so the table is not empty right after an action
-            now = time.time()
-            recent = [e for e in st.get("events", [])
-                      if e["kind"] in ("open", "close")
-                      and now - float(e.get("time", 0)) < 120][-3:]
-            if recent:
-                self.tree.insert("", "end", values=(
-                    "(Flat) · last %d" % len(recent), "", "", "", "", "", "", ""))
-                for e in reversed(recent):
-                    self.tree.insert("", "end", values=(
-                        "  [t%d] %s" % (e["tick"], e["text"][:26]), "", "", "", "", "", "", ""))
+        _pos = st["positions"]
+        _recent = []
+        if not _pos:
+            # When flat, keep trades from the last 2 minutes visible
+            _now = time.time()
+            _recent = [e for e in st.get("events", [])
+                       if e["kind"] in ("open", "close")
+                       and _now - float(e.get("time", 0)) < 120][-3:]
+        _mode = "table" if (_pos or _recent) else "empty"
+        if getattr(self, "_hold_mode", None) != _mode:
+            self._hold_mode = _mode
+            if _mode == "table":
+                self.hold_empty.pack_forget()
+                self.tree.pack(fill="x", padx=10, pady=(0, 10))
             else:
-                self.tree.insert("", "end", values=("(Flat)", "", "", "", "", "", "", ""))
-        else:
-            for p in st["positions"]:
+                self.tree.pack_forget()
+                self.hold_empty.pack(fill="x", padx=10)
+
+        if _pos:
+            self.tree.configure(height=max(2, min(6, len(_pos))))
+            for p in _pos:
                 self.tree.insert("", "end", values=(
                     p["pair"], "Long" if p["side"] == "LONG" else "Short",
                     "%.0f" % p["lots"], "%dx" % p["leverage"],
                     "%.4f" % p["entry"], "%.4f" % p["price"],
                     "%.0f" % p["margin"], "%+.0f" % p["upnl"]))
+        elif _recent:
+            self.tree.configure(height=len(_recent) + 1)
+            self.tree.insert("", "end", values=(
+                "(Flat) · last %d" % len(_recent), "", "", "", "", "", "", ""))
+            for e in reversed(_recent):
+                self.tree.insert("", "end", values=(
+                    "  [t%d] %s" % (e["tick"], e["text"][:26]), "", "", "", "", "", "", ""))
 
         # Quote board
         hist = st.get("price_history", {})
@@ -886,7 +918,7 @@ class Watch:
             pair = self.price_labels.get(sym)
             if not pair:
                 continue
-            name_lbl, val_lbl = pair
+            name_lbl, val_lbl, spark = pair
             h = hist.get(sym) or []
             base = h[0] if h else q["price"]
             chg = (q["price"] / base - 1) * 100 if base else 0
@@ -894,6 +926,7 @@ class Watch:
             color = GREEN if chg > 0.0005 else (RED if chg < -0.0005 else MUTED)
             name_lbl.config(text="%s  %s" % (sym, q["name"]), fg=TEXT)
             val_lbl.config(text="%.4f  %s %+.2f%%" % (q["price"], arrow, chg), fg=color)
+            self._draw_spark(spark, h, color)
 
         # Curve
         self.curve = st["equity_curve"]
@@ -1005,6 +1038,24 @@ class Watch:
             k = e.get("kind", "info")
             self.log_text.insert("end", "[t%d] %s\n" % (e["tick"], e["text"]), k)
             self.log_text.tag_config(k, foreground=kind_color.get(k, MUTED))
+
+    def _draw_spark(self, c, hist, color):
+        """报价台的迷你走势：只取最近一段真实价格，不足 2 个点就不画。"""
+        c.delete("all")
+        pts = hist[-48:]
+        if len(pts) < 2:
+            return
+        w, h = 150, 20
+        lo, hi = min(pts), max(pts)
+        span = hi - lo
+        if span <= 0:
+            span = 1.0
+        n = len(pts)
+        coords = []
+        for i, v in enumerate(pts):
+            coords.append(2 + (w - 4) * i / (n - 1))
+            coords.append(h - 3 - (h - 6) * (v - lo) / span)
+        c.create_line(*coords, fill=color, width=1.4)
 
     def _draw_equity(self):
         c = self.equity_canvas
