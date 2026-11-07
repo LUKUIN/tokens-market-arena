@@ -60,6 +60,17 @@ DISCLAIMER_TEXT = """本程序是一个虚构的杠杆交易模拟游戏，仅�
 _UI_SCALE = {"v": 1.0}
 
 
+def _fmt_ff(sec):
+    """快进额度显示成「X 分 YY 秒」，避免整数分钟截断丢秒。"""
+    try:
+        sec = int(round(float(sec or 0)))
+    except (TypeError, ValueError, OverflowError):
+        sec = 0
+    if sec < 0:
+        sec = 0
+    return "%d 分 %02d 秒" % (sec // 60, sec % 60)
+
+
 def _ui_font_factor(width):
     f = 1.0 + max(0.0, (1920 - int(width)) / 1920.0) * 0.55
     return round(f, 3)
@@ -782,7 +793,7 @@ class Watch:
                 _f2 = st.get("ff") or {}
                 _rm2 = float(_f2.get("remain") or 0)
                 _pr["ff"].config(
-                    text=("%d 分钟" % int(_rm2 // 60)) if _rm2 >= 60 else ("%d 秒" % int(_rm2)))
+                    text=_fmt_ff(_rm2))
                 _on = [n for n, v in (("金融回逆", sp.get("fr")), ("老虎机", sp.get("slot"))) if v]
                 _pr["special"].config(text="、".join(_on) if _on else "无")
             except Exception as exc:
@@ -1946,8 +1957,8 @@ class Watch:
                 self._tp_ff5.config(text="快进 5 分钟", state="disabled", bg="#F0F0F0", fg=MUTED, cursor="arrow")
                 self._tp_ff3.config(text="快进 3 分钟", state="disabled", bg="#F0F0F0", fg=MUTED, cursor="arrow")
                 self._tp_ff_hint.config(
-                    text="%s | 剩余 %d 分钟 | 已用 %d 分钟" % (
-                        _lab, int(_remain // 60), int(sum(_recs) // 60)),
+                    text="%s | 剩余 %s | 已用 %s" % (
+                        _lab, _fmt_ff(_remain), _fmt_ff(sum(_recs))),
                     fg=MUTED)
             else:
                 if _remain >= 300:
@@ -1960,12 +1971,12 @@ class Watch:
                     self._tp_ff3.config(text="快进 3 分钟", state="disabled", bg="#F0F0F0", fg=MUTED, cursor="arrow")
                 if _remain <= 0:
                     self._tp_ff_hint.config(
-                        text="额度已用完（已用 %d 分钟）" % int(sum(_recs) // 60),
+                        text="额度已用完（已用 %s）" % _fmt_ff(sum(_recs)),
                         fg=MUTED)
                 else:
                     self._tp_ff_hint.config(
-                        text="剩余 %d 分钟 | 已用 %d 分钟" % (
-                            int(_remain // 60), int(sum(_recs) // 60)),
+                        text="剩余 %s | 已用 %s" % (
+                            _fmt_ff(_remain), _fmt_ff(sum(_recs))),
                         fg=MUTED)
         except Exception as exc:
             sys.stderr.write("ff button refresh: %r" + chr(92) + "n" % (exc,))
