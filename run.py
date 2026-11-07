@@ -259,10 +259,31 @@ def _run_ai(interactive=False, port=None):
     import tm_watch_ai
     guard_stop = _start_guard(port)
     print("  Launching the read-only spectator stand...")
+    shown = False
     try:
-        tm_watch_ai.main()
-    finally:
-        guard_stop.set()
+        shown = bool(tm_watch_ai.main())
+    except Exception as exc:
+        print("  Spectator exited abnormally: %s" % exc)
+    if not shown:
+        # The window is only a display layer, not the host of the match. When it cannot
+        # open (another spectator already holds port 8735), the service must keep running —
+        # otherwise the process exits 0 and the match is recorded as an abnormal exit.
+        print("  Spectator could not open; the service keeps running (the match is unaffected).")
+        from tm_api import serve as _serve
+        try:
+            _serve("127.0.0.1", port)
+        finally:
+            guard_stop.set()
+        return 0
+    # Closing the window is the player calling it a day. If nothing was settled yet,
+    # write a snapshot and clear .running so the next match does not count it twice.
+    try:
+        import tm_api
+        if not (tm_api.ENGINE.state() or {}).get("finished"):
+            tm_api.ENGINE.abnormal_exit_report("spectator window closed")
+    except Exception as exc:
+        print("  Failed to write the closing snapshot: %s" % exc)
+    guard_stop.set()
     return 0
 
 

@@ -1374,25 +1374,24 @@ def _acquire_single_instance():
 
 
 def _warn_already_open():
-    root = tk.Tk()
-    root.withdraw()
-    try:
-        messagebox.showwarning("Tokens Trading Market", "Spectator opened!")
-    finally:
-        try:
-            root.destroy()
-        except Exception:
-            pass
+    """Another spectator already holds the lock. No modal box on purpose:
+    it would block an unattended run, and a duplicate display layer must not
+    cost the match anything."""
+    sys.stderr.write("Spectator already running; not opening a second one (the match service is unaffected)%s" % chr(10))
 
 
 def main():
+    """True when the spectator window closed normally, False when it could not open.
+
+    run.py uses this to decide whether to keep serving: the window is a display
+    layer, not the host of the match.
+    """
     if not _acquire_single_instance():
         _warn_already_open()
-        return
+        return False
     size = (1920, 1080)   # AI edition uses a fixed 1920 layout
-    if not size:
-        return
     Watch(size).run()
+    return True
 
 
 if __name__ == "__main__":

@@ -1531,7 +1531,7 @@ class Engine:
             "left3": int(remain // 180),
         }
 
-    def fast_forward(self, seconds=300):
+    def fast_forward(self, seconds=None):
         """Fast-forward one step: 300 s (5 minutes) or 180 s (3 minutes).
 
         Total 900 s per run, both steps mix freely. Each use then cools down by the step just used
@@ -1542,6 +1542,8 @@ class Engine:
                 return {"ok": False, "error": "Session ended"}
             if self.s.get("paused"):
                 return {"ok": False, "error": "This run has not started yet; confirm the rules first"}
+            if seconds is None:
+                return {"ok": False, "error": "seconds is required: 300 (5 min) or 180 (3 min)"}
             try:
                 sec = int(round(float(seconds)))
             except (TypeError, ValueError, OverflowError):
@@ -1854,6 +1856,8 @@ class Engine:
                                  % (pair, ", ".join(PAIRS.keys()))}
             if side not in ("LONG", "SHORT"):
                 return {"ok": False, "error": "Direction must be LONG or SHORT"}
+            if leverage is None:
+                return {"ok": False, "error": "leverage is required, e.g. 100"}
             try:
                 lots = float(lots)
                 leverage = int(leverage)
@@ -1861,6 +1865,8 @@ class Engine:
                 return {"ok": False, "error": "Lots/leverage must be numbers"}
             if not math.isfinite(lots) or not math.isfinite(leverage):
                 return {"ok": False, "error": "Lots/leverage must be finite numbers"}
+            if leverage < 1:
+                return {"ok": False, "error": "leverage is required and must be at least 1, e.g. 100"}
             if lots <= 0:
                 return {"ok": False, "error": "Lots must be greater than 0"}
             cap = min(MAX_LEVERAGE, int(self._mod("leverage_cap")))
@@ -2629,6 +2635,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             self.s["abnormal_exits"] = int(self.s.get("abnormal_exits", 0)) + 1
             self._event("[Abnormal exit] %s: not settled, snapshot report written" % reason, "warn")
             self._save()
+            self._clear_running()   # 这一笔已经记过了，别让下次启动再记一次
             return self._write_report(reason, eq, abnormal=True)
 
     def quit_session(self):
@@ -2817,5 +2824,21 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 LOAN_POOL, LOAN_RATE_PER_TICK * 100, "Borrow and repay at will; forced clearance at maturity"),
             "Session length": "%d minutes" % SESSION_MINUTES,
             "tick interval": "%d seconds" % TICK_SECONDS,
+            "Endpoints": {
+                "GET /state": "current board: equity, positions, quotes, book depth, event feed, fast-forward",
+                "GET /rules": "this rule sheet (includes the endpoint list)",
+                "POST /open": {"pair": "AURA/CORE", "side": "LONG or SHORT",
+                               "lots": 10, "leverage": 100},
+                "POST /close": {"pair": "AURA/CORE", "lots": "optional, defaults to closing the whole pair"},
+                "POST /close_all": {},
+                "POST /fastforward": {"seconds": "300 (5 min) or 180 (3 min), required"},
+                "POST /loan": {"amount": 100000},
+                "POST /repay": {"amount": 100000},
+                "POST /slot": {"amount": 1000},
+                "POST /special": {"name": "Slot Machine or Finance Reversal", "on": True},
+                "POST /roll/stop": {},
+                "POST /quit": {},
+                "POST /assist/ask": {"text": "what you want the spectators to look at"},
+            },
             "Pair": {s: PAIR_NAMES[s] for s in PAIRS},
         }
