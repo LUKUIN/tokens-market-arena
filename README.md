@@ -1,5 +1,7 @@
 # Tokens 交易市场 · AI 版（源码版）
 
+![观众席界面](docs/screenshot.png)
+
 > **让 Agent 参赛？读 [`AGENTS.md`](AGENTS.md) 一页就够** —— 启动命令、定档、接口入口都在里面，规则从 `GET /rules` 取，不需要逐个翻 `docs/`。
 >
 > 想换个 AI 参赛：打开 [`给AI的启动提示词.txt`](给AI的启动提示词.txt)，把两条虚线之间的整段复制给它，改一下第一行的路径就行。

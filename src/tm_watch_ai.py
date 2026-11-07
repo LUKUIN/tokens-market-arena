@@ -409,6 +409,20 @@ class Watch:
             self.tree.column(col, width=width, anchor="center")
         self.tree.pack(fill="x", padx=10, pady=(0, 10))
 
+        # 空仓占位：真正没有持仓、也没有近期成交时，收起表格换成一句明确的空状态，
+        # 避免「（空仓）」一行加一大片空白。有近期成交时仍用表格显示成交。
+        self.hold_empty = tk.Frame(hold, bg=CARD)
+        tk.Label(self.hold_empty, text="◇", font=(FONT[0], 17), bg=CARD,
+                 fg="#C2C8D2").pack(pady=(12, 0))
+        tk.Label(self.hold_empty, text="当前没有持仓", font=(FONT[0], 11, "bold"),
+                 bg=CARD, fg=TEXT).pack(pady=(4, 1))
+        tk.Label(self.hold_empty, text="Agent 尚未开仓，或所有持仓均已平仓",
+                 font=FONT_SMALL, bg=CARD, fg=MUTED).pack()
+        self.hold_empty_n = tk.Label(self.hold_empty, text="0 个活跃持仓",
+                                     font=FONT_TINY, bg=CARD, fg="#8A94A6")
+        self.hold_empty_n.pack(pady=(3, 12))
+        self._hold_mode = None
+
         # ---------- 底部：报价台 + 活动流 ----------
         bottom = card(root)
         bottom.pack(fill="both", expand=True, padx=14, pady=(0, max(4, int(12 * self.V))))
@@ -423,14 +437,20 @@ class Watch:
             row, col = divmod(idx, 4)
             cell = tk.Frame(price_grid, bg=CARD)
             cell.grid(row=row, column=col, sticky="w", padx=(0, 10), pady=2)
-            tk.Frame(cell, bg=PAIR_COLORS.get(sym, MUTED), width=3, height=30).pack(side="left")
+            tk.Frame(cell, bg=PAIR_COLORS.get(sym, MUTED), width=3, height=40).pack(side="left")
             inner = tk.Frame(cell, bg=CARD)
             inner.pack(side="left", padx=(7, 0))
-            name = tk.Label(inner, text="—", font=FONT_SMALL, bg=CARD, fg=TEXT, anchor="w")
-            name.pack(anchor="w")
-            val = tk.Label(inner, text="—", font=FONT_MONO, bg=CARD, fg=MUTED, anchor="w")
-            val.pack(anchor="w")
-            self.price_labels[sym] = (name, val)
+            _top = tk.Frame(inner, bg=CARD)
+            _top.pack(anchor="w")
+            name = tk.Label(_top, text="—", font=FONT_SMALL, bg=CARD, fg=TEXT, anchor="w")
+            name.pack(side="left")
+            val = tk.Label(_top, text="—", font=FONT_MONO, bg=CARD, fg=MUTED, anchor="w")
+            val.pack(side="left", padx=(6, 0))
+            # 迷你走势：数据来自 /state 的 price_history（引擎真实记录），不是示意曲线
+            spark = tk.Canvas(inner, width=150, height=20, bg=CARD, bd=0,
+                              highlightthickness=0)
+            spark.pack(anchor="w")
+            self.price_labels[sym] = (name, val, spark)
 
         if self.narrow:
             # 窄屏放不下：活动流改为工具栏「活动流」按钮打开的独立窗口。
@@ -857,27 +877,39 @@ class Watch:
         # 持仓表
         for row in self.tree.get_children():
             self.tree.delete(row)
-        if not st["positions"]:
-            # 空仓时把最近 2 分钟内成交过的记录贴在此处，避免「刚操作完就什么都看不到」
-            now = time.time()
-            recent = [e for e in st.get("events", [])
-                      if e["kind"] in ("open", "close")
-                      and now - float(e.get("time", 0)) < 120][-3:]
-            if recent:
-                self.tree.insert("", "end", values=(
-                    "（空仓）最近 %d 笔" % len(recent), "", "", "", "", "", "", ""))
-                for e in reversed(recent):
-                    self.tree.insert("", "end", values=(
-                        "  [t%d] %s" % (e["tick"], e["text"][:26]), "", "", "", "", "", "", ""))
+        _pos = st["positions"]
+        _recent = []
+        if not _pos:
+            # 空仓时把最近 2 分钟内成交过的记录贴出来，避免「刚操作完就什么都看不到」
+            _now = time.time()
+            _recent = [e for e in st.get("events", [])
+                       if e["kind"] in ("open", "close")
+                       and _now - float(e.get("time", 0)) < 120][-3:]
+        _mode = "table" if (_pos or _recent) else "empty"
+        if getattr(self, "_hold_mode", None) != _mode:
+            self._hold_mode = _mode
+            if _mode == "table":
+                self.hold_empty.pack_forget()
+                self.tree.pack(fill="x", padx=10, pady=(0, 10))
             else:
-                self.tree.insert("", "end", values=("（空仓）", "", "", "", "", "", "", ""))
-        else:
-            for p in st["positions"]:
+                self.tree.pack_forget()
+                self.hold_empty.pack(fill="x", padx=10)
+
+        if _pos:
+            self.tree.configure(height=max(2, min(6, len(_pos))))
+            for p in _pos:
                 self.tree.insert("", "end", values=(
                     p["pair"], "多" if p["side"] == "LONG" else "空",
                     "%.0f" % p["lots"], "%dx" % p["leverage"],
                     "%.4f" % p["entry"], "%.4f" % p["price"],
                     "%.0f" % p["margin"], "%+.0f" % p["upnl"]))
+        elif _recent:
+            self.tree.configure(height=len(_recent) + 1)
+            self.tree.insert("", "end", values=(
+                "（空仓）最近 %d 笔" % len(_recent), "", "", "", "", "", "", ""))
+            for e in reversed(_recent):
+                self.tree.insert("", "end", values=(
+                    "  [t%d] %s" % (e["tick"], e["text"][:26]), "", "", "", "", "", "", ""))
 
         # 报价台
         hist = st.get("price_history", {})
@@ -885,7 +917,7 @@ class Watch:
             pair = self.price_labels.get(sym)
             if not pair:
                 continue
-            name_lbl, val_lbl = pair
+            name_lbl, val_lbl, spark = pair
             h = hist.get(sym) or []
             base = h[0] if h else q["price"]
             chg = (q["price"] / base - 1) * 100 if base else 0
@@ -893,6 +925,7 @@ class Watch:
             color = GREEN if chg > 0.0005 else (RED if chg < -0.0005 else MUTED)
             name_lbl.config(text="%s  %s" % (sym, q["name"]), fg=TEXT)
             val_lbl.config(text="%.4f  %s %+.2f%%" % (q["price"], arrow, chg), fg=color)
+            self._draw_spark(spark, h, color)
 
         # 曲线
         self.curve = st["equity_curve"]
@@ -1004,6 +1037,24 @@ class Watch:
             k = e.get("kind", "info")
             self.log_text.insert("end", "[t%d] %s\n" % (e["tick"], e["text"]), k)
             self.log_text.tag_config(k, foreground=kind_color.get(k, MUTED))
+
+    def _draw_spark(self, c, hist, color):
+        """报价台的迷你走势：只取最近一段真实价格，不足 2 个点就不画。"""
+        c.delete("all")
+        pts = hist[-48:]
+        if len(pts) < 2:
+            return
+        w, h = 150, 20
+        lo, hi = min(pts), max(pts)
+        span = hi - lo
+        if span <= 0:
+            span = 1.0
+        n = len(pts)
+        coords = []
+        for i, v in enumerate(pts):
+            coords.append(2 + (w - 4) * i / (n - 1))
+            coords.append(h - 3 - (h - 6) * (v - lo) / span)
+        c.create_line(*coords, fill=color, width=1.4)
 
     def _draw_equity(self):
         c = self.equity_canvas
