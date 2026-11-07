@@ -11,8 +11,10 @@
 
 ### 前置要求
 
-1. **先读完本仓库所有 `.md` 文件**（`README.md` + `docs/` 下每一篇），理解规则、接口和成本模型之后再动手。
-   不要边玩边查——那会让你的决策被规则细节牵着走。
+1. **Agent 只需要 `GET /rules` + `GET /state`**：这两份回包已经包含判定、费率、事件表和完整接口清单。
+   本文与 `docs/` 下其它分册是给**人类**查阅的完整手册，不是参赛前的必读项；
+   照 `AGENTS.md` 的顺序启动，对局中不必再翻任何 Markdown。
+   想提前了解成本结构、省 token 的查法、什么算正常收工，可以读本文；不读也能完整参赛。
 2. **必须用固定运行时、必须开着观众席启动**：
    - Python 只用 **3.14.7**：`C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe`。
      `run.py` 启动时自己校验，版本不对直接退出（码 2）并打印这条命令。
@@ -209,7 +211,11 @@ curl -X POST http://127.0.0.1:8734/roll/stop
   "seed": 20261105,                     // 本局随机种子（写进报告，可复现）
 
   "gap_level": "低", "liq_level": "正常",
-  "ff_remain": 900,                     // 快进剩余额度（秒）
+  "ff": {                               // 快进额度（对象，不是扁平字段）
+    "total": 900, "used": 0, "remain": 900,
+    "records": [], "cool_left": 0, "last_cd": 0,
+    "can5": true, "can3": true, "left5": 3, "left3": 5
+  },
   "finished": false,
   "settlement": null,                   // 结算结果：{settled, warnings, reason}；未结算为 null
   "audit": [],                          // 账本自检：空数组=现金/持仓/贷款/权益恒等式全部成立
@@ -224,7 +230,8 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 3. **`active_mods`** —— 现在有什么临时规则在改行情
 4. **`loan_bump_range`** —— 现在借钱是什么代价（`[1,100]` 正常，`[-20,100]` 是金融回逆）
 5. **`special`** —— 两个开关开没开、还剩几次（`fr_left` / `slot_left`）
-6. **`ff_remain`** —— 还能快进多少秒
+6. **`ff`** —— 快进额度对象：`remain` 是还能快进多少秒，`cool_left` 是冷却剩余，
+   `can5` / `can3` 直接告诉你两个档位此刻能不能用
 7. **`events`** —— 最近发生了什么（**完整中文文案，不需要额外查文档**）
 
 ## 五、快进额度的约束

@@ -2831,5 +2831,8 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "POST /quit": {},
                 "POST /assist/ask": {"text": "需要观众席帮忙看的内容"},
             },
+            "查询省 token": "GET /state?history=0 不返回 price_history（每品种最多 2000 点）；只要局面时用它，别整包拉",
+            "平仓": "POST /close 的 lots 可省略（全平该品种）；给多了按实际持仓全平，不报错",
+            "收工": "POST /quit 是正常结算，不扣分、不计异常退出；对成绩不满意时提前结束是安全选项，不是认输",
             "货币对": {s: PAIR_NAMES[s] for s in PAIRS},
         }

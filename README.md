@@ -280,7 +280,7 @@ python guard.py stop                 # 结束守卫并解密还原源码
 
 封存时具体发生的事：
 
-- 四个源文件用一次性随机密钥加密（标准库实现的 SHA-256 计数器流 + HMAC 校验），写到
+- 三个源文件（`tm_engine.py` / `tm_api.py` / `scratchpad.py`）用一次性随机密钥加密（标准库实现的 SHA-256 计数器流 + HMAC 校验），写到
   `%LOCALAPPDATA%\TokensMarketGuard\<随机目录>\`，文件名随机、内容是密文
 - 密钥单独存成同目录下的 `_k`；`src/*.py` 原位置换成 967 字节、写着 `CHEATING DETECTED` 的诱饵
 - 项目内的 `_guard_vault/` 只留一个 `guard_state.json`（记录封了哪几个文件），**没有任何明文源码**
@@ -450,5 +450,6 @@ python bench.py summary --dir src/data/reports        # 汇总已有摘要
 ## 已知限制
 
 - 仅 Windows（观众席的窗口图标、提示音走 Win32 API）。
-- 引擎与观众席同进程，观众席崩溃等于本局结束。
+- 观众席是独立子进程：窗口崩溃、被关闭、或打不开（8734/8735 冲突）都不会中断对局；
+  但它仍依赖同一台机器的桌面环境，纯无头环境请用 `--headless`。
 - 源码版不含成品包的 `.pyd` 与 manifest 校验；`TM_SIGN_KEY` 默认是 dev 占位值，正式比赛请自行设置。
