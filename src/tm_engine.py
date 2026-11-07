@@ -233,6 +233,7 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
+ENGINE_VERSION = "1.0.12"   # 发布版本号：报告页脚与文档口径以此为准
 
 # ---------------- 快进额度 ----------------
 # 每局总额度 15 分钟。两种档位可混用，每次之后按「刚用的那一档」冷却。
@@ -338,14 +339,24 @@ def purge_agent_dir(home):
     return removed
 
 
-def _new_session():
+def _new_session(seed=None, apply_rng=True):
+    """构造一局新会话。
+
+    seed 的来源优先级：显式参数 > TM_SEED > 随机生成。
+    无论哪种来源，这里都会用它重置全局随机流 —— 报告里印出的
+    「随机种子 X · 复现方式：TM_SEED=X 重开一局」只有在随机流真的
+    由这个 seed 驱动时才成立，否则那句话属于虚假承诺。
+    """
     trader, unnamed = _env_trader()
     events_on = _env_events()
+    seed = _new_seed() if seed is None else int(seed)
+    if apply_rng:
+        random.seed(seed)
     return {
         "version": 2,
         "created_at": time.time(),
         "session_id": os.urandom(8).hex(),
-        "seed": _new_seed(),
+        "seed": seed,
         "tick": 0,
         "balance": STARTER_CASH,
         "genesis": STARTER_CASH,
@@ -388,6 +399,7 @@ def _new_session():
         "total_swap": 0.0,
         "order_count": 0,
         "abnormal_exits": 0,
+        "last_settle": None,   # 最近一次结算的结果（settled / warnings）
         "difficulty": None,          # {"gap": i, "liq": j} 定档后写入
         "roll_started_at": 0.0,      # 盲盒开始时刻（time.time()）
         "roll_phase": random.uniform(0, ROLL_COMBOS),   # 打散取模相位（见 _roll_index）
@@ -510,10 +522,13 @@ class Engine:
                     fresh = _new_session()
                     fresh["tampered"] = True
                     return fresh
-                base = _new_session()
+                base = _new_session(apply_rng=False)
                 for k, v in base.items():
                     s.setdefault(k, v)
                 s["session_id"] = s.get("session_id") or os.urandom(8).hex()
+                # 重启后随机流无法回到存档时刻，报告必须诚实标注复现边界
+                if not s.get("finished"):
+                    s["rng_resumed"] = True
                 return s
             except Exception:
                 pass
@@ -767,6 +782,64 @@ class Engine:
         # 「报价延迟」等事件在此基础上再加一层滑点
         return min(cap, cost / delta + self._mod("slip_add"))
 
+    def _close_fill(self, pair, side, qty, price=None):
+        """平仓方向的成交价：中间价 ∓（半个点差 + 滑点）。
+
+        普通平仓、爆仓强平、结算清算全部走这一条路径。
+        任何一条清算路径都不得绕过点差与滑点 —— 否则强制清算会比
+        主动平仓更便宜，模拟内部就不自洽了。
+
+        返回 (fill, half_spread, slip_rate)。
+        """
+        px = self.s["prices"][pair] if price is None else price
+        half = self._eff_spread(pair) / 2
+        total = self._account_notional()
+        per = qty * LOTS_SIZE * px
+        slip = self._slip_rate(max(0.0, total - per), total, pair)
+        if side == "LONG":
+            fill = px * (1 - half - slip)
+        else:
+            fill = px * (1 + half + slip)
+        return fill, half, slip
+
+    def _settle_lot(self, pos, qty, forced=False):
+        """按统一成本模型平掉一笔（可部分），返回成交流水记录。
+
+        只负责记账，不动 positions 列表 —— 列表处理由调用方决定，
+        这样普通平仓、爆仓、结算清算可以共用同一条成本路径。
+        """
+        pair = pos["pair"]
+        fill, half, slip = self._close_fill(pair, pos["side"], qty)
+        ref = self.s["prices"][pair]
+        pnl = self._position_pnl(pos, fill)
+        fee = qty * LOTS_SIZE * fill * FEE_RATE * self._mod("fee_mult")
+        self.s["balance"] += pnl - fee
+        self.s["total_fees"] += fee
+        self.s["order_count"] += 1
+        rec = {
+            "tick": self.s["tick"], "type": "close", "pair": pair, "side": pos["side"],
+            "lots": qty, "fill": round(fill, 6), "pnl": round(pnl, 2),
+            "fee": round(fee, 2), "slip": round(slip, 6),
+            "slip_cost": round(qty * LOTS_SIZE * ref * slip, 2),
+            "spread_cost": round(qty * LOTS_SIZE * ref * half, 2),
+            "entry": pos["entry"], "leverage": pos["leverage"],
+        }
+        if forced:
+            rec["forced"] = True
+        self.s.setdefault("trades", []).append(rec)
+        return rec
+
+    def _force_close_all(self, forced=False):
+        """强制清空全部持仓：不受 halt_close_until / halt_until 等交易限制阻断。
+
+        结算与贷款到期清算都走这里。返回仍未平掉的持仓列表
+        （正常情况应为空），调用方必须检查并显式暴露失败。
+        """
+        for p in list(self.s["positions"]):
+            self._settle_lot(p, p["lots"], forced=forced)
+            self.s["positions"].remove(p)
+        return list(self.s["positions"])
+
     def loan_limit(self):
         """剩余可借额度 = 贷款池（可被「信贷紧缩/央行放水」临时缩放）- 已借出的钱。"""
         pool = LOAN_POOL * self._mod("loan_pool_mult")
@@ -970,11 +1043,27 @@ class Engine:
         return False
 
     def _end_session(self, reason):
-        """结束本局的公共流程（调用方必须已持有 LOCK）。"""
-        for p in list(self.s["positions"]):
-            self.close_position(p["pair"], p["lots"])
+        """结束本局的公共流程（调用方必须已持有 LOCK）。
+
+        结算分三步：强制清仓 → 结清贷款 → 校验不变量。
+        任何一步失败都写进 warnings 并让 settled=False ——
+        不允许出现「报告说结算完成、账上还挂着持仓」的伪成功。
+        """
+        warnings = []
+        residual = self._force_close_all()
+        if residual:
+            warnings.append("结算后仍有 %d 笔持仓未清算：%s" % (
+                len(residual), "、".join(sorted({p["pair"] for p in residual}))))
         self._settle_loan()
         self.s["finished"] = True
+        self.s["last_settle"] = {
+            "at": time.time(), "reason": reason,
+            "settled": not warnings, "warnings": list(warnings),
+        }
+        if self.s["loan"]["balance"] > 1e-9:
+            warnings.append("贷款未清偿：%.2f Tokens" % self.s["loan"]["balance"])
+        if self.s["positions"]:
+            warnings.append("清仓后仍检测到 %d 笔持仓" % len(self.s["positions"]))
         eq = self.equity()
         tgt = self.s.get("target", TARGET_EQUITY)
         hit = eq >= tgt and self._qualified()
@@ -992,7 +1081,8 @@ class Engine:
                "disqualified": not self._qualified(),
                "total_borrowed": round(borrowed, 2),
                "report": report, "auto_reset": False,
-               "reason": reason}
+               "reason": reason,
+               "settled": not warnings, "warnings": warnings}
         # 结束即结束：本局结算后不再自动开新局。
         # 想要新的一局，由玩家显式调用 POST /reset。
         self._save()
@@ -1029,21 +1119,27 @@ class Engine:
                 self._event("【追加保证金】已解除，保证金水平回到 %.0f%%" % (ml * 100), "margin_call")
 
     def _blowup(self):
-        px = self.s["prices"]
+        """保证金不足后的强制平仓。
+
+        与普通平仓共用 _settle_lot 的成本模型：点差、滑点、手续费一样
+        都不能少，并且写入成交流水 —— 否则报告无法重算账本，
+        而「强制清算比主动平仓更便宜」也会成为可套利的口子。
+        """
         loss = 0.0
         n = 0
         for p in list(self.s["positions"]):
-            pnl = self._position_pnl(p, px[p["pair"]])
-            fee = p["lots"] * LOTS_SIZE * px[p["pair"]] * FEE_RATE * self._mod("fee_mult")
-            self.s["balance"] += pnl - fee
-            self.s["total_fees"] += fee
-            loss += pnl
+            rec = self._settle_lot(p, p["lots"], forced=True)
+            self.s["positions"].remove(p)
+            net = rec["pnl"] - rec["fee"]
+            loss += net
             n += 1
-            self._event("【强制平仓】%s %s %.0f 手，盈亏 %+.0f" % (p["pair"], p["side"], p["lots"], pnl), "stopout")
+            self._event("【强制平仓】%s %s %.0f 手，盈亏 %+.0f（含成本）" % (
+                p["pair"], p["side"], p["lots"], net), "stopout")
         self.s["positions"] = []
         self.s["margin_call_at"] = None
         self.s["blowups"] += 1
-        self._event("【爆仓】账户资金 %.0f Tokens（本轮亏损 %.0f，%d 笔被强平）" % (self.s["balance"], loss, n), "blowup")
+        self._event("【爆仓】账户资金 %.0f Tokens（本轮亏损 %.0f，%d 笔被强平）" % (
+            self.s["balance"], loss, n), "blowup")
 
     def tick(self, manual=False):
         with LOCK:
@@ -1669,8 +1765,8 @@ class Engine:
         debt = self.s["loan"]["balance"]
         if debt <= 0:
             return
-        for p in list(self.s["positions"]):
-            self.close_position(p["pair"], p["lots"])
+        # 贷款到期清仓同样不允许被交易限制阻断（halt_close_until 等）
+        self._force_close_all()
         _cash_before = self.s["balance"]
         self.s["balance"] -= debt
         self.s["loan"]["repaid"] += debt
@@ -1791,30 +1887,16 @@ class Engine:
                     break
                 p = self.s["positions"][i]
                 qty = p["lots"] if remaining is None else min(p["lots"], remaining)
-                half = self._eff_spread(pair) / 2
-                total = self._account_notional()
-                slip = self._slip_rate(max(0.0, total - qty * LOTS_SIZE * price), total, pair)
-                fill = price * (1 - half - slip) if p["side"] == "LONG" else price * (1 + half + slip)
-                pnl = self._position_pnl(p, fill)
-                fee = qty * LOTS_SIZE * fill * FEE_RATE * self._mod("fee_mult")
-                self.s["balance"] += pnl - fee
-                self.s["total_fees"] += fee
-                self.s["order_count"] += 1
+                rec = self._settle_lot(p, qty)
                 if qty >= p["lots"]:
                     self.s["positions"].pop(i)
                 else:
                     p["lots"] -= qty
                     p["margin"] = self._position_margin(p)
-                closed.append({"pair": pair, "side": p["side"], "lots": qty,
-                               "fill": round(fill, 6), "pnl": round(pnl, 2)})
-                self.s.setdefault("trades", []).append({
-                    "tick": self.s["tick"], "type": "close", "pair": pair, "side": p["side"],
-                    "lots": qty, "fill": round(fill, 6), "pnl": round(pnl, 2),
-                    "fee": round(fee, 2), "slip": round(slip, 6),
-                    "slip_cost": round(qty * LOTS_SIZE * price * slip, 2),
-                    "spread_cost": round(qty * LOTS_SIZE * price * half, 2),
-                    "entry": p["entry"], "leverage": p["leverage"]})
-                self._event("平仓 %s %s %.0f 手 @%.4f，盈亏 %+.0f" % (pair, p["side"], qty, fill, pnl), "close")
+                closed.append({"pair": rec["pair"], "side": rec["side"], "lots": qty,
+                               "fill": rec["fill"], "pnl": rec["pnl"]})
+                self._event("平仓 %s %s %.0f 手 @%.4f，盈亏 %+.0f" % (
+                    pair, p["side"], qty, rec["fill"], rec["pnl"]), "close")
                 if remaining is not None:
                     remaining -= qty
             self._save()
@@ -1864,6 +1946,7 @@ class Engine:
             "curves": curve, "start": eqs[0], "peak": max(eqs), "low": min(eqs),
             "end": eqs[-1], "mdd": mdd, "sharpe": sharpe,
             "trades_n": len(closes), "win_n": len(wins),
+            "forced_n": len([t for t in closes if t.get("forced")]),
             "win_rate": (len(wins) / len(closes)) if closes else 0.0,
             "best": (max(gains) if gains else None),
             "worst": (min(losses) if losses else None),
@@ -2039,7 +2122,7 @@ class Engine:
                         return "manifest v%d" % int(json.load(fh).get("version"))
         except Exception:
             pass
-        return "引擎内部版本 %d" % int(self.s.get("version", 0))
+        return "v%s" % ENGINE_VERSION
 
     def _write_report(self, reason, final_eq, abnormal=False):
         """生成赛后报告（仅 HTML）。任何异常都不影响游戏流程。"""
@@ -2054,8 +2137,13 @@ class Engine:
             dur = max(0, int(self._elapsed()))
             target = self.s.get("target", TARGET_EQUITY)
             hit = final_eq >= target and self._qualified()
+            _residual = len(self.s.get("positions") or [])
             if abnormal:
                 verdict = "未结算（异常退出）"
+                hit = False
+            elif _residual:
+                # 结算没清干净就不许叫「达成 / 未达成」，必须先暴露
+                verdict = "结算异常（残留持仓 %d 笔）" % _residual
                 hit = False
             elif final_eq >= target and not self._qualified():
                 verdict = "达成目标但资格无效"
@@ -2248,9 +2336,14 @@ class Engine:
                 "sharpe": "%.2f" % m["sharpe"],
                 "trades_n": str(m["trades_n"]),
                 "trades_all": str(m.get("trades_all", 0)),
+                "forced_n": str(m.get("forced_n", 0)),
+                "settle_pos": ("已全部清算" if not _residual
+                               else "残留 %d 笔（异常）" % _residual),
                 "verline": "Tokens 交易市场 · %s · 本报告由系统自动生成" % self._manifest_version(),
-                "seedline": "随机种子 %s · 复现方式：TM_SEED=%s 重开一局" % (
-                    self.s.get("seed") or "—", self.s.get("seed") or "—"),
+                "seedline": "随机种子 %s · 复现方式：TM_SEED=%s 重开一局%s" % (
+                    self.s.get("seed") or "—", self.s.get("seed") or "—",
+                    "（注意：本局服务曾中途重启，seed 只能复现重启前的行情）"
+                    if self.s.get("rng_resumed") else ""),
                 "winrate": "%.1f" % (m["win_rate"] * 100),
                 "best": fmt(m["best"]) if m["best"] is not None else "—",
                 "worst": fmt(m["worst"]) if m["worst"] is not None else "—",
@@ -2350,7 +2443,9 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
   <div class="kv"><span>最大回撤</span><span>{mdd}%</span></div>
   <div class="kv"><span>夏普比率</span><span>{sharpe}</span></div>
   <div class="kv"><span>平仓笔数</span><span>{trades_n}</span></div>
+  <div class="kv"><span>└ 其中强制平仓</span><span>{forced_n}</span></div>
   <div class="kv"><span>委托笔数（含开仓）</span><span>{trades_all}</span></div>
+  <div class="kv"><span>结算后持仓</span><span>{settle_pos}</span></div>
   <div class="kv"><span>胜率</span><span>{winrate}%</span></div>
   <div class="kv"><span>最大单笔盈利</span><span class="up">{best}</span></div>
   <div class="kv"><span>最大单笔亏损</span><span class="down">{worst}</span></div>
@@ -2461,6 +2556,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "tick": self.s["tick"],
                 "session_id": self.s.get("session_id", ""),
                 "abnormal_exits": int(self.s.get("abnormal_exits", 0)),
+                "settlement": self.s.get("last_settle"),
                 "paused": bool(self.s.get("paused")),
                 "ff": self.ff_plan(),
                 "loan_pool_event": (lambda _m: (

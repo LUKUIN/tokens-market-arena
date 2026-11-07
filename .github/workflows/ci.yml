@@ -57,6 +57,10 @@ jobs:
           print("tick   =", st["tick"])
           print("pairs  =", len(st["prices"]))
 
+      - name: 结算与成本模型不变量测试
+        shell: bash
+        run: python -m unittest discover -s tests -v
+
       - name: 精简体（?history 参数）不带历史
         shell: python
         run: |

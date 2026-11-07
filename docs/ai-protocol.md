@@ -173,6 +173,10 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 | POST | `/quit` | 主动结算并生成报告 |
 | POST | `/shutdown` | 关服务（**会记一次异常退出**） |
 
+> `POST /quit` 的回包带两个结算字段：`settled`（布尔，结算是否完整）与
+> `warnings`（字符串数组，列出残留持仓、未清贷款等问题）。`settled=false` 时
+> 报告标题显示「结算异常」，不要把它当成正常结算。
+
 ## 四、`/state` 里最该看的字段
 
 > **省 token 的用法**：`GET /state?history=0` 会省掉 `price_history`（每品种最多
@@ -208,6 +212,7 @@ curl -X POST http://127.0.0.1:8734/roll/stop
   "gap_level": "低", "liq_level": "正常",
   "ff_remain": 900,                     // 快进剩余额度（秒）
   "finished": false,
+  "settlement": null,                   // 结算结果：{settled, warnings, reason}；未结算为 null
   "events": [ ... ]                     // 最近事件，含完整文案
 }
 ```
