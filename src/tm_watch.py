@@ -588,13 +588,22 @@ class Watch:
         feed_head.pack(fill="x")
         tk.Label(feed_head, text="活动流", font=FONT, bg=CARD, fg=TEXT, anchor="w",
                  padx=14, pady=max(3, int(7 * self.V))).pack(side="left")
+        self.btn_log_more = tk.Button(
+            feed_head, text="更多", command=self._show_log_panel,
+            font=FONT_TINY, bd=0, relief="flat", cursor="hand2",
+            bg="#EEF4FF", fg=BLUE, activebackground="#DCE8FB",
+            activeforeground=BLUE, padx=10, pady=1)
+        self.btn_log_more.pack(side="right", padx=(0, 12),
+                               pady=max(2, int(3 * self.V)))
 
         log_wrap = tk.Frame(bottom, bg=CARD)
-        log_wrap.pack(fill="both", expand=True, padx=0, pady=(0, 10))
+        log_wrap.pack(fill="x", padx=0, pady=(0, 10))
         self.log_text = tk.Text(log_wrap, bg=CARD, fg=MUTED, font=FONT_LOG, bd=0,
-                                height=max(3, int(6 * self.V)), insertbackground=TEXT,
-                                padx=14, pady=4,
+                                height=2, insertbackground=TEXT,
+                                padx=14, pady=3,
                                 wrap="none", state="disabled")
+        self._log_win = None
+        self._log_panel_text = None
         self.log_vbar = tk.Scrollbar(log_wrap, orient="vertical", command=self.log_text.yview)
         self.log_text.configure(yscrollcommand=self.log_vbar.set)
         self.log_text.pack(side="left", fill="both", expand=True)
@@ -1090,15 +1099,72 @@ class Watch:
             "trader": "#44546A",      # 身份识别：蓝灰
             "info": MUTED,            # 氛围：灰
         }
-        for e in fresh:
-            k = e.get("kind", "info")
-            self.log_text.insert("end", "[t%d] %s\n" % (e["tick"], e["text"]), k)
-            self.log_text.tag_config(k, foreground=kind_color.get(k, MUTED))
+        # 主窗口只保留最新一条；完整历史在「更多」弹窗里
+        self.log_text.delete("1.0", "end")
+        e = fresh[-1]
+        k = e.get("kind", "info")
+        self.log_text.tag_config(k, foreground=kind_color.get(k, MUTED))
+        self.log_text.insert("end", "[t%d] %s\n" % (e["tick"], e["text"]), k)
         if at_bottom:
             self.log_text.see("end")
         else:
             self.log_text.yview_moveto(top)
         self.log_text.config(state="disabled")
+
+    def _show_log_panel(self):
+        """完整活动流：独立窗口，自己轮询 /state，关窗后停止刷新。"""
+        try:
+            if self._log_win is not None and self._log_win.winfo_exists():
+                self._log_win.lift()
+                return
+        except Exception:
+            pass
+        win = tk.Toplevel(self.root)
+        win.title("活动流（全部）")
+        win.geometry("920x520")
+        win.configure(bg=BG)
+        wrap = tk.Frame(win, bg=CARD)
+        wrap.pack(fill="both", expand=True, padx=10, pady=10)
+        t = tk.Text(wrap, bg=CARD, fg=TEXT, font=FONT_LOG, bd=0, padx=12, pady=8,
+                    wrap="none", state="disabled")
+        sb = tk.Scrollbar(wrap, orient="vertical", command=t.yview)
+        t.configure(yscrollcommand=sb.set)
+        t.pack(side="left", fill="both", expand=True)
+        sb.pack(side="right", fill="y")
+        self._log_win = win
+        self._log_panel_text = t
+        win.protocol("WM_DELETE_WINDOW", self._close_log_panel)
+        self._refresh_log_panel()
+
+    def _refresh_log_panel(self):
+        t = getattr(self, "_log_panel_text", None)
+        win = getattr(self, "_log_win", None)
+        if t is None or win is None or not win.winfo_exists():
+            self._log_win = None
+            self._log_panel_text = None
+            return
+        try:
+            st = get("/state")
+            evs = st.get("events") or []
+            t.config(state="normal")
+            t.delete("1.0", "end")
+            for e in evs:
+                t.insert("end", "[t%d] %s" + chr(92) + "n" % (e["tick"], e["text"]),
+                         e.get("kind", "info"))
+            t.see("end")
+            t.config(state="disabled")
+        except Exception:
+            pass
+        self.root.after(2000, self._refresh_log_panel)
+
+    def _close_log_panel(self):
+        try:
+            if self._log_win is not None:
+                self._log_win.destroy()
+        except Exception:
+            pass
+        self._log_win = None
+        self._log_panel_text = None
 
     def _show_hold_panel(self):
         """持仓明细弹窗：内容跟随主循环刷新，关窗后引用清空。"""
