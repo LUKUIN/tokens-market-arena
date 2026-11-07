@@ -8,7 +8,6 @@
     POST /open             开仓
     POST /close            平仓
     POST /close_all        全平
-    POST /tick             推进一个 tick
     POST /loan             借款 {"amount": 500000}（上浮比例借款时才抽定，这是代价）
     POST /repay            还款 {"amount": 500000}（省略 amount 则全额）
     POST /quit             结束本局
@@ -101,8 +100,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(ENGINE.close_position(b.get("pair"), b.get("lots")))
         if path == "/close_all":
             return self._send(ENGINE.close_all())
-        if path == "/tick":
-            return self._send(ENGINE.manual_tick())
         if path == "/loan":
             return self._send(ENGINE.borrow(b.get("amount")))
         if path == "/repay":

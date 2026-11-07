@@ -146,7 +146,7 @@ TokensMarket-OpenSource-Human-v137/
 | 界面 | 完整交互 GUI | 只读观众席 |
 | 投资界面 | 有 | 无 |
 | 开仓方式 | 点按钮 | HTTP `POST /open` |
-| 快进 | 两个按钮 | `POST /fastforward` + `/tick` |
+| 快进 | 两个按钮 | `POST /fastforward`（300 或 180 秒） |
 | 草稿纸 | 无 | 有（隐性终端） |
 | 分辨率 | 四种可选，自动缩放 | 固定 1920×1080 版式 |
 | 进程清理脚本 | 无 | `进程深度清理.bat` |
