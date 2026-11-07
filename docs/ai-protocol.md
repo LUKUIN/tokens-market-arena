@@ -150,7 +150,7 @@ Every endpoint lives at `http://127.0.0.1:8734`.
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/health` | Liveness; returns tick / equity / finished |
+| GET | `/health` | Liveness; returns tick / equity / finished / protocol / engine_version |
 | GET | `/state` | **Full board** (detailed below) |
 | GET | `/rules` | Rule text |
 | GET | `/prices` | Current prices and history per pair |
@@ -227,6 +227,7 @@ Every endpoint lives at `http://127.0.0.1:8734`.
   "ff_remain": 900,                     // remaining fast-forward budget (seconds)
   "finished": false,
   "settlement": null,                   // settlement result: {settled, warnings, reason}; null before the run ends
+  "audit": [],                          // ledger audit: empty array means cash/positions/loan/equity all reconcile
   "events": [ ... ]                     // recent events, full text included
 }
 ```

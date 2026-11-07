@@ -233,7 +233,9 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.0.12"   # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.0.13"   # 发布版本号：报告页脚与文档口径以此为准
+PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
+                            # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
 # ---------------- fast-forward quota ----------------
 # 15 minutes total per round. Both tiers can be mixed; each use starts a cooldown for the tier just used.
@@ -370,6 +372,7 @@ def _new_session(seed=None, apply_rng=True):
         "price_history": {s: [cfg["price"]] for s, cfg in PAIRS.items()},
         "equity_curve": [],
         "events": [],
+        "event_seq": 0,
         "trades": [],
         "tampered": False,
         "margin_call_at": None,
@@ -693,10 +696,15 @@ class Engine:
         self._seal_touch()
 
     def _event(self, text, kind="info"):
-        self.s["events"].append({"tick": self.s["tick"], "kind": kind,
-                                 "text": text, "time": time.time()})
-        if len(self.s["events"]) > 300:
-            del self.s["events"][:-300]
+        s = self.s
+        # 每条事件带单调递增 seq 与会话 ID：报告与审计日志可以按序号定位，
+        # 不影响原有字段，老报告依然可读。
+        s["event_seq"] = int(s.get("event_seq") or 0) + 1
+        s["events"].append({"seq": s["event_seq"], "session": s.get("session_id", ""),
+                            "tick": s["tick"], "kind": kind,
+                            "text": text, "time": time.time()})
+        if len(s["events"]) > 300:
+            del s["events"][:-300]
 
     # ---------------- computation ----------------
     def _position_pnl(self, pos, price):
@@ -1039,6 +1047,58 @@ class Engine:
             return True
         return False
 
+    def _audit_ledger(self):
+        """账本不变量自检。返回问题描述列表，空列表表示账面自洽。
+
+        只校验能用账面数据独立重算的恒等式，不依赖具体运行路径，
+        因此既能用在结算收尾，也能在任何时刻由 /state 触发：
+
+        1. 累计手续费 == 成交流水里 fee 之和
+        2. 贷款未还余额 == 借入 - 已还 + 累计利息
+        3. 持仓方向合法、手数为正
+        4. 权益 == 现金 + 浮动盈亏 - 欠款
+
+        审计本身绝不打断对局：任何异常都收敛成一条 issue 返回。
+        """
+        issues = []
+        s = self.s
+        try:
+            trades = s.get("trades") or []
+            fee_sum = sum(float(t.get("fee") or 0.0) for t in trades)
+            fees = float(s.get("total_fees") or 0.0)
+            if abs(fee_sum - fees) > 0.01:
+                issues.append("手续费合计 %.2f 与成交流水 %.2f 不一致" % (fees, fee_sum))
+        except Exception as exc:
+            issues.append("手续费核对异常：%s" % exc)
+        try:
+            loan = s.get("loan") or {}
+            borrowed = float(loan.get("borrowed") or 0.0)
+            repaid = float(loan.get("repaid") or 0.0)
+            interest = float(loan.get("interest") or 0.0)
+            bal = float(loan.get("balance") or 0.0)
+            expect = borrowed - repaid + interest
+            if abs(bal - expect) > 0.01:
+                issues.append("贷款余额 %.2f 与 借入-已还+利息 %.2f 不一致" % (bal, expect))
+        except Exception as exc:
+            issues.append("贷款核对异常：%s" % exc)
+        try:
+            for i, p in enumerate(s.get("positions") or []):
+                if p.get("side") not in ("LONG", "SHORT"):
+                    issues.append("第 %d 笔持仓方向非法：%r" % (i + 1, p.get("side")))
+                if float(p.get("lots") or 0) <= 0:
+                    issues.append("第 %d 笔持仓手数非法：%r" % (i + 1, p.get("lots")))
+        except Exception as exc:
+            issues.append("持仓核对异常：%s" % exc)
+        try:
+            eq = self.equity()
+            debt = float((s.get("loan") or {}).get("balance") or 0.0)
+            expect_eq = float(s.get("balance") or 0.0) + self._total_upnl() - debt
+            if abs(eq - expect_eq) > 0.01:
+                issues.append("权益 %.2f 与 现金+浮盈-欠款 %.2f 不一致" % (eq, expect_eq))
+        except Exception as exc:
+            issues.append("权益核对异常：%s" % exc)
+        return issues
+
     def _end_session(self, reason):
         """Shared run-ending routine (the caller must already hold LOCK).
 
@@ -1053,6 +1113,9 @@ class Engine:
             warnings.append("%d position(s) could not be settled: %s" % (
                 len(residual), ", ".join(sorted({p["pair"] for p in residual}))))
         self._settle_loan()
+        # 结算后跑一次账本自检：任何恒等式不成立都以 warnings 形式冒出来，
+        # 不允许 settled=True 把账目问题盖过去。
+        warnings.extend(self._audit_ledger())
         self.s["finished"] = True
         self.s["last_settle"] = {
             "at": time.time(), "reason": reason,
@@ -2464,6 +2527,45 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             hp = os.path.join(outdir, base + ".html")
             with open(hp, "w", encoding="utf-8") as f:
                 f.write(html)
+            # 机器可读摘要：bench.py / CI 只读这份 JSON，不解析 HTML。
+            # 字段只增不改，历史存档不会因为新字段失效。
+            jp = os.path.join(outdir, base + ".json")
+            _start = float(m["start"])
+            _target = float(self.s.get("target", TARGET_EQUITY))
+            summary = {
+                "engine_version": ENGINE_VERSION,
+                "protocol_version": PROTOCOL_VERSION,
+                "session_id": self.s.get("session_id", ""),
+                "seed": self.s.get("seed"),
+                "trader": trader,
+                "mode": self.s.get("mode", ""),
+                "reason": reason,
+                "finished_at": time.time(),
+                "tick": int(self.s.get("tick", 0) or 0),
+                "final_equity": round(float(final_eq), 2),
+                "start_equity": round(_start, 2),
+                "peak_equity": round(float(m["peak"]), 2),
+                "low_equity": round(float(m["low"]), 2),
+                "pnl": round(float(final_eq) - _start, 2),
+                "pnl_pct": (round((float(final_eq) / _start - 1) * 100, 4) if _start else 0.0),
+                "target": round(_target, 2),
+                "hit_target": bool(float(final_eq) >= _target and self._qualified()),
+                "max_drawdown_pct": round(float(m["mdd"]) * 100, 4),
+                "sharpe": round(float(m["sharpe"]), 4),
+                "trades_n": int(m["trades_n"]),
+                "orders_n": int(m["orders"]),
+                "forced_n": int(m["forced_n"]),
+                "win_rate_pct": round(float(m["win_rate"]) * 100, 4),
+                "fees": round(float(m["fees"]), 2),
+                "swap": round(float(m["swap"]), 2),
+                "slip_cost": round(float(m["slip_cost"]), 2),
+                "spread_cost": round(float(m["spread_cost"]), 2),
+                "settled": bool((self.s.get("last_settle") or {}).get("settled", True)),
+                "settle_warnings": list((self.s.get("last_settle") or {}).get("warnings") or []),
+                "audit": self._audit_ledger(),
+            }
+            with open(jp, "w", encoding="utf-8") as jf:
+                json.dump(summary, jf, ensure_ascii=False, indent=2)
             return hp
         except Exception as exc:
             # Silent failures once meant "no report and nobody knew"; leave a trace here that can be checked
@@ -2497,7 +2599,8 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 return {"ok": False, "error": "This run is over; use /reset to start a new one"}
             return self._end_session("Ended voluntarily")
 
-    def reset(self, count=True):
+    def reset(self, count=True, seed=None):
+        """开新局。seed=None 时沿用 TM_SEED 或随机生成；显式传 seed 用于配对评测。"""
         with LOCK:
             now = time.time()
             if count:
@@ -2508,7 +2611,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                             "state": self._state_light()}
             trader = self.s.get("trader", "Guest")
             n = self.s.get("resets", 0) + (1 if count else 0)
-            self.s = _new_session()
+            self.s = _new_session(seed=seed)
             self.s["trader"] = trader
             self.s["resets"] = n
             self.s["last_reset_at"] = now
@@ -2548,6 +2651,9 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "session_id": self.s.get("session_id", ""),
                 "abnormal_exits": int(self.s.get("abnormal_exits", 0)),
                 "settlement": self.s.get("last_settle"),
+                # 账本自检：空列表代表现金/持仓/贷款/权益四组恒等式全部成立。
+                # 非空时请把内容当作告警而不是正常数据。
+                "audit": self._audit_ledger(),
                 "paused": bool(self.s.get("paused")),
                 "ff": self.ff_plan(),
                 "loan_pool_event": (lambda _m: (

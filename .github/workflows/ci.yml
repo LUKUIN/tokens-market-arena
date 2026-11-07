@@ -39,7 +39,7 @@ jobs:
           echo "version guard OK (exit code 2)"
 
       - name: Syntax check
-        run: python -m py_compile run.py src/tm_engine.py src/tm_api.py src/tm_watch_ai.py src/scratchpad.py
+        run: python -m py_compile run.py bench.py src/tm_engine.py src/tm_api.py src/tm_watch_ai.py src/scratchpad.py
 
       - name: Engine smoke test (temp dir, repo untouched)
         shell: python
@@ -77,6 +77,10 @@ jobs:
       - name: Settlement and cost-model invariant tests
         shell: bash
         run: python -m unittest discover -s tests -v
+
+      - name: Paired-benchmark smoke (one seed, repo untouched)
+        shell: bash
+        run: python bench.py run --seeds 1 --policy noop --out "$RUNNER_TEMP/tmbench"
 
       - name: Guard against committing the signing key
         shell: bash

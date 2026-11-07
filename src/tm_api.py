@@ -23,7 +23,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-from tm_engine import Engine, TICK_SECONDS
+from tm_engine import Engine, TICK_SECONDS, ENGINE_VERSION, PROTOCOL_VERSION
 
 HOME = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 ENGINE = Engine(HOME)
@@ -63,7 +63,11 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/health":
             st = ENGINE.state()
             return self._send({"ok": True, "tick": st["tick"], "equity": st["equity"],
-                               "finished": st["finished"]})
+                               "finished": st["finished"],
+                               # Protocol version and engine version are separate: the former
+                               # governs the shape of the API, the latter the shipped content.
+                               "protocol": PROTOCOL_VERSION,
+                               "engine_version": ENGINE_VERSION})
         if path == "/scratchpad":
             return self._send({"ok": True, "items": ENGINE.scratch_read()})
         if path == "/assist/pending":
