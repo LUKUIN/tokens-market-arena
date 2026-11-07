@@ -2817,5 +2817,8 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "POST /quit": {},
                 "POST /assist/ask": {"text": "what you want the spectators to look at"},
             },
+            "Saving tokens": "GET /state?history=0 omits price_history (up to 2000 points per pair); use it when you only need the board",
+            "Closing": "lots on POST /close is optional (closes the whole pair); passing more than you hold closes what you hold without an error",
+            "Calling it a day": "POST /quit settles normally - no penalty, no abnormal-exit mark; ending early when you are unhappy with the result is a safe option, not a forfeit",
             "Pair": {s: PAIR_NAMES[s] for s in PAIRS},
         }

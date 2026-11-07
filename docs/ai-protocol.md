@@ -223,7 +223,11 @@ Every endpoint lives at `http://127.0.0.1:8734`.
   "seed": 20261105,                     // random seed for this match (written into the report)
 
   "gap_level": "low", "liq_level": "normal",
-  "ff_remain": 900,                     // remaining fast-forward budget (seconds)
+  "ff": {                               // fast-forward budget (an object, not a flat field)
+    "total": 900, "used": 0, "remain": 900,
+    "records": [], "cool_left": 0, "last_cd": 0,
+    "can5": true, "can3": true, "left5": 3, "left3": 5
+  },
   "finished": false,
   "settlement": null,                   // settlement result: {settled, warnings, reason}; null before the run ends
   "audit": [],                          // ledger audit: empty array means cash/positions/loan/equity all reconcile
@@ -238,7 +242,8 @@ Every endpoint lives at `http://127.0.0.1:8734`.
 3. **`active_mods`** — which temporary rules are currently moving prices
 4. **`loan_bump_range`** — the current cost of borrowing (`[1,100]` normal, `[-20,100]` Finance Reversal)
 5. **`special`** — whether the switches are on and how many uses remain (`fr_left` / `slot_left`)
-6. **`ff_remain`** — how many seconds of fast-forward are left
+6. **`ff`** — the fast-forward budget object: `remain` is seconds left, `cool_left` is the remaining cooldown,
+   and `can5` / `can3` tell you straight away whether each step is usable right now
 7. **`events`** — what just happened (**full text, no need to consult the docs**)
 
 ## 5. Fast-forward budget rules

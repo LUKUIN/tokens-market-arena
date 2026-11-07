@@ -307,7 +307,7 @@ is in `src/` by then, which is already the decoy.
 
 What sealing actually does:
 
-- The four source files are encrypted with a one-off random key (SHA-256 counter-mode keystream
+- The three source files (tm_engine.py / tm_api.py / scratchpad.py) are encrypted with a one-off random key (SHA-256 counter-mode keystream
   plus an HMAC tag, standard library only) and written to
   `%LOCALAPPDATA%\TokensMarketGuard\<random directory>\` under random file names
 - The key is stored beside them as `_k`; each `src/*.py` is replaced by a 967-byte decoy carrying
