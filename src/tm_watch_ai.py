@@ -325,6 +325,9 @@ class Watch:
         # Ledger-audit slot: empty by default, turns red only when /state reports a problem.
         self.lbl_audit = tk.Label(bar, text="", font=FONT_BAR, bg=CARD, fg=RED)
         self.lbl_audit.pack(side="right", padx=16, pady=7)
+        # Abnormal exit of the previous run: more important than a normal market event
+        self.lbl_abn = tk.Label(bar, text="", font=FONT_BAR, bg=CARD, fg=RED)
+        self.lbl_abn.pack(side="right", padx=16, pady=7)
         self.lbl_status = tk.Label(bar, text="Waiting for connection...", font=FONT, bg=CARD, fg=MUTED)
         self.lbl_status.pack(side="right", padx=16, pady=7)
 
@@ -755,6 +758,8 @@ class Watch:
                     text="! ledger warning (%d): %s" % (len(_audit), _audit[0]), fg=RED)
             else:
                 self.lbl_audit.config(text="", fg=RED)
+        _abn = int(st.get("abnormal_exits") or 0)
+        self.lbl_abn.config(text=("! Last run exited abnormally (%d)" % _abn) if _abn else "")
 
         eq, pnl = st["equity"], st["pnl"]
         up = pnl >= 0
@@ -926,7 +931,9 @@ class Watch:
             color = GREEN if chg > 0.0005 else (RED if chg < -0.0005 else MUTED)
             name_lbl.config(text="%s  %s" % (sym, q["name"]), fg=TEXT)
             val_lbl.config(text="%.4f  %s %+.2f%%" % (q["price"], arrow, chg), fg=color)
-            self._draw_spark(spark, h, color)
+            if getattr(self, "_spark_tick", None) != st.get("tick"):
+                self._spark_tick = st.get("tick")
+                self._draw_spark(spark, h, color)
 
         # Curve
         self.curve = st["equity_curve"]
@@ -1069,11 +1076,19 @@ class Watch:
         eqs = [p["equity"] for p in self.curve]
         lo, hi = min(eqs), max(eqs)
         span = hi - lo
-        if span < 1:
-            span = 1.0
-        lo -= span * 0.10
-        hi += span * 0.10
-        pad_l, pad_r, pad_t, pad_b = 72, 18, 16, 26
+        # Flat equity (waiting for the first trade): show a hint, otherwise the five
+        # ticks all round to the same integer and the chart looks broken.
+        _flat = span < 0.5
+        if _flat:
+            # 完全水平时给一个固定的可视窗口（±2000），刻度才落在可读的整数上
+            lo = eqs[0] - 2000.0
+            hi = eqs[0] + 2000.0
+        else:
+            if span < 1:
+                span = 1.0
+            lo -= span * 0.10
+            hi += span * 0.10
+        pad_l, pad_r, pad_t, pad_b = 96, 18, 16, 26
         n = len(eqs)
 
         def xy(i, v):
@@ -1082,11 +1097,23 @@ class Watch:
             return (x, y)
 
         # Horizontal grid + ticks
+        # Tick precision follows the visible span: a fixed 0 decimals collapses
+        # several distinct ticks into the same number when the span is small.
+        _span = hi - lo
+        if _span >= 10_000:
+            _fmt = "{:,.0f}"
+        elif _span >= 100:
+            _fmt = "{:,.2f}"
+        else:
+            _fmt = "{:,.4f}"
         for i in range(5):
             v = lo + (hi - lo) * i / 4
             _, gy = xy(0, v)
             c.create_line(pad_l, gy, w - pad_r, gy, fill="#EEEEEE")
-            c.create_text(pad_l - 8, gy, text="{:,.0f}".format(v), anchor="e",
+            c.create_text(pad_l - 8, gy, text=_fmt.format(v), anchor="e",
+                          fill=MUTED, font=FONT_TINY)
+        if _flat:
+            c.create_text(w / 2, pad_t + 16, text="No equity change yet — waiting for the first trade",
                           fill=MUTED, font=FONT_TINY)
 
         # Starting-capital dashed line
