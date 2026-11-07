@@ -139,7 +139,17 @@ Requirements: **Python 3.14.7** (pinned on this machine at `C:/Users/User/AppDat
 ## Spectator window
 
 The spectator is **read-only**: apart from the "AI Notes" and "Outside Mercy" viewers it operates
-nothing. Sections, top to bottom:
+nothing.
+
+Every time the AI asks for help (`POST /assist/ask`), a **native** system prompt
+(`messagebox.showwarning`) pops up in the centre of the screen together with a beep: title
+"Outside Mercy", body stating how many requests are pending.
+
+It is modal — until it is dismissed it blocks the spectator refresh, so click OK when you see it.
+The X in the title bar also closes it, but the request itself stays: the red counter on the
+button remains until you reply or reject it in the Outside Mercy window.
+
+Sections, top to bottom:
 
 | Area | Content |
 |---|---|

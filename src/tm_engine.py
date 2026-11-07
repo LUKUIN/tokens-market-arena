@@ -214,7 +214,6 @@ SLOT_MAX_STAKE = 200_000.0    # maximum stake
 # With the "winnings raise the target" penalty, three full spins end at a median of losing the whole stake.
 SLOT_P_LOSE = 0.80            # 80% nothing
 SLOT_P_X5 = 0.15              # 15% refund 5x
-SLOT_P_X10 = 0.05             # 5% refund 10x
 SLOT_WIN_LO = -0.05           # lower bound of the target lift from winnings (negative = the target drops)
 SLOT_WIN_HI = 1.00            # upper bound (worst case the target doubles)
 
@@ -233,7 +232,7 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.0.18"   # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.0.19"   # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -242,7 +241,6 @@ PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变�
 # If mixing would exceed 900 seconds in total, the last request is discarded (not applied).
 FF_TOTAL_SECONDS = 900.0
 FF_CHUNKS = {300: 120.0, 180: 90.0}   # tier seconds -> cooldown seconds
-FF_CHUNK_NAMES = {300: "5 minutes", 180: "3 minutes"}
 TARGET_EQUITY = 2_000_000.0
 LOAN_POOL = 3_000_000.0   # fixed loan pool
 LOAN_RATE_PER_TICK = 0.0001
@@ -273,7 +271,6 @@ ROLL_STEP = 0.1           # a new combination every 0.1 s
 ROLL_COMBOS = len(GAP_LEVELS) * len(LIQ_LEVELS)   # 25
 GAP_SPREAD_MULT = 3.0     # spread multiplier on a gap tick (liquidity drought)
 RESET_COOLDOWN = 30.0     # minimum interval between manual resets (seconds), stops match farming
-REPLAY_TOLERANCE = 0.5    # replay tolerance (seconds), just enough for float error
 HISTORY_LEN = 2000
 
 STATE_FILE = "session.json"
@@ -1868,7 +1865,7 @@ class Engine:
                 return {"ok": False, "error": "Lots must be greater than 0"}
             cap = min(MAX_LEVERAGE, int(self._mod("leverage_cap")))
             if not (MIN_LEVERAGE <= leverage <= cap):
-                return {"ok": False, "error": "Leverage must be between %d and %d" % (MIN_LEVERAGE, MAX_LEVERAGE)}
+                return {"ok": False, "error": "Leverage must be between %d and %d" % (MIN_LEVERAGE, cap)}
             price = self.s["prices"][pair]
             half = self._eff_spread(pair) / 2
             gross = lots * LOTS_SIZE * price
@@ -2407,7 +2404,6 @@ class Engine:
                     _dl_gap, _dl_liq)) if (_dl_gap and _dl_liq) else "",
                 "gap_lv": _dl_gap or "—",
                 "liq_lv": _dl_liq or "—",
-                "flagmd": (("- ⚠ Violation flag: %s" % flag_txt) + chr(10)) if flag_txt else "",
                 "verdict": verdict,
                 "hitcls": "hit" if hit else "miss",
                 "now": now.strftime("%Y-%m-%d %H:%M:%S"),
@@ -2804,7 +2800,10 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             "Slot Machine": ("Run-wide switch: once on, %d plays per run, each 1~%.0f and never above current equity; 80%% nothing / 15%% 5x / 5%% 10x (expected return 1.25x); the payout goes to cash while the target rises by -5%%~100%% of that payout (worst case the target doubles); free at start, enabling mid-run costs %.0f cash" % (
                            SLOT_MAX_PLAYS, SLOT_MAX_STAKE, SPECIAL_FEE)
                        ).replace("%%", "%"),
-            "Leverage": "Selectable %d - %d x" % (MIN_LEVERAGE, MAX_LEVERAGE),
+            "Leverage": "Selectable %d - %d x (the cap can be temporarily lowered by events; trust the error message)" % (MIN_LEVERAGE, MAX_LEVERAGE),
+            "Dynamic modifiers": ("Leverage cap, fees, spread, overnight swap, gap chance and the loan pool can all be"
+                                  " temporarily rewritten by random events; the values above are base values, see"
+                                  " active_mods in GET /state for what is currently in force"),
             "Spread": {s: "%.3f%%" % (cfg["spread"] * 100) for s, cfg in PAIRS.items()},
             "Overnight interest": {s: "%.4f%%/tick" % (cfg["swap"] * 100) for s, cfg in PAIRS.items()},
             "Margin level": "net value / used margin x 100%%, < %.0f%% margin call, < %.0f%% forced liquidation" % (

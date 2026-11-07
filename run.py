@@ -214,6 +214,22 @@ def _start_server(host="127.0.0.1", port=8734):
     return False
 
 
+def _enable_assist_from_env():
+    """Enable Outside Mercy at startup when TM_ASSIST=1.
+
+    Both launch branches (with spectator / --headless) call this, so it lives in
+    one place: editing only one copy would leave one entry point unable to enable it.
+    """
+    if (os.environ.get("TM_ASSIST") or "0") != "1":
+        return
+    try:
+        import tm_api
+        tm_api.ENGINE.assist_enable_free("enabled at startup")
+        print("  Outside Mercy: enabled (the contestant may ask the spectators 3 times)")
+    except Exception as exc:
+        print("  Outside Mercy: failed to enable (%s)" % exc)
+
+
 def _run_ai(interactive=False, port=None):
     if interactive:
         setup = _interactive_setup()
@@ -237,13 +253,7 @@ def _run_ai(interactive=False, port=None):
         return 1
 
     print("  HTTP API: http://127.0.0.1:%d  (rules: GET /rules)" % port)
-    if (os.environ.get("TM_ASSIST") or "0") == "1":
-        try:
-            import tm_api
-            tm_api.ENGINE.assist_enable_free("enabled at startup")
-            print("  Outside Mercy: enabled (the contestant may ask the spectators 3 times)")
-        except Exception as exc:
-            print("  Outside Mercy: failed to enable (%s)" % exc)
+    _enable_assist_from_env()
     # Load the spectator module before the guard seals the sources: the other way
     # round, the import lands on a decoy, the decoy drops a cheat flag and exits.
     import tm_watch_ai
@@ -366,13 +376,8 @@ def main(argv=None):
             return _run_ai(interactive=False, port=port)
         print("  --headless: HTTP service only, no spectator window (no-desktop environments only).")
         guard_stop = _start_guard(port)
-        if (os.environ.get("TM_ASSIST") or "0") == "1":
-            try:
-                import tm_api
-                tm_api.ENGINE.assist_enable_free("enabled at startup")
-                print("  Outside Mercy: enabled (the contestant may ask the spectators 3 times)")
-            except Exception as exc:
-                print("  Outside Mercy: failed to enable (%s)" % exc)
+        _enable_assist_from_env()
+
         try:
             serve(host, port)
         finally:

@@ -27,38 +27,27 @@ _LOCK_SOCK = None
 
 # Window / taskbar icon (yen symbol, multi-size ico)
 ICO_PATH = os.path.join(HERE, "app.ico")
-WARN_ICO = os.path.join(HERE, "warn.ico")
-
-DISCLAIMER_TEXT = """This program is a fictional leveraged-trading simulation game, for entertainment and learning only.
-
-[Fiction notice]
-· The currency pairs, price action, random events and Black Swan gaps in the game are all procedurally generated fictional data
-· They are unrelated to any real market or real asset and do not represent any real price or trend
-
-[Not advice]
-· This program does not constitute any investment, financial or trading-strategy advice
-· Do not apply any in-game action or P&L result to real trading
-
-[No real money]
-· Tokens, borrowing, interest and blown-out accounts in the game are all simulated values
-· No real funds are involved and no real P&L is produced
-
-[Risk warning]
-· High-leverage trading is extremely risky in reality and may wipe out your entire principal
-· This game only presents that risk in a simplified form and cannot be used as a basis for risk assessment
-
-[Usage notice]
-· Do not use this program for any form of gambling, fraud or illegal financial activity
-· The program is provided as is; the author is not liable for any consequence arising from its use
-
-Click "I have read and agree" below to confirm you understand the above.
-"""
-
 
 # Font scaling: the smaller the window, the larger the font.
 # Viewing distance stays the same, so shrinking the font with the window makes it unreadable;
 # so a small window actually bumps the font up and spends the saved space on type size.
 _UI_SCALE = {"v": 1.0}
+
+
+def _fmt_ff(sec):
+    """Render fast-forward budget as "Xm YYs".
+
+    Minutes alone are not enough: the pool is 900 s while one /tick advances 5 s,
+    so truncating to whole minutes shows 895 s as "14 min" and 5 s used as "0 min",
+    and the two numbers cannot add up to 15. Keep the seconds.
+    """
+    try:
+        sec = int(round(float(sec or 0)))
+    except (TypeError, ValueError, OverflowError):
+        sec = 0
+    if sec < 0:
+        sec = 0
+    return "%dm %02ds" % (sec // 60, sec % 60)
 
 
 def _ui_font_factor(width):
@@ -541,6 +530,11 @@ class Watch:
                 winsound.MessageBeep(winsound.MB_ICONASTERISK)
             except Exception:
                 pass
+            _n = len(pend)
+            messagebox.showwarning("Outside Mercy",
+                                   "You have %d request%s from the AI." % (
+                                       _n, "" if _n == 1 else "s"),
+                                   parent=self.root)
         self._assist_pend = pend
         try:
             n = len(pend)
@@ -827,9 +821,9 @@ class Watch:
             _rm = float(_f.get("remain") or 0)
             _cd = float(_f.get("cool_left") or 0)
             _rc = _f.get("records") or []
-            _txt = ("Fast-forward %d min left" % int(_rm // 60)) if _rm >= 60 else ("Fast-forward %d s left" % int(_rm))
+            _txt = "Fast-forward " + _fmt_ff(_rm) + " left"
             if _rc:
-                _txt += " | %d min elapsed" % int(sum(_rc) // 60)
+                _txt += " | " + _fmt_ff(sum(_rc)) + " elapsed"
             if _cd > 0:
                 _txt += " | Cooldown %d s" % int(_cd + 0.999)
             self.lbl_ff.config(text=_txt, fg=RED if _cd > 0 else MUTED)
@@ -855,7 +849,7 @@ class Watch:
                 _f2 = st.get("ff") or {}
                 _rm2 = float(_f2.get("remain") or 0)
                 _pr["ff"].config(
-                    text=("%d min" % int(_rm2 // 60)) if _rm2 >= 60 else ("%d s" % int(_rm2)))
+                    text=_fmt_ff(_rm2))
                 _on = [n for n, v in (("Finance Reversal", sp.get("fr")), ("Slot Machine", sp.get("slot"))) if v]
                 _pr["special"].config(text=", ".join(_on) if _on else "none")
             except Exception as exc:
