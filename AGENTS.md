@@ -18,7 +18,37 @@ interpreter — the spectator's GUI widgets and the `.pyc` files are built for 3
 version simply cannot start. If the short name is not found, write the full path; do not report
 "the environment is broken".
 
-## 1. Start (one command; the spectator opens itself)
+## 1. Clean and reset (do this BEFORE launching)
+
+A leftover save file makes the service resume the previous match — **clean it first**. Both cases
+are covered (service still running, or already stopped):
+
+```bash
+cd <project dir>
+
+# If the previous service is still running: reset, then shut down
+# (/reset wipes everything under data/ except reports/)
+curl -s -X POST http://127.0.0.1:8734/reset    >/dev/null 2>&1 || true
+curl -s -X POST http://127.0.0.1:8734/shutdown >/dev/null 2>&1 || true
+
+# Belt and braces: delete the save directly when the service is not running
+rm -f src/data/session.json
+rm -f src/data/.scratchpad.jsonl
+rm -rf src/data/_agent
+```
+
+PowerShell equivalent:
+
+```powershell
+Remove-Item -Force src/data/session.json            -ErrorAction SilentlyContinue
+Remove-Item -Force src/data/.scratchpad.jsonl       -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force src/data/_agent         -ErrorAction SilentlyContinue
+```
+
+**Never delete `src/data/reports/`** — that is the match archive; every settlement writes a new
+file there. When done, `src/data/` should contain only `reports/`.
+
+## 2. Start (one command; the spectator opens itself)
 
 ```bash
 cd <project directory>
@@ -51,7 +81,7 @@ A human must be able to watch equity, holdings and the activity feed live.
 | `TM_ASSIST` | `1` enables **Outside Mercy**: 3 asks to the spectators per match |
 | `TM_PORT` | Service port, default `8734` |
 
-## 2. Lock the difficulty
+## 3. Lock the difficulty
 
 Difficulty is rolled at the start, and `/tick` does not advance until it is locked.
 
@@ -59,7 +89,7 @@ Difficulty is rolled at the start, and `/tick` does not advance until it is lock
 curl -X POST http://127.0.0.1:8734/roll/stop
 ```
 
-## 3. Read these two at the start
+## 4. Read these two at the start
 
 | Endpoint | Contents |
 |---|---|
@@ -68,7 +98,7 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 
 Once you have these two, you never need to read another Markdown file during the match.
 
-## 4. Settle
+## 5. Settle
 
 ```bash
 curl -X POST http://127.0.0.1:8734/quit
