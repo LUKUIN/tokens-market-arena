@@ -439,8 +439,8 @@ class Watch:
         for idx, sym in enumerate(PAIR_ORDER):
             row, col = divmod(idx, 4)
             cell = tk.Frame(price_grid, bg=CARD)
-            cell.grid(row=row, column=col, sticky="w", padx=(0, 10), pady=2)
-            tk.Frame(cell, bg=PAIR_COLORS.get(sym, MUTED), width=3, height=40).pack(side="left")
+            cell.grid(row=row, column=col, sticky="w", padx=(0, 14), pady=4)
+            tk.Frame(cell, bg=PAIR_COLORS.get(sym, MUTED), width=3, height=46).pack(side="left")
             inner = tk.Frame(cell, bg=CARD)
             inner.pack(side="left", padx=(7, 0))
             _top = tk.Frame(inner, bg=CARD)
@@ -918,6 +918,11 @@ class Watch:
 
         # 报价台
         hist = st.get("price_history", {})
+        # 是否重画走势只看 tick：判断必须放在循环外，
+        # 放到循环里会让第一个品种之后的所有品种永远被跳过。
+        _fresh = getattr(self, "_spark_tick", None) != st.get("tick")
+        if _fresh:
+            self._spark_tick = st.get("tick")
         for sym, q in st["prices"].items():
             pair = self.price_labels.get(sym)
             if not pair:
@@ -930,8 +935,7 @@ class Watch:
             color = GREEN if chg > 0.0005 else (RED if chg < -0.0005 else MUTED)
             name_lbl.config(text="%s  %s" % (sym, q["name"]), fg=TEXT)
             val_lbl.config(text="%.4f  %s %+.2f%%" % (q["price"], arrow, chg), fg=color)
-            if getattr(self, "_spark_tick", None) != st.get("tick"):
-                self._spark_tick = st.get("tick")
+            if _fresh:
                 self._draw_spark(spark, h, color)
 
         # 曲线
