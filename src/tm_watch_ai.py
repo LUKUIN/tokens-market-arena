@@ -27,37 +27,27 @@ _LOCK_SOCK = None
 
 # 窗口 / 任务栏图标（￥ 符号，多尺寸 ico）
 ICO_PATH = os.path.join(HERE, "app.ico")
-WARN_ICO = os.path.join(HERE, "warn.ico")
-
-DISCLAIMER_TEXT = """本程序是一个虚构的杠杆交易模拟游戏，仅供娱乐与学习使用。
-
-【虚构声明】
-· 游戏中的货币对、行情走势、随机事件、黑天鹅跳空，全部是程序生成的虚构数据
-· 与任何真实市场、真实资产无关，不代表任何真实价格或趋势
-
-【不构成建议】
-· 本程序不构成任何投资建议、理财建议或交易策略建议
-· 请勿把游戏里的任何操作或盈亏结果，套用到真实交易中
-
-【无真实资金】
-· 游戏内的 Tokens、借款、利息、爆仓全部是模拟数值
-· 不涉及任何真实资金往来，也不会产生真实盈亏
-
-【风险提示】
-· 高杠杆交易在现实中风险极高，可能导致本金全部损失
-· 本游戏只是把这种风险做了简化呈现，不能作为风险评估依据
-
-【使用须知】
-· 请勿将本程序用于任何形式的赌博、诈骗或非法金融活动
-· 程序按现状提供，作者不对使用过程中产生的任何后果负责
-
-点击下方「我已阅读并同意」，表示你已理解以上内容。"""
-
 
 # 字号缩放：窗口越小，字号相对放大。
 # 人的观看距离不变，窗口缩小时若字号同比缩小会看不清；
 # 所以小窗反而把字抬一点，把省出来的空间让给字号。
 _UI_SCALE = {"v": 1.0}
+
+
+def _fmt_ff(sec):
+    """快进额度显示成「X 分 YY 秒」。
+
+    不能只显示分钟：额度池是 900 秒，而一次 /tick 只推进 5 秒，
+    用整数分钟会把 895 秒显示成「14 分钟」，同时把已用 5 秒显示成「0 分钟」，
+    两个数加起来凑不出 15。这里保留秒，避免这种自相矛盾。
+    """
+    try:
+        sec = int(round(float(sec or 0)))
+    except (TypeError, ValueError, OverflowError):
+        sec = 0
+    if sec < 0:
+        sec = 0
+    return "%d 分 %02d 秒" % (sec // 60, sec % 60)
 
 
 def _ui_font_factor(width):
@@ -540,6 +530,10 @@ class Watch:
                 winsound.MessageBeep(winsound.MB_ICONASTERISK)
             except Exception:
                 pass
+            _n = len(pend)
+            _cn = {1: "一", 2: "二", 3: "三"}.get(_n, str(_n))
+            messagebox.showwarning("外部的怜悯", "您收到%s条来自AI的求助信息。" % _cn,
+                                   parent=self.root)
         self._assist_pend = pend
         try:
             n = len(pend)
@@ -826,9 +820,9 @@ class Watch:
             _rm = float(_f.get("remain") or 0)
             _cd = float(_f.get("cool_left") or 0)
             _rc = _f.get("records") or []
-            _txt = ("快进剩 %d 分钟" % int(_rm // 60)) if _rm >= 60 else ("快进剩 %d 秒" % int(_rm))
+            _txt = "快进剩 " + _fmt_ff(_rm)
             if _rc:
-                _txt += " | 已用 %d 分钟" % int(sum(_rc) // 60)
+                _txt += " | 已用 " + _fmt_ff(sum(_rc))
             if _cd > 0:
                 _txt += " | 冷却 %d 秒" % int(_cd + 0.999)
             self.lbl_ff.config(text=_txt, fg=RED if _cd > 0 else MUTED)
@@ -854,7 +848,7 @@ class Watch:
                 _f2 = st.get("ff") or {}
                 _rm2 = float(_f2.get("remain") or 0)
                 _pr["ff"].config(
-                    text=("%d 分钟" % int(_rm2 // 60)) if _rm2 >= 60 else ("%d 秒" % int(_rm2)))
+                    text=_fmt_ff(_rm2))
                 _on = [n for n, v in (("金融回逆", sp.get("fr")), ("老虎机", sp.get("slot"))) if v]
                 _pr["special"].config(text="、".join(_on) if _on else "无")
             except Exception as exc:
@@ -1407,8 +1401,6 @@ def main():
         _warn_already_open()
         return
     size = (1920, 1080)   # AI 版固定 1920 版式
-    if not size:
-        return
     Watch(size).run()
 
 

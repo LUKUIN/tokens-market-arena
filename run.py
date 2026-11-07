@@ -300,6 +300,22 @@ def _start_autoclean(home, host="127.0.0.1", port=8734):
     threading.Thread(target=watch, daemon=True).start()
 
 
+def _enable_assist_from_env():
+    """TM_ASSIST=1 时在启动阶段替参赛者开通「外部的怜悯」。
+
+    两个启动分支（带观众席 / --headless）都要调用，所以收成一个函数，
+    避免以后只改一处导致某个入口开不了。
+    """
+    if (os.environ.get("TM_ASSIST") or "0") != "1":
+        return
+    try:
+        import tm_api
+        tm_api.ENGINE.assist_enable_free("启动时开启")
+        print("  外部的怜悯：已开启（参赛者可向观众席求助，整局 3 次）")
+    except Exception as exc:
+        print("  外部的怜悯：开启失败 %s" % exc)
+
+
 def _run_ai(interactive=False, port=None):
     if interactive:
         setup = _interactive_setup()
@@ -325,13 +341,7 @@ def _run_ai(interactive=False, port=None):
     print("  HTTP 接口：http://127.0.0.1:%d  （规则：GET /rules）" % port)
     _start_autoclean(os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "data"),
                      port=port)
-    if (os.environ.get("TM_ASSIST") or "0") == "1":
-        try:
-            import tm_api
-            tm_api.ENGINE.assist_enable_free("启动时开启")
-            print("  外部的怜悯：已开启（参赛者可向观众席求助，整局 3 次）")
-        except Exception as exc:
-            print("  外部的怜悯：开启失败 %s" % exc)
+    _enable_assist_from_env()
     # 先把观众席模块读进内存，再封存源码。顺序反过来的话，import 会落在诱饵上，
     # 诱饵一执行就写作弊标记并 exit，整个对局起不来。
     import tm_watch_ai
@@ -451,13 +461,8 @@ def main(argv=None):
             return _run_ai(interactive=False, port=port)
         print("  --headless：只起 HTTP 服务，不打开观众席窗口（仅限无桌面环境）。")
         guard_stop = _start_guard(port)
-        if (os.environ.get("TM_ASSIST") or "0") == "1":
-            try:
-                import tm_api
-                tm_api.ENGINE.assist_enable_free("启动时开启")
-                print("  外部的怜悯：已开启（参赛者可向观众席求助，整局 3 次）")
-            except Exception as exc:
-                print("  外部的怜悯：开启失败 %s" % exc)
+        _enable_assist_from_env()
+
         _start_autoclean(os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "data"),
                          host=host, port=port)
         try:

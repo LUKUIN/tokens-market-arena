@@ -214,7 +214,6 @@ SLOT_MAX_STAKE = 200_000.0    # 单次投入上限
 # 配合「中奖金额推高目标」的惩罚，投满三次的中位结果是亏光投入。
 SLOT_P_LOSE = 0.80            # 80% 无所得
 SLOT_P_X5 = 0.15              # 15% 返还 5 倍
-SLOT_P_X10 = 0.05             # 5% 返还 10 倍
 SLOT_WIN_LO = -0.05           # 中奖返还金额推高目标的比例下限（可为负 = 目标反而降低）
 SLOT_WIN_HI = 1.00            # ……上限（最坏情况目标翻倍）
 
@@ -233,7 +232,7 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.0.18"   # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.0.19"   # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -242,7 +241,6 @@ PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变�
 # 混合后总额超过 900 秒时，最后一档作废（不执行）。
 FF_TOTAL_SECONDS = 900.0
 FF_CHUNKS = {300: 120.0, 180: 90.0}   # 档位秒数 → 该档冷秒数
-FF_CHUNK_NAMES = {300: "5 分钟", 180: "3 分钟"}
 TARGET_EQUITY = 2_000_000.0
 LOAN_POOL = 3_000_000.0   # 固定贷款池总额
 LOAN_RATE_PER_TICK = 0.0001
@@ -273,7 +271,6 @@ ROLL_STEP = 0.1           # 每 0.1 秒换一个组合
 ROLL_COMBOS = len(GAP_LEVELS) * len(LIQ_LEVELS)   # 25
 GAP_SPREAD_MULT = 3.0     # 跳空 tick 上点差放大倍数（流动性枯竭）
 RESET_COOLDOWN = 30.0     # 手动重开的最小间隔（秒），防止反复刷局
-REPLAY_TOLERANCE = 0.5    # 回放判定容差（秒），只需容下浮点误差
 HISTORY_LEN = 2000
 
 STATE_FILE = "session.json"
@@ -1868,7 +1865,7 @@ class Engine:
                 return {"ok": False, "error": "手数必须大于 0"}
             cap = min(MAX_LEVERAGE, int(self._mod("leverage_cap")))
             if not (MIN_LEVERAGE <= leverage <= cap):
-                return {"ok": False, "error": "杠杆必须在 %d-%d 之间" % (MIN_LEVERAGE, MAX_LEVERAGE)}
+                return {"ok": False, "error": "杠杆必须在 %d-%d 之间" % (MIN_LEVERAGE, cap)}
             price = self.s["prices"][pair]
             half = self._eff_spread(pair) / 2
             gross = lots * LOTS_SIZE * price
@@ -2416,7 +2413,6 @@ class Engine:
                     _dl_gap, _dl_liq)) if (_dl_gap and _dl_liq) else "",
                 "gap_lv": _dl_gap or "—",
                 "liq_lv": _dl_liq or "—",
-                "flagmd": (("- ⚠ 违规标记：%s" % flag_txt) + chr(10)) if flag_txt else "",
                 "verdict": verdict,
                 "hitcls": "hit" if hit else "miss",
                 "now": now.strftime("%Y-%m-%d %H:%M:%S"),
@@ -2818,7 +2814,9 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                        "开局免费，局内再开启需支付 %.0f 现金" % (
                            SLOT_MAX_PLAYS, SLOT_MAX_STAKE, SPECIAL_FEE)
                        ).replace("%%", "%"),
-            "杠杆": "可选 %d - %d 倍" % (MIN_LEVERAGE, MAX_LEVERAGE),
+            "杠杆": "可选 %d - %d 倍（上限可被事件临时下调，以实际报错为准）" % (MIN_LEVERAGE, MAX_LEVERAGE),
+            "动态修正": ("杠杆上限、手续费、点差、隔夜利息、黑天鹅概率、贷款池都可能被随机事件临时改写；"
+                        "上面给的是基础值，当前生效的修正见 GET /state 的 active_mods"),
             "点差": {s: "%.3f%%" % (cfg["spread"] * 100) for s, cfg in PAIRS.items()},
             "隔夜利息": {s: "%.4f%%/tick" % (cfg["swap"] * 100) for s, cfg in PAIRS.items()},
             "保证金水平": "净值 ÷ 已用保证金 × 100%%，< %.0f%% 追加保证金，< %.0f%% 强制平仓" % (
