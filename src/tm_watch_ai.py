@@ -473,31 +473,29 @@ class Watch:
             # 窄屏放不下：活动流改为工具栏「活动流」按钮打开的独立窗口。
             return
 
-        # ---------- 活动流头部：标题 + 分类快捷按钮 ----------
+        # ---------- 活动流：主窗口只显示最新一条，完整历史在「更多」里 ----------
         feed_head = tk.Frame(bottom, bg=CARD)
         feed_head.pack(fill="x")
         tk.Label(feed_head, text="活动流", font=FONT, bg=CARD, fg=TEXT, anchor="w",
                  padx=14, pady=max(3, int(7 * self.V))).pack(side="left")
-        tab_box = tk.Frame(feed_head, bg=CARD)
-        tab_box.pack(side="right", padx=(0, 12), pady=max(2, int(3 * self.V)))
-        for _key, _label in LOG_TABS:
-            _btn = tk.Button(tab_box, text=_label, font=FONT_TINY, bd=0, relief="flat",
-                             cursor="hand2", padx=9, pady=2,
-                             command=lambda k=_key: self._set_log_filter(k))
-            _btn.pack(side="left", padx=(0, 4))
-            self._log_tabs[_key] = _btn
-        self._paint_log_tabs()
+        self.btn_log_more = tk.Button(
+            feed_head, text="更多", command=self._show_log_panel,
+            font=FONT_TINY, bd=0, relief="flat", cursor="hand2",
+            bg="#EEF4FF", fg=BLUE, activebackground="#DCE8FB",
+            activeforeground=BLUE, padx=10, pady=1)
+        self.btn_log_more.pack(side="right", padx=(0, 12),
+                               pady=max(2, int(3 * self.V)))
 
         log_wrap = tk.Frame(bottom, bg=CARD)
-        log_wrap.pack(fill="both", expand=True, padx=0, pady=(0, 10))
+        log_wrap.pack(fill="x", padx=0, pady=(0, 10))
         self.log_text = tk.Text(log_wrap, bg=CARD, fg=MUTED, font=FONT_LOG, bd=0,
-                                height=max(3, int(6 * self.V)), insertbackground=TEXT,
-                                padx=14, pady=4,
+                                height=2, insertbackground=TEXT,
+                                padx=14, pady=3,
                                 wrap="none", state="disabled")
-        self.log_vbar = tk.Scrollbar(log_wrap, orient="vertical", command=self.log_text.yview)
-        self.log_text.configure(yscrollcommand=self.log_vbar.set)
-        self.log_text.pack(side="left", fill="both", expand=True)
-        self.log_vbar.pack(side="right", fill="y")
+        self.log_text.pack(side="left", fill="x", expand=True)
+        self._log_win = None
+        self._log_panel_text = None
+        self._log_panel_tabs = {}
 
     def _metric(self, parent, col, title, color, sub=""):
         c = card(parent)
@@ -1032,7 +1030,8 @@ class Watch:
         self._render_log()
 
     def _paint_log_tabs(self):
-        for key, btn in self._log_tabs.items():
+        # 分类按钮现在只存在于弹窗里，主窗口不再占这一行
+        for key, btn in getattr(self, "_log_panel_tabs", {}).items():
             on = (key == self._log_filter)
             btn.config(bg=BLUE if on else "#F1F1F1",
                        fg="#FFFFFF" if on else MUTED,
@@ -1040,32 +1039,117 @@ class Watch:
                        activeforeground="#FFFFFF" if on else MUTED)
 
     def _render_log(self):
-        if self.log_text is None:
-            return
         rows = self._log_events if self._log_filter == "all" else [
             e for e in self._log_events if self._log_cat(e) == self._log_filter]
-        self.log_text.config(state="normal")
-        self.log_text.delete("1.0", "end")
-        self._write_rows(rows)
-        self.log_text.see("end")
-        self.log_text.config(state="disabled")
+
+        # 主窗口只留最新一条，其余空间还给别的区块
+        if self.log_text is not None:
+            self.log_text.config(state="normal")
+            self.log_text.delete("1.0", "end")
+            self._write_rows(rows[-1:] if rows else [], target=self.log_text)
+            self.log_text.config(state="disabled")
+
+        # 弹窗显示当前分类下的全部历史
+        t = getattr(self, "_log_panel_text", None)
+        if t is not None:
+            try:
+                if self._log_win is not None and self._log_win.winfo_exists():
+                    t.config(state="normal")
+                    t.delete("1.0", "end")
+                    self._write_rows(rows, target=t)
+                    t.see("end")
+                    t.config(state="disabled")
+                else:
+                    self._log_win = None
+                    self._log_panel_text = None
+            except Exception:
+                self._log_win = None
+                self._log_panel_text = None
+
+    def _show_log_panel(self):
+        """完整活动流：分类筛选 + 可滚动历史，随主循环刷新。"""
+        try:
+            if self._log_win is not None and self._log_win.winfo_exists():
+                self._log_win.lift()
+                return
+        except Exception:
+            pass
+        win = tk.Toplevel(self.root)
+        win.title("活动流（全部）")
+        win.geometry("920x500")
+        win.configure(bg=BG)
+
+        head = tk.Frame(win, bg=CARD)
+        head.pack(fill="x", padx=10, pady=(10, 0))
+        tk.Label(head, text="活动流", font=FONT, bg=CARD, fg=TEXT).pack(side="left")
+        tab_box = tk.Frame(head, bg=CARD)
+        tab_box.pack(side="right")
+        self._log_panel_tabs = {}
+        for _key, _label in LOG_TABS:
+            _btn = tk.Button(tab_box, text=_label, font=FONT_TINY, bd=0, relief="flat",
+                             cursor="hand2", padx=9, pady=2,
+                             command=lambda k=_key: self._set_log_filter(k))
+            _btn.pack(side="left", padx=(0, 4))
+            self._log_panel_tabs[_key] = _btn
+
+        wrap = tk.Frame(win, bg=CARD)
+        wrap.pack(fill="both", expand=True, padx=10, pady=10)
+        t = tk.Text(wrap, bg=CARD, fg=TEXT, font=FONT_LOG, bd=0, padx=12, pady=8,
+                    wrap="none", state="disabled")
+        sb = tk.Scrollbar(wrap, orient="vertical", command=t.yview)
+        t.configure(yscrollcommand=sb.set)
+        t.pack(side="left", fill="both", expand=True)
+        sb.pack(side="right", fill="y")
+
+        self._log_win = win
+        self._log_panel_text = t
+        self._paint_log_tabs()
+        self._render_log()
+        win.protocol("WM_DELETE_WINDOW", self._close_log_panel)
+
+    def _close_log_panel(self):
+        try:
+            if self._log_win is not None:
+                self._log_win.destroy()
+        except Exception:
+            pass
+        self._log_win = None
+        self._log_panel_text = None
+        self._log_panel_tabs = {}
 
     def _write_log(self, fresh):
         rows = fresh if self._log_filter == "all" else [
             e for e in fresh if self._log_cat(e) == self._log_filter]
         if not rows:
             return
-        at_bottom = self.log_text.yview()[1] >= 0.999
-        top = self.log_text.yview()[0]
-        self.log_text.config(state="normal")
-        self._write_rows(rows)
-        if at_bottom:
-            self.log_text.see("end")
-        else:
-            self.log_text.yview_moveto(top)
-        self.log_text.config(state="disabled")
+        # 主窗口只保持最新一条
+        if self.log_text is not None:
+            self.log_text.config(state="normal")
+            self.log_text.delete("1.0", "end")
+            self._write_rows(rows[-1:], target=self.log_text)
+            self.log_text.config(state="disabled")
+        # 弹窗开着就追加，并跟随到底部
+        t = getattr(self, "_log_panel_text", None)
+        if t is not None:
+            try:
+                if self._log_win is not None and self._log_win.winfo_exists():
+                    at_bottom = t.yview()[1] >= 0.999
+                    t.config(state="normal")
+                    self._write_rows(rows, target=t)
+                    if at_bottom:
+                        t.see("end")
+                    t.config(state="disabled")
+                else:
+                    self._log_win = None
+                    self._log_panel_text = None
+            except Exception:
+                self._log_win = None
+                self._log_panel_text = None
 
-    def _write_rows(self, rows):
+    def _write_rows(self, rows, target=None):
+        t = target if target is not None else self.log_text
+        if t is None:
+            return
         # 按事件类型上色：危险->红/橙，机会->蓝，成交->绿，资金->紫，环境->灰
         kind_color = {
             "blowup": "#8B0000",      # 爆仓：深红
@@ -1083,7 +1167,7 @@ class Watch:
         }
         for e in rows:
             k = e.get("kind", "info")
-            self.log_text.insert("end", "[t%d] %s\n" % (e["tick"], e["text"]), k)
+            t.insert("end", "[t%d] %s\n" % (e["tick"], e["text"]), k)
             self.log_text.tag_config(k, foreground=kind_color.get(k, MUTED))
 
     def _show_hold_panel(self):
