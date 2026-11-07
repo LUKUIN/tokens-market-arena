@@ -173,7 +173,7 @@ Right-click the bat → Properties → tick "Unblock" → OK. Once is enough.
 | Event | Duration | Blocks | Exception |
 |---|---|---|---|
 | Risk review (风控审查) | 5 minutes | Borrowing | The 60-second self-rescue window while cash is negative still works |
-| Exchange maintenance (交易所维护) | 5 seconds (1 tick) | Closing positions yourself | Forced liquidation on insufficient margin still works |
+| Exchange maintenance (交易所维护) | 5 seconds (1 tick) | Closing positions yourself | Blow-up liquidation and end-of-match settlement still work |
 | Slot maintenance (老虎机维护) | 8 minutes | Slot bets | — |
 
 All three fire at random. The system will not skip them because you happen to be mid-action.

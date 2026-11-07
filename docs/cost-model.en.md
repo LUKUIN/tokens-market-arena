@@ -105,6 +105,22 @@ In the match that lost 32.38%, **commission plus interest accounted for 23.6% of
 
 More than a fifth of the loss was not bad trading — it was the **cost of staying in**.
 
+## Forced liquidation and settlement
+
+A regular close, a blow-up liquidation and end-of-match settlement share **one** execution path:
+
+```
+fill = mid price minus/plus (half spread + slippage)
+fee  = filled notional x fee rate
+```
+
+- **Blow-up liquidation** (margin level below the stop-out line, or a margin call timing out):
+  spread, slippage and fees all apply, and the fill is written to the trade log with a `forced`
+  flag. The report lists "Forced liquidation" under "Closed positions".
+- **End-of-match settlement**: not blocked by "exchange maintenance" or any other trading halt.
+  Every position is closed at the unified cost path, the loan is cleared, and the invariants
+  (no positions, no debt) are verified before the result is written.
+
 ## Conclusion
 
 **This game is mathematically negative-sum.**

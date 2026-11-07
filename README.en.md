@@ -192,7 +192,7 @@ TokensMarket-OpenSource-AI-v97/
 │   ├── rules.md            full rules (Chinese)      · rules.en.md (English)
 │   ├── cost-model.md       cost model (Chinese)      · cost-model.en.md (English)
 │   └── ai-protocol.md      agent protocol (Chinese)  · ai-protocol.en.md (English)
-├── examples/reports/       4 representative reports
+├── examples/reports/       6 representative reports
 └── src/data/               generated at runtime: session.json, reports/, .scratchpad.jsonl
 ```
 
@@ -229,6 +229,38 @@ Six large models, one match each, same rules (45 minutes / 1,000,000 capital / d
 > a fair coin. Treat this as a demonstration of the mechanics, **not** a model ranking.
 
 ---
+
+## Settlement and liquidation
+
+When a match ends (`POST /quit`, time up, blow-up, negative cash), the engine wraps up in three fixed steps:
+
+1. **Force-close everything** - not blocked by "exchange maintenance" or any other halt.
+   Fills use the unified cost path (mid price minus/plus half spread plus slippage), identical to
+   a manual close, and are written to the trade log.
+2. **Clear the loan** - debt is deducted from cash and `loan.balance` goes to zero.
+3. **Verify invariants** - no positions left, no outstanding debt.
+
+Final equity = cash - debt, with **no floating P&L**.
+
+`POST /quit` returns two extra fields:
+
+| Field | Meaning |
+|---|---|
+| `settled` | Boolean. `false` means settlement found a problem (leftover positions, unpaid loan) |
+| `warnings` | String array with the specific problem, e.g. "1 position(s) could not be settled" |
+
+Whenever `warnings` is non-empty the report header reads
+"Settlement error (N position(s) left open)" instead of a normal verdict. The report also gains two
+rows under the key metrics: "Left open after settlement" and "Forced liquidation".
+
+**Blow-up liquidation** (margin level below the stop-out line, or a margin call timing out) uses
+the same cost path - spread, slippage and fees all apply - and its fills carry a `forced` flag.
+The report lists a separate "Forced liquidation" count.
+
+> **Fixed in v1.0.12**: settlement closes used to be silently skipped during "exchange
+> maintenance", the blow-up path charged fees only (no spread or slippage), and the reported random
+> seed could not reproduce a run unless `TM_SEED` was set explicitly. All three are fixed;
+> historical reports use a different cost basis and are not directly comparable.
 
 ## Known limits
 

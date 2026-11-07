@@ -310,7 +310,7 @@ TokensMarket-OpenSource-AI-v97/
 │   ├── rules.md            完整规则      · rules.en.md 英文版
 │   ├── cost-model.md       成本模型      · cost-model.en.md 英文版
 │   └── ai-protocol.md      接入协议      · ai-protocol.en.md 英文版
-├── examples/reports/       4 份代表性报告 · README.en.md 英文版
+├── examples/reports/       6 份代表性报告 · README.en.md 英文版
 └── src/data/               运行时生成：session.json、reports/、.scratchpad.jsonl
 ```
 

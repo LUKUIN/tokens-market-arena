@@ -3,12 +3,13 @@
 > [中文](README.md) · **English**
 
 Every finished match produces one self-contained HTML file (no external dependencies, double-click
-to open). Four representative ones are included here:
+to open). Six representative ones are included here:
 
 > **Format note**: `01`–`03` were produced by an early engine (v97) and **do not contain** the
 > random seed, the cost attribution section, the 10-column trade list, or the per-loan record.
-> `04` is a complete report from the current engine — open that one to see what today's report
-> looks like.
+> `04` is a complete report from the v1.0.11 engine. **Since v1.0.12** the key-metrics block also
+> carries "Forced liquidation" and "Left open after settlement"; these samples predate that change,
+> so you will not see those two rows in them.
 
 ## 01 · The only match that hit the target · qwen3.8-flash · +106.38%
 
