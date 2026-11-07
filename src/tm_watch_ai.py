@@ -375,10 +375,9 @@ class Watch:
                 ("gap", "Black-swan rate"),
                 ("liq", "Liquidity drain"),
                 ("ff", "Fast-forward"),
-                ("special", "Global events"),
-                ("last", "Latest")):
+                ("special", "Global events")):
             _row = tk.Frame(right, bg=CARD)
-            _row.pack(fill="x", padx=14, pady=3)
+            _row.pack(fill="x", padx=14, pady=2)
             tk.Label(_row, text=_title, font=FONT_TINY, bg=CARD, fg=MUTED,
                      anchor="w").pack(anchor="w")
             _val = tk.Label(_row, text="—", font=FONT_SMALL, bg=CARD, fg=TEXT,
@@ -402,16 +401,31 @@ class Watch:
                         font=FONT_SMALL, borderwidth=0, relief="flat")
         style.map("Tm.Treeview", background=[("selected", "#BFD9F2")],
                   foreground=[("selected", TEXT)])
+        # 持仓表固定 7 行（改版前的高度），行数超出时内部滚动；
+        # 行数超过可视行数时，标题行右侧出现「更多」，点开是同步刷新的完整表。
+        tree_wrap = tk.Frame(hold, bg=CARD)
+        tree_wrap.pack(fill="x", padx=10, pady=(0, 10))
+        self.tree_wrap = tree_wrap
         self.tree = ttk.Treeview(
-            hold, columns=("pair", "side", "lots", "leverage", "entry", "price", "margin", "upnl"),
-            show="headings", height=3, style="Tm.Treeview", selectmode="none")
+            tree_wrap, columns=("pair", "side", "lots", "leverage", "entry", "price", "margin", "upnl"),
+            show="headings", height=7, style="Tm.Treeview", selectmode="none")
         for col, title, width in (
                 ("pair", "Pair", 196), ("side", "Side", 50), ("lots", "Lots", 62),
                 ("leverage", "Leverage", 62), ("entry", "Entry", 88), ("price", "Last", 88),
                 ("margin", "Margin", 82), ("upnl", "Unrealised P&L", 96)):
             self.tree.heading(col, text=title)
             self.tree.column(col, width=width, anchor="center")
-        self.tree.pack(fill="x", padx=10, pady=(0, 10))
+        self.tree_vbar = tk.Scrollbar(tree_wrap, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=self.tree_vbar.set)
+        self.tree.pack(side="left", fill="both", expand=True)
+        self.tree_vbar.pack(side="right", fill="y")
+        self._hold_win = None
+        self._hold_tree = None
+        self.btn_hold_more = tk.Button(
+            hold, text="More", command=self._show_hold_panel,
+            font=FONT_TINY, bd=0, relief="flat", cursor="hand2",
+            bg="#EEF4FF", fg=BLUE, activebackground="#DCE8FB",
+            activeforeground=BLUE, padx=10, pady=1)
 
         # Flat state: when there are no positions and no recent fills, collapse the table
         # into one clear message instead of a "(Flat)" row plus empty space.
@@ -772,7 +786,9 @@ class Watch:
             self.lbl_margin.config(text="—", fg=MUTED)
         else:
             color = GREEN if ml >= 200 else (YELLOW if ml >= 100 else (ORANGE if ml >= 50 else RED))
-            self.lbl_margin.config(text="%.0f%%" % ml, fg=color)
+            # Above 1000% show a multiplier instead of a hard-to-read percentage
+            self.lbl_margin.config(text=("%.0fx" % (ml / 100.0)) if ml >= 1000 else ("%.0f%%" % ml),
+                                   fg=color)
 
         self.lbl_target.config(text="%.1f%%" % st["target_pct"], fg=BLUE)
         bonus = st.get("target_bonus", 0) or 0
@@ -844,9 +860,6 @@ class Watch:
                     text=("%d min" % int(_rm2 // 60)) if _rm2 >= 60 else ("%d s" % int(_rm2)))
                 _on = [n for n, v in (("Finance Reversal", sp.get("fr")), ("Slot Machine", sp.get("slot"))) if v]
                 _pr["special"].config(text=", ".join(_on) if _on else "none")
-                _ev = st.get("events") or []
-                _last = (_ev[-1].get("text") or "—") if _ev else "—"
-                _pr["last"].config(text=_last[-46:])
             except Exception as exc:
                 sys.stderr.write("panel rows: %r\n" % (exc,))
 
@@ -891,18 +904,22 @@ class Watch:
             _recent = [e for e in st.get("events", [])
                        if e["kind"] in ("open", "close")
                        and _now - float(e.get("time", 0)) < 120][-3:]
+        if len(_pos) > 7:
+            self.btn_hold_more.place(relx=1.0, x=-14, y=8, anchor="ne")
+        else:
+            self.btn_hold_more.place_forget()
+
         _mode = "table" if (_pos or _recent) else "empty"
         if getattr(self, "_hold_mode", None) != _mode:
             self._hold_mode = _mode
             if _mode == "table":
                 self.hold_empty.pack_forget()
-                self.tree.pack(fill="x", padx=10, pady=(0, 10))
+                self.tree_wrap.pack(fill="x", padx=10, pady=(0, 10))
             else:
-                self.tree.pack_forget()
+                self.tree_wrap.pack_forget()
                 self.hold_empty.pack(fill="x", padx=10)
 
         if _pos:
-            self.tree.configure(height=max(2, min(6, len(_pos))))
             for p in _pos:
                 self.tree.insert("", "end", values=(
                     p["pair"], "Long" if p["side"] == "LONG" else "Short",
@@ -916,6 +933,26 @@ class Watch:
             for e in reversed(_recent):
                 self.tree.insert("", "end", values=(
                     "  [t%d] %s" % (e["tick"], e["text"][:26]), "", "", "", "", "", "", ""))
+
+        # 持仓弹窗跟随刷新（只在窗口还活着时写，避免对已销毁控件操作）
+        if getattr(self, "_hold_tree", None) is not None:
+            try:
+                if self._hold_win is not None and self._hold_win.winfo_exists():
+                    t = self._hold_tree
+                    for row in t.get_children():
+                        t.delete(row)
+                    for p in _pos:
+                        t.insert("", "end", values=(
+                            p["pair"], "Long" if p["side"] == "LONG" else "Short",
+                            "%.0f" % p["lots"], "%dx" % p["leverage"],
+                            "%.4f" % p["entry"], "%.4f" % p["price"],
+                            "%.0f" % p["margin"], "%+.0f" % p["upnl"]))
+                else:
+                    self._hold_win = None
+                    self._hold_tree = None
+            except Exception:
+                self._hold_win = None
+                self._hold_tree = None
 
         # Quote board
         hist = st.get("price_history", {})
@@ -1050,6 +1087,44 @@ class Watch:
             self.log_text.insert("end", "[t%d] %s\n" % (e["tick"], e["text"]), k)
             self.log_text.tag_config(k, foreground=kind_color.get(k, MUTED))
 
+    def _show_hold_panel(self):
+        """持仓明细弹窗：内容跟随主循环刷新，关窗后引用清空。"""
+        try:
+            if self._hold_win is not None and self._hold_win.winfo_exists():
+                self._hold_win.lift()
+                return
+        except Exception:
+            pass
+        win = tk.Toplevel(self.root)
+        win.title("Positions (live)")
+        win.geometry("820x380")
+        win.configure(bg=BG)
+        t = ttk.Treeview(
+            win, columns=("pair", "side", "lots", "leverage", "entry", "price", "margin", "upnl"),
+            show="headings", height=12, style="Tm.Treeview", selectmode="none")
+        for col, title, width in (
+                ("pair", "Pair", 196), ("side", "Side", 50), ("lots", "Lots", 62),
+                ("leverage", "Leverage", 62), ("entry", "Entry", 88), ("price", "Last", 88),
+                ("margin", "Margin", 88), ("upnl", "Unrealised P&L", 104)):
+            t.heading(col, text=title)
+            t.column(col, width=width, anchor="center")
+        sb = tk.Scrollbar(win, orient="vertical", command=t.yview)
+        t.configure(yscrollcommand=sb.set)
+        t.pack(side="left", fill="both", expand=True, padx=(12, 0), pady=12)
+        sb.pack(side="right", fill="y", padx=(0, 12), pady=12)
+        self._hold_win = win
+        self._hold_tree = t
+        win.protocol("WM_DELETE_WINDOW", self._close_hold_panel)
+
+    def _close_hold_panel(self):
+        try:
+            if self._hold_win is not None:
+                self._hold_win.destroy()
+        except Exception:
+            pass
+        self._hold_win = None
+        self._hold_tree = None
+
     def _draw_spark(self, c, hist, color):
         """报价台的迷你走势：只取最近一段真实价格，不足 2 个点就不画。"""
         c.delete("all")
@@ -1148,17 +1223,29 @@ class Watch:
             c.create_line(pad_l, zy, w - pad_r, zy, fill=PURPLE, dash=(3, 3))
             c.create_text(pad_l - 8, zy, text="0", anchor="e", fill=PURPLE, font=FONT_TINY)
 
-        # Peak / trough
+        # Peak / trough: switch the horizontal anchor near an edge so the label is not clipped
         imax = max(range(n), key=lambda i: eqs[i])
         imin = min(range(n), key=lambda i: eqs[i])
+        # Skip the trough label when the last frame is also the low — it would duplicate "current"
+        _skip_low = (imin == n - 1)
         if imax != imin:
-            for i, txt, col, anchor in ((imax, "Peak {:,.0f}".format(eqs[imax]), GREEN, "s"),
-                                        (imin, "Trough {:,.0f}".format(eqs[imin]), RED, "n")):
+            for i, txt, col, up, skip in (
+                    (imax, "Peak {:,.0f}".format(eqs[imax]), GREEN, True, False),
+                    (imin, "Trough {:,.0f}".format(eqs[imin]), RED, False, _skip_low)):
+                if skip:
+                    continue
                 px, py = xy(i, eqs[i])
                 if eqs[i] < 0:
                     col = PURPLE
                 c.create_oval(px - 3, py - 3, px + 3, py + 3, fill=col, outline="")
-                c.create_text(px, py - 12 if anchor == "s" else py + 12, text=txt,
+                if px > w - 90:
+                    anchor = "se" if up else "ne"
+                elif px < pad_l + 90:
+                    anchor = "sw" if up else "nw"
+                else:
+                    anchor = "s" if up else "n"
+                dx = -6 if "e" in anchor else (6 if "w" in anchor else 0)
+                c.create_text(px + dx, py - 12 if up else py + 12, text=txt,
                               fill=col, anchor=anchor, font=FONT_TINY)
 
         # Current value
