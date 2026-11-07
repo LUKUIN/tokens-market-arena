@@ -2,7 +2,8 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # main holds the Chinese edition, english holds this one; both must run CI
+    branches: [main, english]
   pull_request:
   workflow_dispatch:
 
