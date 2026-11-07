@@ -137,7 +137,7 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/health` | 存活检查，返回 tick / equity / finished |
+| GET | `/health` | 存活检查，返回 tick / equity / finished / protocol / engine_version |
 | GET | `/state` | **完整局面**（下面详述） |
 | GET | `/rules` | 规则文本 |
 | GET | `/prices` | 各品种当前价与历史 |
@@ -213,6 +213,7 @@ curl -X POST http://127.0.0.1:8734/roll/stop
   "ff_remain": 900,                     // 快进剩余额度（秒）
   "finished": false,
   "settlement": null,                   // 结算结果：{settled, warnings, reason}；未结算为 null
+  "audit": [],                          // 账本自检：空数组=现金/持仓/贷款/权益恒等式全部成立
   "events": [ ... ]                     // 最近事件，含完整文案
 }
 ```

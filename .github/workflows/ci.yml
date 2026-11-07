@@ -38,7 +38,7 @@ jobs:
           echo "版本守卫 OK（退出码 2）"
 
       - name: 语法检查
-        run: python -m py_compile run.py src/tm_engine.py src/tm_api.py src/tm_watch_ai.py src/scratchpad.py
+        run: python -m py_compile run.py bench.py src/tm_engine.py src/tm_api.py src/tm_watch_ai.py src/scratchpad.py
 
       - name: 引擎冒烟（临时目录，不碰仓库）
         shell: python
@@ -61,6 +61,10 @@ jobs:
       - name: 结算与成本模型不变量测试
         shell: bash
         run: python -m unittest discover -s tests -v
+
+      - name: 配对评测冒烟（1 个 seed，不碰仓库）
+        shell: bash
+        run: python bench.py run --seeds 1 --policy noop --out "$RUNNER_TEMP/tmbench"
 
       - name: 精简体（?history 参数）不带历史
         shell: python

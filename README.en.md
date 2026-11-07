@@ -90,7 +90,8 @@ Base URL defaults to `http://127.0.0.1:8734`.
 
 | Endpoint | Returns |
 |---|---|
-| `/health` | `{ok, tick, equity, finished}` |
+| `/health` | `{ok, tick, equity, finished, protocol, engine_version}`. `protocol` is the API
+  contract version; `engine_version` is the release |
 | `/rules` | Full rule text plus parameters (including all 38 random events) |
 | `/state` | Account, positions, loan, quotes, history, difficulty, fast-forward state |
 | `/prices` | Quote table |
@@ -261,6 +262,49 @@ The report lists a separate "Forced liquidation" count.
 > maintenance", the blow-up path charged fees only (no spread or slippage), and the reported random
 > seed could not reproduce a run unless `TM_SEED` was set explicitly. All three are fixed;
 > historical reports use a different cost basis and are not directly comparable.
+
+## Ledger audit and paired benchmark
+
+### Ledger audit (`audit`)
+
+Before settlement and on every `/state`, four identities are checked:
+
+| Check | Identity |
+|---|---|
+| Fees | accumulated fees == sum of `fee` over the trade log |
+| Loan | `loan.balance` == `borrowed - repaid + interest` |
+| Positions | side is `LONG` / `SHORT`, lots strictly positive |
+| Equity | `equity` == cash + unrealized P&L - debt |
+
+`audit` is a string array: **empty means all four hold**. Any entry is a human-readable warning.
+At settlement the audit verdict is merged into `warnings`, so `settled` becomes `false` — a mismatch
+is never reported as a clean settlement.
+
+### Event sequence
+
+Every event carries `seq` (monotonic) and `session` (session id), so reports and audit logs can be
+cross-referenced by number.
+
+### Machine-readable summary
+
+Each HTML report is accompanied by a same-named JSON file (`reports/<stamp>_<trader>.json`) holding
+version, seed, P&L, drawdown, Sharpe, cost breakdown, settlement result and audit verdict.
+`bench.py` and CI read that JSON instead of parsing HTML.
+
+### Paired benchmark (`bench.py`)
+
+Single-match variance is enormous (+106% to -229% in the historical samples), so one match says
+nothing. Evaluation runs the same seed set for the same number of rounds:
+
+```bash
+python bench.py run --seeds 1,2,3 --policy probe      # three matches
+python bench.py run --seeds 1-5 --policy noop         # five no-op baseline matches
+python bench.py summary --dir src/data/reports        # summarise existing summaries
+```
+
+`run` advances ticks in-process (no HTTP, no wall-clock wait) and writes one JSON summary per match.
+`summary` prints mean, median, stdev, P10/P90, worst drawdown, target hits, settlement errors and
+audit-pass counts. The built-in policies (`noop`, `probe`) are headless baselines, not model results.
 
 ## Known limits
 

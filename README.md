@@ -149,9 +149,9 @@ python run.py --headless          # 等价于 run.py server --headless
 
 | 端点 | 返回 |
 |---|---|
-| `/health` | `{ok, tick, equity, finished}` |
+| `/health` | `{ok, tick, equity, finished, protocol, engine_version}`。`protocol` 是接口协议版本，字段增删时递增；`engine_version` 是发布版本 |
 | `/rules` | 完整规则文本 + 参数（含 38 种随机事件说明） |
-| `/state` | 账户、持仓、贷款、行情、历史、难度、快进状态、结算结果 |
+| `/state` | 账户、持仓、贷款、行情、历史、难度、快进状态、结算结果、账本自检 `audit`（空数组表示恒等式全部成立） |
 | `/prices` | 报价表 |
 | `/roll/state` | 盲盒倒计时与当前定格结果 |
 | `/scratchpad` | 本局草稿纸全部条目 |
@@ -296,6 +296,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File deep-clean.ps1
 ```
 TokensMarket-OpenSource-AI-v97/
 ├── run.py                  统一入口（ai / --interactive 仅演示 / server / --headless / state）
+├── bench.py                配对多轮评测：同组 seed 跑多局并输出统计
 ├── 开一局.bat            双击入口，等价于 python run.py（自动带观众席）
 ├── 只开观众席.bat        窗口被误关时补挂；对局在跑就静默附上，没跑就先起服务
 ├── 进程深度清理.bat        人工双击用（含 pause）
@@ -371,6 +372,47 @@ TokensMarket-OpenSource-AI-v97/
 > **v1.0.12 修复**：此前结算平仓会被「交易所维护」拦下后静默继续，爆仓路径只扣手续费、
 > 不扣点差与滑点，报告里的「随机种子」在未设 `TM_SEED` 时无法复现。三项均已修正，
 > 历史报告的成本口径与 v1.0.12 之后不同，不可直接横向比较。
+
+## 账本自检与配对评测
+
+### 账本自检（`audit`）
+
+每局结算前、以及每次 `/state`，都会跑一次不变量自检，共四条恒等式：
+
+| 检查项 | 恒等式 |
+|---|---|
+| 手续费 | 累计手续费 == 成交流水 `fee` 之和 |
+| 贷款 | `loan.balance` == `borrowed − repaid + interest` |
+| 持仓 | 方向只能是 `LONG` / `SHORT`，手数必须为正 |
+| 权益 | `equity` == 现金 + 浮动盈亏 − 欠款 |
+
+`/state` 里的 `audit` 是字符串数组：**空数组表示四条全部成立**；非空时每条是一句可读的告警。
+结算时审计结论直接并入 `warnings`，`settled` 随之变 `false`——账目对不上不会被当成正常结算。
+
+### 事件序号
+
+每条事件带 `seq`（单调递增）与 `session`（会话 ID），报告与审计日志可以按序号定位到同一条事件。
+
+### 机器可读摘要
+
+每份 HTML 报告旁边会写一份同名 JSON（`reports/<时间>_<玩家>.json`），字段只增不改：
+版本、seed、盈亏、回撤、夏普、成本分项、结算结果、账本自检结论。`bench.py` 与 CI 只读这份 JSON，不解析 HTML。
+
+### 配对评测（`bench.py`）
+
+单局方差极大（历史样本 +106% 到 −229%），一局说明不了模型强弱。评测按「同一组 seed、同样轮数」跑：
+
+```bash
+python bench.py run --seeds 1,2,3 --policy probe      # 跑 3 局
+python bench.py run --seeds 1-5 --policy noop         # 跑 5 局（空跑基线）
+python bench.py summary --dir src/data/reports        # 汇总已有摘要
+```
+
+- `run` 在进程内直接推进 tick，不开 HTTP、不等真实时间；每局结束落一份 JSON 摘要
+- `summary` 输出均值、中位数、标准差、P10 / P90、最大回撤、达成目标数、结算异常数、账本自检通过数
+- 内置策略只有 `noop`（完全不动）和 `probe`（每 24 tick 随机开平一单），它们是**无头基线**，不代表任何模型的水平
+
+接真 Agent 时仍走 HTTP 接口，`bench.py` 只负责编排与汇总。
 
 ## 已知限制
 
