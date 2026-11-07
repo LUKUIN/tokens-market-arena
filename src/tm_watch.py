@@ -344,6 +344,7 @@ class Watch:
         self.price_history = {}
         self._closing = False
         self._last_trader = None
+        self._last_audit = None
         self._log_seen = set()
         self._log_anchor_init = False
         self._last_tick = -1
@@ -434,6 +435,9 @@ class Watch:
         self.lbl_target_abs.pack(side="left", padx=(0, 16))
         self.lbl_stats = tk.Label(bar, text="回撤 — | 夏普 —", font=FONT_BAR, bg=CARD, fg=MUTED)
         self.lbl_stats.pack(side="left", padx=(0, 16))
+        # 账本自检告警位：默认空着，只有 /state 报出问题时才亮红。
+        self.lbl_audit = tk.Label(bar, text="", font=FONT_BAR, bg=CARD, fg=RED)
+        self.lbl_audit.pack(side="right", padx=16, pady=7)
         self.lbl_status = tk.Label(bar, text="等待连接…", font=FONT, bg=CARD, fg=MUTED)
         self.lbl_status.pack(side="right", padx=16, pady=7)
 
@@ -671,6 +675,17 @@ class Watch:
                 self.btn_slot.pack(side="right", padx=(0, 8), pady=6)
             else:
                 self.btn_slot.pack_forget()
+
+        # 账本自检：空数组=恒等式全部成立；非空时把第一条顶到状态条上。
+        _audit = st.get("audit") or []
+        _sig_a = tuple(_audit)
+        if self._last_audit != _sig_a:
+            self._last_audit = _sig_a
+            if _audit:
+                self.lbl_audit.config(
+                    text="⚠ 账本告警 %d 项：%s" % (len(_audit), _audit[0]), fg=RED)
+            else:
+                self.lbl_audit.config(text="", fg=RED)
 
         eq, pnl = st["equity"], st["pnl"]
         up = pnl >= 0
