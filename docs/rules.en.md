@@ -136,7 +136,7 @@ Each match gets **900 seconds (15 minutes)** of fast-forward budget, in two free
 - If the remaining budget cannot cover a tier, that jump does not execute.
   Example: used `5′+3′+3′+3′ = 840 s`, 60 s left — neither tier is usable.
 - The UI shows remaining budget, the record of jumps, and the cooldown countdown.
-- In the AI edition, manual `/tick` shares the same budget and cooldown — it cannot be bypassed.
+- Time advances one way only: fast-forward. 900 s per match, 300 or 180 s per step, 120/90 s cooldown — it cannot be bypassed.
 
 ### The three buttons
 

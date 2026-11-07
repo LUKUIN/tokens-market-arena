@@ -44,7 +44,8 @@ C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
 
 【5】开始交易
 
-    接口清单在 /rules 里。开仓 POST /open，平仓 POST /close，推进时间 POST /tick。
+    接口清单在 /rules 里。开仓 POST /open，平仓 POST /close，
+    推进时间 POST /fastforward（body: {"seconds":300} 或 {"seconds":180}）。
 
 【6】结束时结算
 

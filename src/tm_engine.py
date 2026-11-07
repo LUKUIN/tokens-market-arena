@@ -232,7 +232,7 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.0.19"   # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.1.0"   # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -1577,28 +1577,6 @@ class Engine:
             self._save()
             return {"ok": True, "ticks": done, "seconds": real,
                     "state": st, "ff": self.ff_plan()}
-
-    def manual_tick(self):
-        """AI 版逐 tick 推进：消耗快进额度、会被正在生效的快进冷却挡住，但自身不产生冷却。"""
-        with LOCK:
-            if self.s.get("finished"):
-                return {"ok": False, "error": "本局已结束"}
-            if self.s.get("paused"):
-                return {"ok": False, "error": "本局尚未开始，请先确认规则"}
-            p = self.ff_plan()
-            if p["cool_left"] > 0:
-                return {"ok": False, "ff": p,
-                        "error": "快进冷却中，还需 %.0f 秒（冷却期内手动推进同样被禁止）" % p["cool_left"]}
-            if p["remain"] < TICK_SECONDS:
-                return {"ok": False, "ff": p,
-                        "error": "快进额度已用完（本局 %d 秒全部用尽），只能等时间自然流逝" % p["total"]}
-            st = self.tick(manual=True)
-            self.s["ff_used"] = float(self.s.get("ff_used") or 0.0) + TICK_SECONDS
-            recs = list(self.s.get("ff_records") or [])
-            recs.append(TICK_SECONDS)
-            self.s["ff_records"] = recs
-            self._save()
-            return {"ok": True, "state": st, "ff": self.ff_plan()}
 
     # ---------------- 全局开关型特殊事件 ----------------
     def _special(self):

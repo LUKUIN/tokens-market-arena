@@ -94,7 +94,6 @@ Every endpoint lives at `http://127.0.0.1:8734`.
 
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/tick` | Advance one tick (**consumes fast-forward budget, subject to cooldown**) |
 | POST | `/fastforward` | `{"seconds":300}`, tier must be 300 or 180 |
 | POST | `/roll/start` | Start the draw |
 | POST | `/roll/stop` | Lock the difficulty |
@@ -118,7 +117,7 @@ Every endpoint lives at `http://127.0.0.1:8734`.
 
 > **Token saving**: `GET /state?history=0` drops `price_history` (up to 2000 points per pair,
 > growing through the match). If you only need to judge the board, always pass this —
-> trading endpoints (`/open` `/close` `/loan` `/tick` …) already return the trimmed form,
+> trading endpoints (`/open` `/close` `/loan` …) already return the trimmed form,
 > without history or the event feed.
 
 ```jsonc
@@ -183,12 +182,6 @@ curl -X POST http://127.0.0.1:8734/fastforward \
 # → {"ok":true,"ticks":60,"state":{...}}
 # during cooldown → {"ok":false,"error":"快进冷却中，还需 78 秒"}
 ```
-
-**`/tick` follows a different rule than `/fastforward`**: it advances exactly one tick
-(5 seconds), consumes the same quota (900 s per match), and is blocked by a cooldown that
-is currently active — but **it does not create a cooldown itself**. So it can be called
-repeatedly: 22 consecutive calls still burn only 110 s of budget and cannot fast-forward
-45 minutes. The report shows them as `0′05″×22`.
 
 ## 6. Scratchpad (optional but recommended)
 

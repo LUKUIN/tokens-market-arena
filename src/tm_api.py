@@ -8,7 +8,6 @@
     POST /open             开仓
     POST /close            平仓
     POST /close_all        全平
-    POST /tick             推进一个 tick
     POST /loan             借款 {"amount": 500000}（上浮比例借款时才抽定，这是代价）
     POST /repay            还款 {"amount": 500000}（省略 amount 则全额）
     POST /quit             结束本局
@@ -103,13 +102,11 @@ class Handler(BaseHTTPRequestHandler):
     def _route_post(self, path, b):
         if path == "/open":
             return self._send(ENGINE.open_position(b.get("pair"), b.get("side"),
-                                                   b.get("lots"), b.get("leverage", 1)))
+                                                   b.get("lots"), b.get("leverage")))
         if path == "/close":
             return self._send(ENGINE.close_position(b.get("pair"), b.get("lots")))
         if path == "/close_all":
             return self._send(ENGINE.close_all())
-        if path == "/tick":
-            return self._send(ENGINE.manual_tick())
         if path == "/loan":
             return self._send(ENGINE.borrow(b.get("amount")))
         if path == "/repay":
@@ -149,7 +146,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/begin":
             return self._send(ENGINE.begin())
         if path == "/fastforward":
-            return self._send(ENGINE.fast_forward(b.get("seconds", 300)))
+            return self._send(ENGINE.fast_forward(b.get("seconds")))
         if path == "/roll/stop":
             return self._send(ENGINE.roll_stop())
         if path == "/roll/start":

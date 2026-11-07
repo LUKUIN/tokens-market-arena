@@ -3,7 +3,7 @@
 
 本版是给大模型参赛用的版本：
     · GUI 只有一个**只读观众席**，供人类旁观；没有投资界面、没有开仓按钮、没有快进按钮
-    · 参赛模型全部通过 HTTP 接口操作：/open /close /close_all /loan /repay /tick /fastforward /quit
+    · 参赛模型全部通过 HTTP 接口操作：/open /close /close_all /loan /repay /fastforward /quit
     · 额外提供隐性「草稿纸终端」（scratchpad.py），让模型在对局中记录判断
 
 它与人类版（TokensMarket-OpenSource-Human）**不通用、不可混用**：
@@ -212,10 +212,10 @@ def _start_server(host="127.0.0.1", port=8734):
     for _ in range(40):
         try:
             urllib.request.urlopen("http://%s:%d/health" % (host, port), timeout=0.5).read()
-            return True
+            return t
         except Exception:
             time.sleep(0.05)
-    return False
+    return None
 
 
 def _listening_pids(port):
@@ -334,7 +334,8 @@ def _run_ai(interactive=False, port=None):
     print(SCRATCHPAD_HINT)
 
     port = int(port or os.environ.get("TM_PORT") or 8734)
-    if not _start_server(port=port):
+    server_thread = _start_server(port=port)
+    if not server_thread:
         print("  服务启动失败：端口 %d 可能被占用，先结束残留的 python 进程再试。" % port)
         return 1
 
@@ -342,35 +343,45 @@ def _run_ai(interactive=False, port=None):
     _start_autoclean(os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "data"),
                      port=port)
     _enable_assist_from_env()
-    # 先把观众席模块读进内存，再封存源码。顺序反过来的话，import 会落在诱饵上，
-    # 诱饵一执行就写作弊标记并 exit，整个对局起不来。
-    import tm_watch_ai
+
+    # 观众席跑在独立子进程里。它是显示层，不是对局宿主：
+    # 窗口被关掉、崩掉、或打不开（例如 8735 锁被别的实例占着），服务都不受影响。
+    # 可行前提有两条，改动这里前请先确认：
+    #   1. tm_watch_ai.py 不参与封存（guard 只封 engine / api / scratchpad）
+    #   2. 该模块只依赖标准库，不 import 被封存的文件，所以能独立启动
+    base = os.path.dirname(os.path.abspath(__file__))
+    spectator = None
+    try:
+        spectator = subprocess.Popen(
+            [sys.executable, "-c",
+             "import sys, os; sys.path.insert(0, os.path.join(os.getcwd(), 'src')); "
+             "import tm_watch_ai; tm_watch_ai.main()"],
+            cwd=base)
+        print("  正在拉起只读观众席（进程 %d）……" % spectator.pid)
+    except Exception as exc:
+        print("  观众席启动失败：%s（对局服务照常运行）" % exc)
+
     guard_stop = _start_guard(port)
-    print("  正在拉起只读观众席……")
-    shown = False
     try:
-        shown = bool(tm_watch_ai.main())
-    except Exception as exc:
-        print("  观众席异常退出：%s" % exc)
-    if not shown:
-        # 窗口只是显示层，不是对局宿主。它没能打开（例如已有另一个观众席占着 8735 锁）时，
-        # 服务必须继续跑——否则进程会 exit 0，对局一开局就被记一笔「异常退出」。
-        print("  观众席未能打开，服务继续运行（对局不受影响）。")
-        from tm_api import serve as _serve
+        server_thread.join()      # /quit 或 /shutdown 让服务退出后，这里才会返回
+    except KeyboardInterrupt:
+        print("  收到中断，正在收尾……")
+    finally:
+        guard_stop.set()
+        if spectator is not None:
+            try:
+                spectator.terminate()
+            except Exception:
+                pass
+        # 服务已退出：正常结算的话顺手清掉本局临时文件。
+        # 不能只依赖 _start_autoclean 的轮询——它要连续两次确认再等 2 秒，
+        # 而 /quit 3 秒就把服务关了，主进程往往先走一步，留下 session.json。
         try:
-            _serve("127.0.0.1", port)
-        finally:
-            guard_stop.set()
-        return 0
-    # 窗口正常关闭 = 玩家主动收工。没结算就补一份快照，并清掉 .running，
-    # 这样下一局不会再把它当成「上一局被强杀」重复计数。
-    try:
-        import tm_api
-        if not (tm_api.ENGINE.state() or {}).get("finished"):
-            tm_api.ENGINE.abnormal_exit_report("观众席被关闭")
-    except Exception as exc:
-        print("  收尾快照失败：%s" % exc)
-    guard_stop.set()
+            import tm_api
+            if (tm_api.ENGINE.state() or {}).get("finished"):
+                _autoclean(os.path.join(base, "src", "data"))
+        except Exception as exc:
+            print("  收尾清理失败：%s" % exc)
     return 0
 
 

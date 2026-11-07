@@ -75,7 +75,7 @@ start "" /b "C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe" r
 
 固定的 `sleep 6 && curl` 会假失败：启动需要 3~8 秒，慢机器还要更久。
 
-难度定档——未定档时 `/tick` 不推进：
+难度定档——未定档时 `/fastforward` 也会被拒绝：
 
 ```bash
 curl -X POST http://127.0.0.1:8734/roll/stop
@@ -160,7 +160,7 @@ AI 每发一次求助（`POST /assist/ask`），屏幕正中会弹一个**系统
 1. 服务启动，观众席窗口出现，标题栏先显示「难度抽选中」；
 2. 30 秒难度盲盒：模型可以 `POST /roll/stop` 提前叫停，不叫停则到点自动定格；
 3. 定档那一刻才开始计时——抽难度的 30 秒不计入 45 分钟；
-4. 模型开始交易：`/state` 看局面 → `/open` `/close` 下单 → `/tick` 推进；
+4. 模型开始交易：`/state` 看局面 → `/open` `/close` 下单 → `/fastforward` 推进时间；
 5. 45 分钟到、目标达成、爆仓、或 `/quit`，结算并生成报告；
 6. `/quit` 后约 3 秒服务与观众席自动退出。**退出前会自动收尾**：删掉本局临时文件
    （`session.json`、草稿纸、`_agent` 残留），只保留 `reports/` 下的历史战报，
@@ -191,7 +191,6 @@ AI 每发一次求助（`POST /assist/ask`），屏幕正中会弹一个**系统
 | `/open` | `{pair, side, lots, leverage}` | 开仓 |
 | `/close` | `{pair, lots}` | 平仓 |
 | `/close_all` | — | 全平 |
-| `/tick` | — | 推进一个 tick（**消耗快进额度、受冷却约束**） |
 | `/fastforward` | `{seconds}` | 快进一档（300 或 180），消耗额度 |
 | `/loan` | `{amount}` | 借款；上浮比例在借款时抽定，这是代价 |
 | `/repay` | `{amount}` | 还款，省略则全额 |
@@ -205,8 +204,9 @@ AI 每发一次求助（`POST /assist/ask`），屏幕正中会弹一个**系统
 | `/quit` | — | 正常结算并退出（回包带 `settled` / `warnings`） |
 | `/shutdown` | — | 立即停服（会留一份异常退出报告） |
 
-> **注意**：`/tick` 与 `/fastforward` 共用同一套额度与冷却。额度 900 秒、档位 300/180 秒、
+> **注意**：推进时间只有一个入口 `/fastforward`，一次跳 300 或 180 秒。额度 900 秒、
 > 冷却 120/90 秒；冷却期内调用会被拒绝，只能等服务端每 5 秒一次的自动推进。
+> 时间本身不需要你催——不调用也会自然流逝，快进只是把等待压缩掉。
 
 ---
 
@@ -225,7 +225,7 @@ AI 每发一次求助（`POST /assist/ask`），屏幕正中会弹一个**系统
 
 接口
 - GET /rules、/state、/health、/reports
-- POST /open、/close、/close_all、/tick、/fastforward、/loan、/repay、/quit
+- POST /open、/close、/close_all、/fastforward、/loan、/repay、/quit
 - 草稿纸：python scratchpad.py "……"，内容并入最终 HTML 报告
 
 有一件事不在游戏内
@@ -351,7 +351,7 @@ TokensMarket-OpenSource-AI-v97/
 | 界面 | 只读观众席 | 完整交互 GUI |
 | 投资界面 | 无 | 有 |
 | 开仓方式 | HTTP `/open` | 点按钮 |
-| 快进 | `/fastforward` + `/tick` | 两个按钮 |
+| 快进 | `/fastforward` | 两个档位按钮（5 分钟 / 3 分钟） |
 | 草稿纸 | 有 | 无 |
 | 分辨率 | 固定 1920×1080 版式 | 四种可选，自动缩放 |
 | 进程清理脚本 | 有 | 无 |
