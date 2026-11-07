@@ -136,6 +136,24 @@ Requirements: **Python 3.14.7** (pinned on this machine at `C:/Users/User/AppDat
 
 ---
 
+## Spectator window
+
+The spectator is **read-only**: apart from the "AI Notes" and "Outside Mercy" viewers it operates
+nothing. Sections, top to bottom:
+
+| Area | Content |
+|---|---|
+| Dark title bar | market name, contestant identity, mode, global event switches (Finance Reversal / Slot Machine), End processes / Minimize / AI Notes / Outside Mercy |
+| KPI cards | equity, total P&L, margin level, progress to target |
+| Status row | credit / cash / borrowed / owed / interest; target / drawdown / Sharpe / trades / win rate / fees; ledger-audit slot; previous-run abnormal-exit banner |
+| Equity curve | primary visual, fixed 500k Y ticks (0 / 1M / 2M land on grid lines) |
+| Runtime status | ledger audit, black-swan rate, liquidity, fast-forward, global events, latest |
+| Positions | table when holding (2-6 rows adaptive), explicit empty state when flat |
+| Prices | 7 pairs with price, change and a sparkline drawn from `price_history` |
+| Event feed | filters: all / black swan / liquidity / random events / open-close / risk |
+
+> Every number comes from `/state`; nothing is simulated. Full detail lives in the HTML report.
+
 ## How a match runs
 
 0. **Nothing is asked.** Contestant ID, random events, **Finance Reversal** and **Slot Machine**
