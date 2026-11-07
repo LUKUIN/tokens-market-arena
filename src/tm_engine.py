@@ -2007,6 +2007,8 @@ class Engine:
         losses = [t.get("pnl", 0) for t in closes if t.get("pnl", 0) < 0]
         return {
             "curves": curve, "start": eqs[0], "peak": max(eqs), "low": min(eqs),
+            "last_close": ({"tick": closes[-1].get("tick"), "pair": closes[-1].get("pair"),
+                            "pnl": round(closes[-1].get("pnl", 0.0), 2)} if closes else None),
             "end": eqs[-1], "mdd": mdd, "sharpe": sharpe,
             "trades_n": len(closes), "win_n": len(wins),
             "forced_n": len([t for t in closes if t.get("forced")]),
@@ -2021,7 +2023,7 @@ class Engine:
             "trades_all": len(self.s.get("trades", [])),
         }
 
-    def _curve_svg(self, curve, w=880, h=300):
+    def _curve_svg(self, curve, w=880, h=300, last_close=None):
         """Equity curve: X axis in minutes, the Y=0 survival line, baselines, key event markers.
 
         Design notes (all adaptive, no per-run numbers hard-coded):
@@ -2039,13 +2041,13 @@ class Engine:
         n = len(eqs)
 
         # ---- Y range: include the low / high / 0 / starting capital / target ----
+        # 固定 50 万刻度：0 / 100 万（本金）/ 200 万（目标）都落在刻度线上
+        _STEP = 500_000.0
         cand = [min(eqs), max(eqs), 0.0, start_eq]
         if target_eq > start_eq:
             cand.append(target_eq)
-        lo, hi = min(cand), max(cand)
-        span = (hi - lo) or 1.0
-        lo -= span * 0.08
-        hi += span * 0.08
+        lo = (int(min(cand) // _STEP) - 1) * _STEP
+        hi = (int(max(cand) // _STEP) + 1) * _STEP
 
         pad_l, pad_r, pad_t, pad_b = 76, 104, 20, 44
         plot_w = w - pad_l - pad_r
@@ -2062,8 +2064,14 @@ class Engine:
         parts = []
 
         # ---- grid + Y-axis ticks ----
-        for k in range(5):
-            v = lo + (hi - lo) * k / 4
+        _vals = []
+        _v = lo
+        while _v <= hi + 1e-9:
+            _vals.append(_v)
+            _v += 500_000.0
+        if len(_vals) > 12:
+            _vals = [lo + (hi - lo) * k / 4 for k in range(5)]
+        for v in _vals:
             gy = Y(v)
             parts.append('<line x1="%d" y1="%.1f" x2="%d" y2="%.1f" stroke="#ececec"/>'
                          % (pad_l, gy, w - pad_r, gy))
@@ -2101,7 +2109,33 @@ class Engine:
             parts.append(baseline(target_eq, "#c9971b", "Target to win", "5 4"))
         parts.append(baseline(0.0, "#c62828", "Capital wiped out", "2 3", width=1.4, op=0.95))
 
-        # ---- area fill: light above zero, dark red below ----
+                # ---- 峰值 / 谷值 / 最后平仓：图上直接给精确数字 ----
+        _pi = eqs.index(max(eqs))
+        _li = eqs.index(min(eqs))
+        for _i, _label, _color, _dy in (
+                (_pi, "Peak " + "{:,.0f}".format(max(eqs)), "#c9971b", -7),
+                (_li, "Low " + "{:,.0f}".format(min(eqs)), "#c62828", 16)):
+            _mx, _my = X(_i), Y(eqs[_i])
+            parts.append('<circle cx="%.1f" cy="%.1f" r="3" fill="%s"/>' % (_mx, _my, _color))
+            _anchor = "start" if _mx < w * 0.7 else "end"
+            _dx = 6 if _mx < w * 0.7 else -6
+            parts.append('<text x="%.1f" y="%.1f" text-anchor="%s" font-size="10" '
+                         'font-weight="600" fill="%s">%s</text>'
+                         % (_mx + _dx, _my + _dy, _anchor, _color, _label))
+        if last_close:
+            _ct = int(last_close.get("tick") or 0)
+            _ci = min(range(n), key=lambda i: abs(ticks[i] - _ct))
+            _cx, _cy = X(_ci), Y(eqs[_ci])
+            parts.append('<line x1="%.1f" y1="%d" x2="%.1f" y2="%d" stroke="#9a9a9a" '
+                         'stroke-dasharray="3 3" opacity="0.7"/>'
+                         % (_cx, pad_t, _cx, h - pad_b))
+            parts.append('<circle cx="%.1f" cy="%.1f" r="2.6" fill="#5a5a5a"/>' % (_cx, _cy))
+            parts.append('<text x="%.1f" y="%d" text-anchor="middle" font-size="9" '
+                         'fill="#5a5a5a">%s %s</text>'
+                         % (_cx, h - pad_b + 30,
+                            "Last close", "{:,.0f}".format(eqs[_ci])))
+
+# ---- area fill: light above zero, dark red below ----
         base_y = Y(0.0)
 
         def area_poly(color, opacity, keep_neg):
@@ -2385,7 +2419,7 @@ class Engine:
                 "pnlcls": "up" if pnl >= 0 else "down",
                 "pnlpct": "%+.2f" % pnl_pct,
                 "ring": ring,
-                "svg": self._curve_svg(m["curves"]),
+                "svg": self._curve_svg(m["curves"], last_close=m.get("last_close")),
                 "mdd": "%.2f" % (m["mdd"] * 100),
                 "sharpe": "%.2f" % m["sharpe"],
                 "trades_n": str(m["trades_n"]),
