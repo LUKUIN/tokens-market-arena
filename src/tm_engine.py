@@ -203,8 +203,8 @@ MOD_DEFAULT = {
 
 
 # ---------------- global switch special events ----------------
-FR_MAX_LOANS = 2              # max loans per match once Preferred Financing is on
-FR_LO_BOUND = 0.0             # lower bound of the borrow uplift range with Preferred Financing (non-negative since v1.2.0)
+FR_MAX_LOANS = 5              # max loans per match once Preferred Financing is on
+FR_LO_BOUND = 0.0001          # lower bound with Preferred Financing (0.01%): a loan always raises the target, never 0
 SPECIAL_FR_NAME = "Preferred Financing"   # public label of the fr switch (rename here only)
 SPECIAL_SLOT_NAME = "Slot Machine"        # public label of the slot switch
 LOAN_BUMP_LO_DEFAULT = 0.01   # lower bound when it is off (+1%)
@@ -234,7 +234,7 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.2.2"   # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.3"   # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -1792,7 +1792,7 @@ class Engine:
             if _relief:
                 # Clean up leftovers from the old random event (the switch now owns the one-time reduction semantics)
                 self.s.get("mods", {}).pop("loan_bump_lo", None)
-            self._event("[Loan] Borrowed %.0f Tokens (loan %d%s, now owed %.0f); target raised %+.0f (%+.1f%%) -> new target %.0f" % (
+            self._event("[Loan] Borrowed %.0f Tokens (loan %d%s, now owed %.0f); target raised %+.0f (%+.2f%%) -> new target %.0f" % (
                 amount, self.s["loan"]["loans"],
                 (", %s %d/%d" % (SPECIAL_FR_NAME, _sp.get("fr_loans", 0), FR_MAX_LOANS)) if _fr else "",
                 self.s["loan"]["balance"],
@@ -1807,7 +1807,7 @@ class Engine:
             return {"ok": True, "amount": amount,
                     "pct": round(pct * 100, 2), "bump": round(bump, 2),
                     "new_target": self.s["target"],
-                    "warning": "This loan has raised the target by %+.2f%% (current range: %+.1f%%~+100%%). That is the price of borrowing, not free money." % (
+                    "warning": "This loan has raised the target by %+.2f%% (current range: %+.2f%%~+100%%). That is the price of borrowing, not free money." % (
                                    pct * 100, (FR_LO_BOUND if _fr else LOAN_BUMP_LO_DEFAULT) * 100),
                     "state": self._state_light()}
 
@@ -2335,7 +2335,7 @@ class Engine:
                 if _bumps:
                     _rows_loan.append(
                         "<div class=\"kv\" style=\"grid-column:1/-1\"><span>Loan by loan (target raised)</span><span>%s</span></div>" % " ｜ ".join(
-                            "t%s loan %s (%+.1f%% -> %+.0f)" % (
+                            "t%s loan %s (%+.2f%% -> %+.0f)" % (
                                 b.get("tick", "—"), fmt(b.get("amount", 0)),
                                 float(b.get("pct") or 0), float(b.get("bump") or 0))
                             for b in _bumps))
@@ -2814,9 +2814,11 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             "Name": "Tokens Trading Market",
             "Currency unit": "Tokens",
             "Initial capital": STARTER_CASH,
-            "Target": "Reach equity of %.0f Tokens (each loan raises the target by a random 1%%~100%% of that amount)" % TARGET_EQUITY,
+            "Target": ("Reach equity of %.0f Tokens (every loan raises the target by a share of the amount borrowed; "
+                       "the share grows with cumulative borrowing, see \"%s\" for the exact range)"
+                       % (TARGET_EQUITY, SPECIAL_FR_NAME)),
             "Lots": "1 lot = %.0f units of base currency" % LOTS_SIZE,
-            SPECIAL_FR_NAME: ("Run-wide switch (not a random event): once on, the run allows up to %d loans and the target uplift range shifts from +1%%~+100%% to 0%%~+100%% (never negative, it only goes up); free at start, enabling mid-run costs %.0f cash" % (FR_MAX_LOANS, SPECIAL_FEE)
+            SPECIAL_FR_NAME: ("Run-wide switch (not a random event): once on, the run allows up to %d loans and the target uplift range shifts from +1%%~+100%% to +0.01%%~+100%% (it always goes up, never reduces the target; minimum 0.01%%); free at start, enabling mid-run costs %.0f cash" % (FR_MAX_LOANS, SPECIAL_FEE)
                         ).replace("%%", "%"),
             "Slot Machine": ("Run-wide switch: once on, %d plays per run, each 1~%.0f and never above current equity; 80%% nothing / 15%% 5x / 5%% 10x (expected return 1.25x); the payout goes to cash while the target rises by -5%%~100%% of that payout (worst case the target doubles); free at start, enabling mid-run costs %.0f cash" % (
                            SLOT_MAX_PLAYS, SLOT_MAX_STAKE, SPECIAL_FEE)

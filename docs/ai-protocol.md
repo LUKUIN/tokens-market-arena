@@ -98,7 +98,7 @@ the sources before the match is cheating. The line is simple: **did your input c
 # 2. Non-interactive start (does not read stdin; safe for background use)
 set TM_TRADER=MyAgent
 set TM_EVENTS=1        # random events
-set TM_FR=1            # Preferred Financing (max 2 loans, target range 0%~100%)
+set TM_FR=1            # Preferred Financing (max 5 loans, target range 0.01%~100%)
 set TM_SLOT=0          # Slot Machine (3 plays, 80% nothing / 15% 5x / 5% 10x)
 python run.py
 ```
@@ -214,7 +214,7 @@ Every endpoint lives at `http://127.0.0.1:8734`.
   "total_borrowed": 0,
 
   "active_mods": ["Central bank easing"],  // names of currently active events
-  "loan_bump_range": [1.0, 100.0],      // borrow uplift range (%): [1,100] normally, [-20,100] with Preferred Financing
+  "loan_bump_range": [1.0, 100.0],      // borrow uplift range (%): [1,100] normally, [0.01,100] with Preferred Financing
   "special": {                          // the two global switches
     "fr": true, "fr_left": 2,           // Preferred Financing on, 2 loans left
     "slot": false, "slot_left": 3,      // Slot Machine off
@@ -240,7 +240,7 @@ Every endpoint lives at `http://127.0.0.1:8734`.
 1. **`equity` vs `target`** — how far you still have to go
 2. **`margin_level`** — below 100% you need more margin, below 50% you get liquidated
 3. **`active_mods`** — which temporary rules are currently moving prices
-4. **`loan_bump_range`** — the current cost of borrowing (`[1,100]` normal, `[-20,100]` Preferred Financing)
+4. **`loan_bump_range`** — the current cost of borrowing (`[1,100]` normal, `[0.01,100]` Preferred Financing)
 5. **`special`** — whether the switches are on and how many uses remain (`fr_left` / `slot_left`)
 6. **`ff`** — the fast-forward budget object: `remain` is seconds left, `cool_left` is the remaining cooldown,
    and `can5` / `can3` tell you straight away whether each step is usable right now
