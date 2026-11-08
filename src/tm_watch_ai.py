@@ -18,7 +18,9 @@ import tkinter.font as tkfont
 from tkinter import ttk, messagebox
 import urllib.request
 
-API = "http://127.0.0.1:8734"
+# The service port is configurable (run.py TM_PORT or the CLI argument); the spectator
+# must follow it, otherwise a service on 8740 leaves the UI stuck on "waiting to start".
+API = (os.environ.get("TM_WATCH_API") or "http://127.0.0.1:8734").rstrip("/")
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 # Single-instance lock: hold one local port; released automatically when the process exits.
@@ -279,6 +281,8 @@ class Watch:
         self._assist_pend = []
         self._assist_seen = set()
         self._assist_n = 0
+        self._api_fail = 0
+        self._api_ever = False
         self._assist_last_ticket = None
 
         _b = dict(font=FONT_SMALL, bd=0, relief="flat", cursor="hand2", padx=12, pady=4)
@@ -511,13 +515,31 @@ class Watch:
         try:
             st = get("/state")
             self._render(st)
+            self._api_fail = 0
+            self._api_ever = True
         except Exception:
-            self.lbl_status.config(text="Waiting for the service to start (python startgame.pyc api 127.0.0.1 8734)",
-                                   fg=ORANGE)
+            self._api_fail += 1
+            self._set_offline()
         self._assist_n += 1
         if self._assist_n % 5 == 0:
             self._poll_assist()
         self.root.after(300, self.refresh)
+
+    def _set_offline(self):
+        """Status line while /state is unreachable.
+
+        Distinguishes "never connected yet" from "was connected, now unreachable":
+        one transient timeout must not read as "the process is gone" - the old text
+        printed the startup command, which was actively misleading.
+        """
+        n = self._api_fail
+        if not self._api_ever:
+            txt, fg = "Waiting for the service to start (%s)" % API, ORANGE
+        elif n < 3:
+            txt, fg = "Service not responding, retrying... (%s)" % API, ORANGE
+        else:
+            txt, fg = ("Service not responding (%d retries; showing the last good data)" % n), RED
+        self.lbl_status.config(text=txt, fg=fg)
 
     # ---------------- Outside Mercy ----------------
     def _poll_assist(self):
