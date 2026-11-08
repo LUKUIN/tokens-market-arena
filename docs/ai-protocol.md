@@ -11,13 +11,15 @@ few tokens as possible and make a decision**.
 > (errors, event text, report) are in Chinese. Examples below keep the original Chinese strings
 > so you can match what you actually receive.
 
-## 0. Before you start: required reading, hard rules
+## 0. Before you start: hard rules
 
 ### Requirements
 
-1. **Read every `.md` file in this repository first** — `README.md` plus everything under `docs/` —
-   and understand the rules, the interface and the cost model before making a move.
-   Do not read them mid-match; that turns the rules into a crutch.
+1. **`GET /rules` + `GET /state` are enough**: those two responses carry the settlement rules,
+   the fee table, the event table and the full endpoint list.
+   This file and the other volumes under `docs/` are the complete manual for **humans**,
+   not required reading before a match; following `AGENTS.md` means never opening a Markdown
+   file mid-match.
 2. **Use the pinned runtime, and start with the spectator window open.**
    - Python **3.14.7 only**: `C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe`.
      `run.py` checks this first; a wrong version exits with code 2 and prints the correct command.
@@ -104,7 +106,7 @@ python run.py
 ```
 
 > **Nothing is ever prompted.** Every setting comes from an environment variable; anything unset
-> falls back to a default (`TM_TRADER=Guest`, `TM_EVENTS=1`, `TM_FR=0`, `TM_SLOT=0`).
+> falls back to a default (`TM_TRADER=Guest`, `TM_EVENTS=1`, `TM_FR=1`, `TM_SLOT=1`, `TM_ASSIST=1`).
 > Order at startup: server up → difficulty draw (30 s) → clock starts.
 > Both global switches are read before the server starts.
 
@@ -190,10 +192,10 @@ Every endpoint lives at `http://127.0.0.1:8734`.
 > When `settled=false` the report header reads "Settlement error"; do not treat it as a
 > clean result.
 
-## 4. The `/state` fields that matter
+## 4. The `/state` fields
 
-> **Token saving**: `GET /state?history=0` drops `price_history` (up to 2000 points per pair,
-> growing through the match). If you only need to judge the board, always pass this —
+> `GET /state?history=0` drops `price_history` (up to 2000 points per pair,
+> growing through the match). With the parameter the response is smaller —
 > trading endpoints (`/open` `/close` `/loan` …) already return the trimmed form,
 > without history or the event feed.
 
@@ -267,8 +269,8 @@ curl -X POST http://127.0.0.1:8734/fastforward \
 
 ## 6. Scratchpad (optional)
 
-Record your reasoning. It is merged into the HTML report at settlement so a human can see
-*why* you did what you did.
+Scratchpad entries are merged into the HTML report at settlement so a human can see
+*why* a decision was made.
 
 ```bash
 curl -X POST http://127.0.0.1:8734/scratchpad \
@@ -276,16 +278,10 @@ curl -X POST http://127.0.0.1:8734/scratchpad \
      -d '{"text":"t120 AURA is 8% off the mean, going short"}'
 ```
 
-Or without the service:
+Git Bash's `curl -d` encodes Chinese text as GBK; the server decodes it as UTF-8 and
+receives mojibake.
 
-```bash
-python src/scratchpad.py --list
-```
-
-**Note**: Git Bash's `curl -d` converts Chinese text to GBK, which the server cannot decode.
-Either send requests from Python, or write the entries in English.
-
-## 6.5. Is ending early a problem?
+## 6.5. Ending early
 
 `POST /quit` is a **normal settlement**, not an abnormal exit:
 
@@ -296,9 +292,6 @@ Either send requests from Python, or write the entries in English.
 
 There are exactly two abnormal exits: `POST /shutdown` (stop immediately, leaves an "unsettled"
 marker) and killing the process.
-
-So if you are satisfied with the result, ending early is safe; the only cost is the potential gain
-you give up in the remaining time.
 
 ## 7. Finishing
 

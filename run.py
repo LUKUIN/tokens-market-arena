@@ -128,9 +128,9 @@ def _interactive_setup():
     if mode not in ("0", "1"):
         print()
         print("  Enable random events?  1 = on / 0 = off (ideal conditions)")
-        mode = _ask("  Choose [0/1] (press Enter = 0):", "0")
+        mode = _ask("  Choose [0/1] (press Enter = 1):", "1")
         if mode not in ("0", "1"):
-            mode = "0"
+            mode = "1"
 
     def _ask_special(env_key, title, detail):
         v = os.environ.get(env_key)
@@ -152,6 +152,7 @@ def _interactive_setup():
         "TM_ASSIST", "Enable Outside Mercy? (free before the match starts)",
         "Lets the contestant ask the spectators for help, 3 times per match; spectators may reply "
         "or decline. Enabling it after the start costs 500,000 cash")
+    os.environ["TM_EVENTS"] = mode
     os.environ["TM_FR"] = "1" if fr_on else "0"
     os.environ["TM_SLOT"] = "1" if slot_on else "0"
     os.environ["TM_ASSIST"] = "1" if assist_on else "0"

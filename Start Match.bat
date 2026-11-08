@@ -27,9 +27,9 @@ rem to the defaults below.
 rem ------------------------------------------------------------------
 if not defined TM_TRADER set "TM_TRADER=Guest"
 if not defined TM_EVENTS set "TM_EVENTS=1"
-if not defined TM_FR     set "TM_FR=0"
-if not defined TM_SLOT   set "TM_SLOT=0"
-if not defined TM_ASSIST set "TM_ASSIST=0"
+if not defined TM_FR     set "TM_FR=1"
+if not defined TM_SLOT   set "TM_SLOT=1"
+if not defined TM_ASSIST set "TM_ASSIST=1"
 if not defined TM_PORT   set "TM_PORT=8734"
 
 echo.
@@ -41,6 +41,7 @@ echo   Player          %TM_TRADER%
 echo   Random events   %TM_EVENTS%
 echo   Preferred Financing %TM_FR%  Slot Machine %TM_SLOT%  Outside Mercy %TM_ASSIST%
 echo   The read-only spectator opens together with the server.
+echo   These three can only be set before the match starts.
 echo.
 rem run.py seals the sources itself and restores them on exit. Do NOT start guard.py
 rem here as well: a second seal encrypts whatever is in src/ at that moment, which is

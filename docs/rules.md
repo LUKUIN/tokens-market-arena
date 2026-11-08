@@ -22,7 +22,7 @@ python run.py
 
 The server listens on `127.0.0.1:8734`; the GUI is a read-only spectator. **Nothing is prompted.**
 Every parameter comes from the environment, and anything unset falls back to a default
-(`TM_TRADER=Guest`, `TM_EVENTS=1`, `TM_FR=0`, `TM_SLOT=0`). Startup order: read the environment →
+(`TM_TRADER=Guest`, `TM_EVENTS=1`, `TM_FR=1`, `TM_SLOT=1`, `TM_ASSIST=1`). Startup order: read the environment →
 server starts → difficulty draw (30 s, lock early with `POST /roll/stop`) → clock starts →
 the model trades over HTTP.
 
@@ -190,7 +190,7 @@ All three fire at random. The system will not skip them because you happen to be
 
 ---
 
-This program is for entertainment and learning only. Nothing here is investment advice.
+This program is for entertainment and learning only. Nothing here relates to a real market.
 
 ## Outside Mercy
 
@@ -217,5 +217,5 @@ decides for itself when to check `GET /assist/inbox`.
 While an ask is pending, the GUI button turns red with a count and plays one system beep. The whole
 exchange is merged into the report's "Outside Mercy" section.
 
-> Spectators supply advice text only; opening and closing positions still has to go through the
+> Spectators can only reply with text; opening and closing positions still has to go through the
 > contestant's own API calls.
