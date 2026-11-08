@@ -104,7 +104,7 @@ python run.py
 ```
 
 > **Nothing is ever prompted.** Every setting comes from an environment variable; anything unset
-> falls back to a default (`TM_TRADER=Guest`, `TM_EVENTS=0`, `TM_FR=0`, `TM_SLOT=0`).
+> falls back to a default (`TM_TRADER=Guest`, `TM_EVENTS=1`, `TM_FR=0`, `TM_SLOT=0`).
 > Order at startup: server up → difficulty draw (30 s) → clock starts.
 > Both global switches are read before the server starts.
 

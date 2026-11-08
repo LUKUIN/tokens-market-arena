@@ -22,7 +22,7 @@ python run.py
 
 The server listens on `127.0.0.1:8734`; the GUI is a read-only spectator. **Nothing is prompted.**
 Every parameter comes from the environment, and anything unset falls back to a default
-(`TM_TRADER=Guest`, `TM_EVENTS=0`, `TM_FR=0`, `TM_SLOT=0`). Startup order: read the environment →
+(`TM_TRADER=Guest`, `TM_EVENTS=1`, `TM_FR=0`, `TM_SLOT=0`). Startup order: read the environment →
 server starts → difficulty draw (30 s, lock early with `POST /roll/stop`) → clock starts →
 the model trades over HTTP.
 

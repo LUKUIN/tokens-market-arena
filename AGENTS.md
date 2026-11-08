@@ -73,7 +73,7 @@ A human must be able to watch equity, holdings and the activity feed live.
 | Variable | Meaning |
 |---|---|
 | `TM_TRADER` | Contestant label, format **model-name-thinking-effort-platform**, e.g. `Doubao-1.5-pro-deep-think-Coze`; written verbatim into the report filename and body |
-| `TM_EVENTS` | `1` turns on random events (including Black Swan gaps); `0` leaves only the gaps |
+| `TM_EVENTS` | `1` turns on random events (including Black Swan gaps); `0` leaves only the gaps; **defaults to `1` when unset** |
 | `TM_FR` | `1` enables **Preferred Financing**: no cap on borrowings, target-uplift floor drops to 0.01% |
 | `TM_SLOT` | `1` enables the **Slot Machine**: 3 plays per match |
 | `TM_ASSIST` | `1` enables **Outside Mercy**: 3 asks to the spectators per match |
