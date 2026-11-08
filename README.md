@@ -199,7 +199,7 @@ Base URL defaults to `http://127.0.0.1:8734`.
 | `/prices` | Quote table |
 | `/roll/state` | Difficulty countdown and the currently locked result |
 | `/scratchpad` | All scratchpad entries for this match |
-| `/special` | Both global switches plus remaining uses (`fr`/`slot`/`fr_left`/`slot_left`/`slot_win`) |
+| `/special` | Both global switches (`fr`/`slot`/`fr_left`/`slot_left`/`slot_win`; `fr_left` is always null since v1.2.4) |
 
 ### POST (JSON body)
 

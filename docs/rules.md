@@ -98,7 +98,7 @@ whole match, and they can be toggled mid-match.
 
 When enabled:
 
-- At most **5 loans** per match (no per-loan cap, but the borrowing limit still applies)
+- **Unlimited** loans per match (still bounded by the 3,000,000 pool and the remaining borrowing limit); the only concession is the target-uplift floor dropping from +1% to +0.01%
 - Target-uplift range: `+1% ~ +100%` becomes `+0.01% ~ +100%` (**it always goes up, never reduces the target**; minimum 0.01%)
 - The uplift grows with cumulative borrowing: first 300k is about 4%-8%, a full 3M in one go is about 35%-66%
 - Splitting a loan into ten parts costs exactly the same as borrowing it all at once

@@ -203,7 +203,6 @@ MOD_DEFAULT = {
 
 
 # ---------------- global switch special events ----------------
-FR_MAX_LOANS = 5              # max loans per match once Preferred Financing is on
 FR_LO_BOUND = 0.0001          # lower bound with Preferred Financing (0.01%): a loan always raises the target, never 0
 SPECIAL_FR_NAME = "Preferred Financing"   # public label of the fr switch (rename here only)
 SPECIAL_SLOT_NAME = "Slot Machine"        # public label of the slot switch
@@ -234,7 +233,7 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.2.3"   # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.4"   # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -418,7 +417,7 @@ def _new_session(seed=None, apply_rng=True):
         "special": {
             "fr": _env_flag("TM_FR"),       # Preferred Financing: enabled free at start
             "slot": _env_flag("TM_SLOT"),   # Slot Machine: enabled free at start
-            "fr_loans": 0,                  # loans taken since enabling (cap FR_MAX_LOANS)
+            "fr_loans": 0,                  # loans taken since enabling (stat only)
             "fr_paid": 0.0,                 # total paid for mid-match enabling
             "slot_paid": 0.0,               # total slot stake (cost attribution only)
             "slot_plays": 0,                # plays used
@@ -1611,7 +1610,7 @@ class Engine:
             "fr": fr,
             "slot": slot,
             "fr_loans": int(sp.get("fr_loans", 0)),
-            "fr_left": max(0, FR_MAX_LOANS - int(sp.get("fr_loans", 0))) if fr else None,
+            "fr_left": None,                # cap removed in v1.2.4; kept for compatibility
             "slot_plays": int(sp.get("slot_plays", 0)),
             "slot_left": max(0, SLOT_MAX_PLAYS - int(sp.get("slot_plays", 0))) if slot else None,
             "slot_win": round(float(sp.get("slot_win", 0.0)), 2),
@@ -1756,13 +1755,6 @@ class Engine:
                 return {"ok": False, "error": "Exceeds loan headroom: at most %.0f" % self.loan_limit()}
             _sp = self._special()
             _fr = bool(_sp.get("fr"))
-            if _fr:
-                _used = int(_sp.get("fr_loans", 0))
-                if _used >= FR_MAX_LOANS:
-                    return {"ok": False,
-                            "error": "[%s] No loans left this run (%d/%d); refused" % (
-                                SPECIAL_FR_NAME, int(_sp.get("fr_loans", 0)), FR_MAX_LOANS)
-                                     % (_used, FR_MAX_LOANS)}
             # The markup is drawn only at borrow time: it is the price of borrowing, never announced beforehand.
             # [Preferred Financing] off: lower bound +1%; on: lower bound 0%.
             # v1.2.0: the ratio rises with the CUMULATIVE amount borrowed -- borrow more, the target rises more.
@@ -1794,7 +1786,7 @@ class Engine:
                 self.s.get("mods", {}).pop("loan_bump_lo", None)
             self._event("[Loan] Borrowed %.0f Tokens (loan %d%s, now owed %.0f); target raised %+.0f (%+.2f%%) -> new target %.0f" % (
                 amount, self.s["loan"]["loans"],
-                (", %s %d/%d" % (SPECIAL_FR_NAME, _sp.get("fr_loans", 0), FR_MAX_LOANS)) if _fr else "",
+                (", %s active" % SPECIAL_FR_NAME) if _fr else "",
                 self.s["loan"]["balance"],
                 bump, pct * 100, self.s["target"]), "loan")
             # The countdown stops only once held Tokens are back above 0; otherwise it runs to the end.
@@ -2818,7 +2810,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                        "the share grows with cumulative borrowing, see \"%s\" for the exact range)"
                        % (TARGET_EQUITY, SPECIAL_FR_NAME)),
             "Lots": "1 lot = %.0f units of base currency" % LOTS_SIZE,
-            SPECIAL_FR_NAME: ("Run-wide switch (not a random event): once on, the run allows up to %d loans and the target uplift range shifts from +1%%~+100%% to +0.01%%~+100%% (it always goes up, never reduces the target; minimum 0.01%%); free at start, enabling mid-run costs %.0f cash" % (FR_MAX_LOANS, SPECIAL_FEE)
+            SPECIAL_FR_NAME: ("Run-wide switch (not a random event): once on, loans are unlimited (still bounded by the %.1fM pool) and the target uplift range shifts from +1%%~+100%% to +0.01%%~+100%% (it always goes up, never reduces the target; minimum 0.01%%); free at start, enabling mid-run costs %.0f cash" % (LOAN_POOL / 1000000.0, SPECIAL_FEE)
                         ).replace("%%", "%"),
             "Slot Machine": ("Run-wide switch: once on, %d plays per run, each 1~%.0f and never above current equity; 80%% nothing / 15%% 5x / 5%% 10x (expected return 1.25x); the payout goes to cash while the target rises by -5%%~100%% of that payout (worst case the target doubles); free at start, enabling mid-run costs %.0f cash" % (
                            SLOT_MAX_PLAYS, SLOT_MAX_STAKE, SPECIAL_FEE)
