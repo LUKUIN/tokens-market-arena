@@ -85,7 +85,7 @@ def _interactive_setup():
         return (_ask("  开启？(y/N)：", "n") or "n").lower() == "y"
 
     fr_on = _ask_special(
-        "TM_FR", "是否开启全局事件【金融回逆】？",
+        "TM_FR", "是否开启全局事件【优惠融资】？",
         "整局借款上限 2 次；目标上浮区间 -20%~100%；局内再开启需支付 30 万现金")
     slot_on = _ask_special(
         "TM_SLOT", "是否开启全局事件【老虎机】？",
@@ -98,7 +98,7 @@ def _interactive_setup():
     print("  即将开始：")
     print("    玩家    %s" % name)
     print("    模式    %s" % EVENTS_TEXT[mode])
-    print("    金融回逆 %s" % ("已开启" if fr_on else "未开启"))
+    print("    优惠融资 %s" % ("已开启" if fr_on else "未开启"))
     print("    老虎机   %s" % ("已开启" if slot_on else "未开启"))
     print()
     if (_ask("  确认开始？(y/N)：", "n") or "n").lower() != "y":
