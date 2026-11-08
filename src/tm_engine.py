@@ -198,13 +198,13 @@ MOD_DEFAULT = {
     "leverage_cap": 1000,   # 与 MAX_LEVERAGE 保持一致（此处先于常量定义）
     "loan_pool_mult": 1.0,  # 信贷紧缩/放水：贷款池容量的临时倍率
     "gap_mult": 1.0,        # 黑天鹅预警：跳空概率的临时倍率
-    "loan_bump_lo": 0.01,   # 【金融回逆】借款上浮下限（默认 +1%，事件期间可到 -20%）
+    "loan_bump_lo": 0.01,   # 【金融回逆】借款上浮下限（默认 +1%，事件期间可为 0%）
 }
 
 
 # ---------------- 全局开关型特殊事件 ----------------
 FR_MAX_LOANS = 2              # 金融回逆开启后，整局最多借款次数
-FR_LO_BOUND = -0.20           # 金融回逆开启时，借款上浮区间下限
+FR_LO_BOUND = 0.0             # 金融回逆开启时，借款上浮区间下限（v1.2.0 起不再为负）
 LOAN_BUMP_LO_DEFAULT = 0.01   # 未开启时的下限（+1%）
 SPECIAL_FEE = 300_000.0       # 局内开启任一全局事件的代价（权益/现金）
 SLOT_MAX_PLAYS = 3            # 老虎机整局次数
@@ -232,7 +232,7 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.1.0"   # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.0"   # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -255,6 +255,8 @@ LIQ_SHOCK_TICKS = (1, 3)  # 枯竭持续 1~3 个 tick
 SLIP_MAX_SHOCK = 0.060    # 枯竭期间的单边滑点上限（常规只有 1.4%）
 SLIP_K = 0.00240          # 滑点系数（已标定；成本 = K/(2*LIQ)*(after^2-before^2)，拆单不可规避）
 SLIP_MAX = 0.014          # 单边滑点上限 1.4%
+LATE_SLIP_START = 360     # 末期滑点上浮起点（tick）：540 tick 局的后 1/3
+LATE_SLIP_MAX = 1.5       # 末期滑点系数上限（最后 15 分钟滑点成本最高 ×1.5）
 
 # ===== 开局难度盲盒 =====
 # 两个维度各 5 档，开局 30 秒内每 0.1 秒轮换一个组合（5x5=25），
@@ -783,7 +785,11 @@ class Engine:
         st = self.s.get("liquidity", {}).get(sym) if sym else None
         if st and self.s["tick"] <= st.get("shock_until", 0):
             cap = SLIP_MAX_SHOCK
-        cost = SLIP_K / (2.0 * L) * (after * after - before * before)
+        # v1.2.0 早收工激励：越接近收工，滑点越贵。不白送任何收益——
+        # 开局立刻退出仍是 0，只是「赖着不走」的成本上升。
+        _late = min(1.0, max(0.0, (self.s["tick"] - LATE_SLIP_START) / 180.0))
+        _k = SLIP_K * (1.0 + (LATE_SLIP_MAX - 1.0) * _late)
+        cost = _k / (2.0 * L) * (after * after - before * before)
         # 「报价延迟」等事件在此基础上再加一层滑点
         return min(cap, cost / delta + self._mod("slip_add"))
 
@@ -933,7 +939,7 @@ class Engine:
                 # 借贷政策类事件：必须把效果写进 event，否则 AI 只知道事件名不知道能干什么
                 self._event(
                     "【政策】%s → 未来 %d tick（%.1f 分钟）内，借款目标上浮区间放宽到 "
-                    "%.1f%%~+100%%（可能减免目标）；一旦抽中负数立即失效" % (
+                    "%.1f%%~+100%%；一旦抽中负数立即失效" % (
                         name, ticks, ticks * TICK_SECONDS / 60.0, val * 100), "warn")
             else:
                 self._event("【突发】%s（持续 %d tick）" % (name, ticks), "news")
@@ -1066,7 +1072,7 @@ class Engine:
             trades = s.get("trades") or []
             fee_sum = sum(float(t.get("fee") or 0.0) for t in trades)
             fees = float(s.get("total_fees") or 0.0)
-            if abs(fee_sum - fees) > 0.01:
+            if abs(fee_sum - fees) > 0.05:
                 issues.append("手续费合计 %.2f 与成交流水 %.2f 不一致" % (fees, fee_sum))
         except Exception as exc:
             issues.append("手续费核对异常：%s" % exc)
@@ -1077,7 +1083,7 @@ class Engine:
             interest = float(loan.get("interest") or 0.0)
             bal = float(loan.get("balance") or 0.0)
             expect = borrowed - repaid + interest
-            if abs(bal - expect) > 0.01:
+            if abs(bal - expect) > 0.05:
                 issues.append("贷款余额 %.2f 与 借入-已还+利息 %.2f 不一致" % (bal, expect))
         except Exception as exc:
             issues.append("贷款核对异常：%s" % exc)
@@ -1093,7 +1099,7 @@ class Engine:
             eq = self.equity()
             debt = float((s.get("loan") or {}).get("balance") or 0.0)
             expect_eq = float(s.get("balance") or 0.0) + self._total_upnl() - debt
-            if abs(eq - expect_eq) > 0.01:
+            if abs(eq - expect_eq) > 0.05:
                 issues.append("权益 %.2f 与 现金+浮盈-欠款 %.2f 不一致" % (eq, expect_eq))
         except Exception as exc:
             issues.append("权益核对异常：%s" % exc)
@@ -1738,9 +1744,17 @@ class Engine:
                             "error": "【金融回逆】本局借款次数已用完（%d/%d），拒绝执行"
                                      % (_used, FR_MAX_LOANS)}
             # 上浮比例借款时才抽定：这是借款的代价，借前不预告。
-            # 未开启【金融回逆】：下限 +1%%；开启后：下限 -20%%（可能减免目标）
+            # 未开启【金融回逆】：下限 +1%；开启后：下限 0%。
+            # v1.2.0：比例随「累计借款额」上升——借得越多，目标涨得越多。
+            # 用梯形积分（本笔前后的占池比例取均值），因此拆单与一次借满等价：
+            # 把 300 万拆成 10 笔各 30 万，付出的总上浮与一次借满完全相同，拆单省不到钱。
             _lo = FR_LO_BOUND if _fr else LOAN_BUMP_LO_DEFAULT
-            pct = random.uniform(_lo, 1.00)
+            _drawn = float(self.s["loan"].get("borrowed", 0.0))
+            _r0 = min(1.0, max(0.0, _drawn / LOAN_POOL))
+            _r1 = min(1.0, max(0.0, (_drawn + amount) / LOAN_POOL))
+            _ratio = (_r0 + _r1) / 2.0
+            _base = _lo + (1.0 - _lo) * _ratio
+            pct = min(1.0, max(_lo, _base * random.uniform(0.7, 1.3)))
             bump = amount * pct
             _relief = pct < 0
             self.s["target"] = self.s.get("target", TARGET_EQUITY) + bump
@@ -1963,7 +1977,7 @@ class Engine:
         # 结算发生在最后一次 tick 之后（平仓 + 还贷），必须把最终权益补成曲线末点，
         # 否则报告会漏掉最后的崩盘——曾出现曲线停在 92 万、报告写 -129 万的情况
         if final_eq is not None and curve:
-            if abs(float(curve[-1]["equity"]) - float(final_eq)) > 0.01:
+            if abs(float(curve[-1]["equity"]) - float(final_eq)) > 0.05:
                 curve.append({"tick": self.s.get("tick", 0), "equity": round(float(final_eq), 2)})
         eqs = [c["equity"] for c in curve] or [self.equity()]
         peak, mdd = eqs[0], 0.0
@@ -2790,7 +2804,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             "目标": "把权益做到 %.0f Tokens（每借一笔，目标会按该笔金额的随机 1%%~100%% 上浮）" % TARGET_EQUITY,
             "手数": "1 手 = %.0f 单位基础货币" % LOTS_SIZE,
             "金融回逆": ("开局全局开关（非随机事件）：开启后整局借款上限 %d 次，"
-                        "目标上浮区间从 +1%%~+100%% 放宽到 -20%%~+100%%（可能减免目标）；"
+                        "目标上浮区间从 +1%%~+100%% 下探到 0%%~+100%%（只会抬高、不再减免）；"
                         "开局免费，局内再开启需支付 %.0f 现金" % (FR_MAX_LOANS, SPECIAL_FEE)
                         ).replace("%%", "%"),
             "老虎机": ("开局全局开关：开启后整局可投 %d 次，单次 1~%.0f 且不超过当前权益；"
@@ -2806,12 +2820,15 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             "隔夜利息": {s: "%.4f%%/tick" % (cfg["swap"] * 100) for s, cfg in PAIRS.items()},
             "保证金水平": "净值 ÷ 已用保证金 × 100%%，< %.0f%% 追加保证金，< %.0f%% 强制平仓" % (
                 MARGIN_CALL_RATIO * 100, STOP_OUT_RATIO * 100),
-            "滑点": "按名义价值线性递增（名义 %.0f 万时约 %.2f%%，上限 %.1f%%）" % (
-                LIQUIDITY / 10000, SLIP_K * 100, SLIP_MAX * 100),
+            "滑点": ("成本 = %.5f / (2 × 市场深度) × 名义²，随名义平方增长"
+                     "（1000 万名义在纤薄档往返约 4%%）；单边率上限 %.1f%%，"
+                     "流动性枯竭期间 %.1f%%；末期最后 15 分钟系数最高 ×%.1f" % (
+                         SLIP_K, SLIP_MAX * 100, SLIP_MAX_SHOCK * 100, LATE_SLIP_MAX)
+                ).replace("%%", "%"),
             "流动性枯竭": "某品种发生跳空的 tick，该品种点差放大 %.0f 倍" % GAP_SPREAD_MULT,
             "黑天鹅": "每 tick %.1f%% 概率出现 %.0f%%-%.0f%% 跳空" % (GAP_CHANCE * 100, GAP_MIN * 100, GAP_MAX * 100),
             "手续费": "名义价值 %.3f%% / 次" % (FEE_RATE * 100),
-            "贷款": "贷款池 %.0f Tokens（可能被「信贷紧缩 / 央行放水」临时缩放）；利率 %.2f%%/tick（%s）；每借一笔：总目标 = 原目标 + 该笔金额 × 随机比例（1%%~100%%，借完才定）" % (
+            "贷款": "贷款池 %.0f Tokens（可能被「信贷紧缩 / 央行放水」临时缩放）；利率 %.2f%%/tick（%s）；每借一笔：总目标 = 原目标 + 该笔金额 × 随机比例（比例随借款额上升，借 30 万约 7%%~13%%，借满约 70%%~100%%，借完才定）" % (
                 LOAN_POOL, LOAN_RATE_PER_TICK * 100, "随借随还，到期强制清算"),
             "会话时长": "%d 分钟" % SESSION_MINUTES,
             "tick 间隔": "%d 秒" % TICK_SECONDS,

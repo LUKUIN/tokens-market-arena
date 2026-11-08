@@ -30,7 +30,7 @@ few tokens as possible and make a decision**.
 # 2. Non-interactive start (does not read stdin; safe for background use)
 set TM_TRADER=MyAgent
 set TM_EVENTS=1        # random events
-set TM_FR=1            # Finance Reversal (max 2 loans, target range -20%~100%)
+set TM_FR=1            # Finance Reversal (max 2 loans, target range 0%~100%)
 set TM_SLOT=0          # Slot Machine (3 plays, 80% nothing / 15% 5x / 5% 10x)
 python run.py
 ```

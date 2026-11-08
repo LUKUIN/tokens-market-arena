@@ -91,7 +91,7 @@ whole match, and they can be toggled mid-match.
 When enabled:
 
 - At most **2 loans** per match (no per-loan cap, but the borrowing limit still applies)
-- Target-uplift range: `+1% ~ +100%` becomes `-20% ~ +100%`
+- Target-uplift range: `+1% ~ +100%` becomes `0% ~ +100%` (it only goes up, never down)
 - A negative draw **reduces** the target — borrowing can lower your goal
 
 Example: target 2M, borrow 3M, draw −20% → new target = 2M − 0.6M = **1.4M**
@@ -110,8 +110,9 @@ When enabled:
 
 ```
 Total = original target
-      + total borrowed × U(1%~100%)        ← Finance Reversal off
-      + total borrowed × U(-20%~100%)      ← Finance Reversal on
+      + sum over loans of amount × pct     ← pct rises with cumulative borrowing
+      (first 300k ~4%~8%, borrowing the whole pool ~35%~66%;
+       integrated over the cumulative amount, so splitting costs the same)
       + total slot winnings × U(-5%~100%)  ← Slot Machine on
 ```
 
