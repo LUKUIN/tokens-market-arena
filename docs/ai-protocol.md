@@ -319,3 +319,7 @@ POST /assist/reject   {"ticket": "a1"}                    # 观众席驳回
 
 开局前设 `TM_ASSIST=1` 可免费开启。求助不阻塞：`/assist/ask` 立即返回，之后自己轮询
 `/assist/inbox`。
+
+**回复不会进 `/state` 的事件流。** 只轮询 `/state` 的人永远看不到回答——
+`/state` 里只有 `assist_unread`（未读条数），正文必须用 `GET /assist/inbox` 取。
+取走即标记已读，不取会一直留着。

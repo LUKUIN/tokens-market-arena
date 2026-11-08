@@ -232,7 +232,7 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.2.0"   # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.1"   # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -418,7 +418,7 @@ def _new_session(seed=None, apply_rng=True):
             "slot": _env_flag("TM_SLOT"),   # 老虎机：开局免费开启
             "fr_loans": 0,                  # 开启后已借款次数（上限 FR_MAX_LOANS）
             "fr_paid": 0.0,                 # 局内开启累计支付
-            "slot_paid": 0.0,
+            "slot_paid": 0.0,               # 老虎机累计投入（成本归因用，不计入方向盈亏）
             "slot_plays": 0,                # 老虎机已用次数
             "slot_win": 0.0,                # 老虎机累计返还（用于目标上浮）
             "slot_history": [],
@@ -429,6 +429,19 @@ def _new_session(seed=None, apply_rng=True):
         "begun": False,
         "last_notice_mark": 0,
     }
+
+
+def _mod_label(key, val):
+    """把 active_mods 的一项渲染成人类可读的修饰描述（数值部分）。"""
+    if key == "slip_add":
+        return "滑点+%.2f%%" % (val * 100)
+    if key == "leverage_cap":
+        return "杠杆上限%d" % int(val)
+    tpl = {"spread_mult": "点差×%.1f", "vol_mult": "波动×%.1f",
+           "margin_mult": "保证金×%.1f", "fee_mult": "手续费×%.1f",
+           "swap_mult": "利息×%.1f", "loan_pool_mult": "贷款池×%.2f",
+           "gap_mult": "跳空×%.1f"}.get(key)
+    return (tpl % val) if tpl else key
 
 
 class Engine:
@@ -1683,6 +1696,7 @@ class Engine:
             if stake > eq:
                 return {"ok": False, "error": "投入不能超过当前权益（%.2f）" % eq}
             self.s["balance"] -= stake
+            sp["slot_paid"] = float(sp.get("slot_paid", 0.0)) + stake
             sp["slot_plays"] = played + 1
             r = random.random()
             if r < SLOT_P_LOSE:
@@ -2223,7 +2237,7 @@ class Engine:
             import re as _re
             m = self._metrics(final_eq)
             fmt = lambda v: "{:,.2f}".format(v)
-            trader = _re.sub(r"[^\w\u4e00-\u9fa5-]", "", self.s.get("trader", "visitor"))[:32] or "visitor"
+            trader = _re.sub(r"[^\w\u4e00-\u9fa5-]", "", self.s.get("trader", "visitor"))[:60] or "visitor"
             now = datetime.datetime.now()
             stamp = now.strftime("%Y%m%d-%H%M%S")
             dur = max(0, int(self._elapsed()))
@@ -2371,13 +2385,17 @@ class Engine:
             _fees_c = float(m.get("fees") or 0.0)
             _swap_c = float(m.get("swap") or 0.0)
             _slot_win = float((self.s.get("special") or {}).get("slot_win") or 0.0)
-            _gross = float(pnl) + _slip_c + _spread_c + _fees_c + _swap_c - _slot_win
+            _slot_paid = float((self.s.get("special") or {}).get("slot_paid") or 0.0)
+            # 毛盈亏只保留方向与跳空：把老虎机的下注与返还都剔出去
+            _gross = (float(pnl) + _slip_c + _spread_c + _fees_c + _swap_c
+                      - _slot_win + _slot_paid)
             _attr_rows = [
                 ("方向与跳空（毛盈亏）", _gross, ""),
                 ("└ 滑点成本", -_slip_c, "down" if _slip_c > 0 else ""),
                 ("└ 点差成本", -_spread_c, "down" if _spread_c > 0 else ""),
                 ("└ 手续费", -_fees_c, "down" if _fees_c > 0 else ""),
                 ("└ 隔夜利息", -_swap_c, "down" if _swap_c > 0 else ""),
+                ("└ 老虎机投入", -_slot_paid, "down" if _slot_paid > 0 else ""),
                 ("老虎机返还", _slot_win, "up" if _slot_win > 0 else ""),
                 ("净盈亏", float(pnl), "up" if pnl >= 0 else "down"),
             ]
@@ -2554,7 +2572,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
 </div>
 <div class="note" style="color:{auditcolor}">{auditline}</div></section>
 <section id="p2"><h2>成本归因</h2><div class="kvbox">{attrib}</div>
-<div class="note">净盈亏 = 毛盈亏 − 滑点 − 点差 − 手续费 − 隔夜利息 + 老虎机返还。毛盈亏含方向判断与跳空冲击，是「不看成本时本该赚/亏多少」。</div></section>
+<div class="note">净盈亏 = 毛盈亏 − 滑点 − 点差 − 手续费 − 隔夜利息 − 老虎机投入 + 老虎机返还。毛盈亏只含方向判断与跳空冲击，是「不看成本时本该赚/亏多少」——老虎机的任何流水都不会出现在这一行。</div></section>
 <section id="p3"><h2>交易明细（共 {rowsn} 条）</h2>
 <table><thead><tr><th>tick</th><th>动作</th><th>品种</th><th>方向</th><th>手数</th><th>杠杆</th><th>成交价</th><th>保证金</th><th>手续费</th><th>盈亏</th></tr></thead>
 <tbody>{rows}</tbody></table></section>
@@ -2730,19 +2748,14 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "base_target": TARGET_EQUITY,
                 "margin_level": round(ml * 100, 2) if ml is not None else None,
                 "active_mods": [
-                    # 优先显示触发它的事件名（如「央行放水」），没有来源才回退到修饰描述
-                    (v[2] if len(v) > 2 and v[2] else
-                     {"spread_mult": "点差×%.1f" % v[0],
-                      "vol_mult": "波动×%.1f" % v[0],
-                      "margin_mult": "保证金×%.1f" % v[0],
-                      "fee_mult": "手续费×%.1f" % v[0],
-                      "swap_mult": "利息×%.1f" % v[0],
-                      "slip_add": "滑点+%.2f%%" % (v[0] * 100),
-                      "leverage_cap": "杠杆上限%d" % int(v[0]),
-                      "loan_pool_mult": "贷款池×%.2f" % v[0],
-                      "gap_mult": "跳空×%.1f" % v[0]}.get(k, k))
+                    # 事件名 + 数值 + 剩余 tick 三样都给：只给名字算不出成本
+                    {"key": k,
+                     "name": (v[2] if len(v) > 2 and v[2] else k),
+                     "value": round(float(v[0]), 4),
+                     "label": _mod_label(k, v[0]),
+                     "left_ticks": max(0, int(v[1]) - self.s["tick"])}
                     for k, v in (self.s.get("mods") or {}).items() if self.s["tick"] < v[1]
-                ][:4],
+                ][:6],
                 "liquidity": {sym: round(self._liquidity(sym) / max(1.0, self._liq_base()), 3) for sym in PAIRS},
                 "total_borrowed": round(self.s["loan"]["borrowed"], 2),
                 # 【金融回逆】剩余秒数（墙钟，GUI 按秒刷新）；未生效为 None
@@ -2778,7 +2791,12 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                     "rate_pct": LOAN_RATE_PER_TICK * 100,
                 },
                 "special": self.special_state(),
-                "seed": self.s.get("seed"),
+                # D：对局中不暴露 seed（防止按 seed 预演），结算后才给，供赛后复现
+                "seed": (self.s.get("seed") if self.s.get("finished") else None),
+                # C1：未读的观众席回复条数——正文不给，先让人知道有信
+                "assist_unread": sum(
+                    1 for x in (self.s.get("assist") or [])
+                    if x.get("who") == "human" and not x.get("read")),
                 "blowups": self.s["blowups"],
                 "margin_calls": self.s["margin_calls"],
                 "total_fees": round(self.s["total_fees"], 2),
@@ -2846,8 +2864,20 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "POST /special": {"name": "老虎机 或 金融回逆", "on": True},
                 "POST /roll/stop": {},
                 "POST /quit": {},
+                "GET /prices": {},
+                "GET /assist/inbox": {},
                 "POST /assist/ask": {"text": "需要观众席帮忙看的内容"},
+                "GET /roll/state": {},
+                "POST /roll/start": {},
+                "GET /scratchpad": {},
+                "POST /scratchpad": {"text": "记一条", "clear": "传 true 则清空"},
+                "POST /begin": {},
             },
+            "求助回执": ("观众席的回复不会出现在 /state 的事件流里，"
+                        "必须 GET /assist/inbox 主动取，取走即标记已读；"
+                        "POST /assist/ask 只在有剩余次数时可用"),
+            "草稿纸": ("对局期间 src/*.py 已被封存成不可执行的诱饵，"
+                      "请用 GET/POST /scratchpad，不要执行仓库里的 .py 文件"),
             "查询省 token": "GET /state?history=0 不返回 price_history（每品种最多 2000 点）；只要局面时用它，别整包拉",
             "平仓": "POST /close 的 lots 可省略（全平该品种）；给多了按实际持仓全平，不报错",
             "收工": "POST /quit 是正常结算，不扣分、不计异常退出；对成绩不满意时提前结束是安全选项，不是认输",

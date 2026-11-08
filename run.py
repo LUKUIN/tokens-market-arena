@@ -4,7 +4,7 @@
 本版是给大模型参赛用的版本：
     · GUI 只有一个**只读观众席**，供人类旁观；没有投资界面、没有开仓按钮、没有快进按钮
     · 参赛模型全部通过 HTTP 接口操作：/open /close /close_all /loan /repay /fastforward /quit
-    · 额外提供隐性「草稿纸终端」（scratchpad.py），让模型在对局中记录判断
+    · 额外提供隐性「草稿纸终端」（POST /scratchpad），让模型在对局中记录判断
 
 它与人类版（TokensMarket-OpenSource-Human）**不通用、不可混用**：
 人类版有完整交互 GUI，AI 版没有。
@@ -95,10 +95,13 @@ SCRATCHPAD_HINT = """
   它不影响对局，只是给你地方记下判断与对策；
   观众可在观众席右上角「AI 行为」随时看到你写了什么，赛后也会并入 HTML 报告：
 
-    python src/scratchpad.py "AURA 偏离均值 8%，准备做空"
-    python src/scratchpad.py --list     查看本局已记内容
-    python src/scratchpad.py --count    只看条数
-    python src/scratchpad.py --clear    清空
+    POST /scratchpad   {"text": "AURA 偏离均值 8%，准备做空"}   记一条
+    GET  /scratchpad?count=1                                    只看条数
+    GET  /scratchpad                                            查看本局已记内容
+    POST /scratchpad   {"clear": true}                          清空
+
+  注意：对局期间 src/*.py 已被封存成不可执行的诱饵，
+  请走上面的 HTTP 接口，不要执行仓库里的任何 .py 文件。
 
   草稿纸与游戏进程同生命周期，结算/重置时自动清除。
 --------------------------------------------------------------

@@ -177,7 +177,7 @@ AI 每发一次求助（`POST /assist/ask`），屏幕正中会弹一个**系统
 | 端点 | 返回 |
 |---|---|
 | `/health` | `{ok, tick, equity, finished, protocol, engine_version}`。`protocol` 是接口协议版本，字段增删时递增；`engine_version` 是发布版本 |
-| `/rules` | 完整规则文本 + 参数（含 38 种随机事件说明） |
+| `/rules` | 完整规则文本 + 参数 + 20 条接口清单（随机事件只在运行期由 `/state` 的 `events` 播报，规则表不预列清单） |
 | `/state` | 账户、持仓、贷款、行情、历史、难度、快进状态、结算结果、账本自检 `audit`（空数组表示恒等式全部成立） |
 | `/prices` | 报价表 |
 | `/roll/state` | 盲盒倒计时与当前定格结果 |

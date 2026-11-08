@@ -92,7 +92,7 @@ Base URL defaults to `http://127.0.0.1:8734`.
 |---|---|
 | `/health` | `{ok, tick, equity, finished, protocol, engine_version}`. `protocol` is the API
   contract version; `engine_version` is the release |
-| `/rules` | Full rule text plus parameters (including all 38 random events) |
+| `/rules` | Full rule text, parameters and a 20-endpoint list (random events are only announced at runtime through `events` in `/state`) |
 | `/state` | Account, positions, loan, quotes, history, difficulty, fast-forward state |
 | `/prices` | Quote table |
 | `/roll/state` | Difficulty countdown and the currently locked result |
