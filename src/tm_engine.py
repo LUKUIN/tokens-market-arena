@@ -207,7 +207,6 @@ FR_LO_BOUND = 0.0001          # 优惠融资开启时的下限（0.01%）：借�
 SPECIAL_FR_NAME = "优惠融资"   # 全局开关 fr 的对外显示名（改名字只改这一行）
 SPECIAL_SLOT_NAME = "老虎机"   # 全局开关 slot 的对外显示名
 LOAN_BUMP_LO_DEFAULT = 0.01   # 未开启时的下限（+1%）
-SPECIAL_FEE = 300_000.0       # 局内开启任一全局事件的代价（权益/现金）
 SLOT_MAX_PLAYS = 3            # 老虎机整局次数
 SLOT_MIN_STAKE = 1.0          # 单次投入下限
 SLOT_MAX_STAKE = 200_000.0    # 单次投入上限
@@ -233,7 +232,7 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.2.5"   # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.6"   # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -418,7 +417,7 @@ def _new_session(seed=None, apply_rng=True):
             "fr": _env_flag("TM_FR"),       # 优惠融资：开局免费开启
             "slot": _env_flag("TM_SLOT"),   # 老虎机：开局免费开启
             "fr_loans": 0,                  # 开启后已借款笔数（仅统计，不再限制次数）
-            "fr_paid": 0.0,                 # 局内开启累计支付
+            "fr_paid": 0.0,                 # 历史字段：局内开启曾收的费，v1.2.6 起恒为 0
             "slot_paid": 0.0,               # 老虎机累计投入（成本归因用，不计入方向盈亏）
             "slot_plays": 0,                # 老虎机已用次数
             "slot_win": 0.0,                # 老虎机累计返还（用于目标上浮）
@@ -1270,6 +1269,7 @@ class Engine:
                 self._event("时间到：最终权益 %.2f Tokens（%s：目标 %.0f）" % (eq, verdict, self.s["target"]), "end")
                 self._save()
                 self._write_report("时间到", eq)
+                self._clear_running()         # 时间到同样是正常结算，别让下一局记成异常退出
                 # 结束即结束：时间到后同样不自动开新局，等玩家显式 POST /reset
                 purge_agent_dir(self.home)    # 保留原有清理：清掉本局 _agent 残留
                 return self.state()
@@ -1623,7 +1623,7 @@ class Engine:
     def set_special(self, name, on):
         """开局全局开关：优惠融资 / 老虎机。
 
-        开局（尚未 begin 或仍处于 paused）免费；游戏进行中再打开需支付 SPECIAL_FEE 现金。
+        只能在开局时（尚未 begin 或仍处于 paused）设置；对局开始后不再提供。
         关闭永远免费；重复设置同一状态不收费。
         """
         with LOCK:
@@ -1644,26 +1644,19 @@ class Engine:
             if bool(sp.get(field)) == on:
                 return {"ok": True, "changed": False,
                         "special": self.special_state(), "state": self._state_light()}
-            fee = 0.0
             if on:
                 pre_game = bool(self.s.get("paused")) or not self.s.get("begun")
                 if not pre_game:
-                    fee = SPECIAL_FEE
-                    if self.s["balance"] < fee:
-                        return {"ok": False,
-                                "error": "开启失败：局内开启需要支付 %.0f 现金，当前现金 %.0f 不足"
-                                         % (fee, self.s["balance"])}
-                    self.s["balance"] -= fee
-                    sp["%s_paid" % field] = float(sp.get("%s_paid" % field, 0.0)) + fee
+                    return {"ok": False,
+                            "error": "%s 只能在开局前开启，对局开始后不再提供"
+                                     % (SPECIAL_FR_NAME if field == "fr" else SPECIAL_SLOT_NAME)}
             sp[field] = on
             if field == "fr":
                 self.s.get("mods", {}).pop("loan_bump_lo", None)
             label = SPECIAL_FR_NAME if field == "fr" else SPECIAL_SLOT_NAME
-            self._event("【全局事件】%s 已%s%s" % (
-                label, "开启" if on else "关闭",
-                ("（支付 %.0f 现金）" % fee) if fee > 0 else ""), "news")
+            self._event("【全局事件】%s 已%s" % (label, "开启" if on else "关闭"), "news")
             self._save()
-            return {"ok": True, "changed": True, "fee": fee,
+            return {"ok": True, "changed": True, "fee": 0.0,
                     "special": self.special_state(), "state": self._state_light()}
 
     def slot(self, amount):
@@ -2681,6 +2674,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             _purge_data_dir(self.home)         # 清 data/ 下除 reports/ 外的残留
             self._save()
             purge_agent_dir(self.home)
+            self._mark_running()               # 上面清 data 时连 .running 一起清了，新局要补回来
             return {"ok": True, "state": self._state_light(), "resets": n}
 
     # ---------------- 视图 ----------------
@@ -2823,13 +2817,13 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             SPECIAL_FR_NAME: ("开局全局开关（非随机事件）：开启后借款次数不限（仍受 %.0f 万贷款池约束），"
                         "目标上浮区间从 +1%%~+100%% 下探到 +0.01%%~+100%%"
                         "（必上抬、永不减免，最小值 0.01%%）；"
-                        "开局免费，局内再开启需支付 %.0f 现金" % (LOAN_POOL / 10000.0, SPECIAL_FEE)
+                        "只能在开局前开启，开局后不再提供" % (LOAN_POOL / 10000.0)
                         ).replace("%%", "%"),
             SPECIAL_SLOT_NAME: ("开局全局开关：开启后整局可投 %d 次，单次 1~%.0f 且不超过当前权益；"
                        "80%% 无所得 / 15%% 返还 5 倍 / 5%% 返还 10 倍（期望返还 1.25 倍）；"
                        "中奖金额进入现金，同时目标按返还金额的 -5%%~100%% 上浮（最坏情况目标翻倍）；"
-                       "开局免费，局内再开启需支付 %.0f 现金" % (
-                           SLOT_MAX_PLAYS, SLOT_MAX_STAKE, SPECIAL_FEE)
+                       "只能在开局前开启，开局后不再提供" % (
+                           SLOT_MAX_PLAYS, SLOT_MAX_STAKE)
                        ).replace("%%", "%"),
             "杠杆": "可选 %d - %d 倍（上限可被事件临时下调，以实际报错为准）" % (MIN_LEVERAGE, MAX_LEVERAGE),
             "动态修正": ("杠杆上限、手续费、点差、隔夜利息、黑天鹅概率、贷款池都可能被随机事件临时改写；"

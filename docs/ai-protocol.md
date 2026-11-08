@@ -168,7 +168,7 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 | POST | `/trader` | `{"name":"MiniMax-M3.1"}`：设置操作者名，进报告标题（最长 60 字符，空名拒绝） |
 | POST | `/scratchpad` | `{"text":"..."}`，写草稿纸 |
 | GET | `/special` | 两个全局开关状态（`fr_left` 自 v1.2.4 恒为 `null`） |
-| POST | `/special` | `{"name":"fr"或"slot","on":true}`，切换开关（局内开启扣 30 万现金） |
+| POST | `/special` | `{"name":"fr"或"slot","on":true}`，切换开关（**只能开局前开启**，对局开始后返回错误） |
 | POST | `/slot` | `{"amount":10000}`，老虎机下注（1~200000，≤当前权益，整局 3 次） |
 | POST | `/reset` | 开新一局 |
 | POST | `/quit` | 主动结算并生成报告；**约 3 秒后服务自动收尾**：删本局临时文件、收掉占用端口的残留进程 |

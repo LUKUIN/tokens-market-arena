@@ -197,7 +197,7 @@ AI 每发一次求助（`POST /assist/ask`），屏幕正中会弹一个**系统
 | `/repay` | `{amount}` | 还款，省略则全额 |
 | `/trader` | `{name}` | 设置玩家名 |
 | `/scratchpad` | `{text}` | 追加一条草稿 |
-| `/special` | `{name, on}` | 切换全局开关（`fr` / `slot`）；局内开启扣 30 万现金 |
+| `/special` | `{name, on}` | 切换全局开关（`fr` / `slot`）；**只能开局前开启**，对局开始后拒绝 |
 | `/slot` | `{amount}` | 老虎机下注：`1~200000`、≤当前权益、整局 3 次 |
 | `/pause` / `/begin` | — | 冻结 / 解冻计时 |
 | `/roll/start` / `/roll/stop` | — | 开始 / 叫停难度盲盒 |

@@ -81,10 +81,10 @@ Tokens Trading Market | your name (ideal conditions) | Black Swan: low | Liquidi
 ## Global switches: Preferred Financing and Slot Machine
 
 These are **not** random events. They are global switches chosen at the start, effective for the
-whole match, and they can be toggled mid-match.
+whole match.
 
-- Enabling at start: **free**
-- Enabling mid-match: **costs 300,000 cash** (disabling is always free)
+- They can only be decided at the start; **once the match begins, they can no longer be turned on** (turning one off is always free)
+- Enabling at the start is free
 
 ### Preferred Financing
 
