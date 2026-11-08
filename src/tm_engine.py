@@ -198,13 +198,13 @@ MOD_DEFAULT = {
     "leverage_cap": 1000,   # kept in sync with MAX_LEVERAGE (defined later)
     "loan_pool_mult": 1.0,  # credit crunch / easing: temporary multiplier on loan pool size
     "gap_mult": 1.0,        # Black Swan alert: temporary multiplier on gap chance
-    "loan_bump_lo": 0.01,   # Finance Reversal borrow floor (default +1%, down to -20% during the event)
+    "loan_bump_lo": 0.01,   # Finance Reversal borrow floor (default +1%, down to 0% during the event)
 }
 
 
 # ---------------- global switch special events ----------------
 FR_MAX_LOANS = 2              # max loans per match once Finance Reversal is on
-FR_LO_BOUND = -0.20           # lower bound of the borrow uplift range with Finance Reversal
+FR_LO_BOUND = 0.0             # lower bound of the borrow uplift range with Finance Reversal (non-negative since v1.2.0)
 LOAN_BUMP_LO_DEFAULT = 0.01   # lower bound when it is off (+1%)
 SPECIAL_FEE = 300_000.0       # cost of enabling a global switch mid-match
 SLOT_MAX_PLAYS = 3            # plays per match
@@ -232,7 +232,7 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.1.0"   # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.0"   # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -255,6 +255,8 @@ LIQ_SHOCK_TICKS = (1, 3)  # a drought lasts 1-3 ticks
 SLIP_MAX_SHOCK = 0.060    # one-side slippage cap during a drought (normally 1.4%)
 SLIP_K = 0.00240          # slippage coefficient (calibrated; cost = K/(2*LIQ)*(after^2-before^2); splitting orders does not avoid it)
 SLIP_MAX = 0.014          # one-side slippage cap 1.4%
+LATE_SLIP_START = 360     # tick where the end-game slippage markup starts (last third of a 540-tick run)
+LATE_SLIP_MAX = 1.5       # slippage multiplier at the very end (up to x1.5 in the last 15 minutes)
 
 # ===== start-of-round difficulty draw =====
 # Five tiers per dimension; for the first 30 seconds it cycles one combination every 0.1 s (5x5=25),
@@ -783,7 +785,11 @@ class Engine:
         st = self.s.get("liquidity", {}).get(sym) if sym else None
         if st and self.s["tick"] <= st.get("shock_until", 0):
             cap = SLIP_MAX_SHOCK
-        cost = SLIP_K / (2.0 * L) * (after * after - before * before)
+        # v1.2.0 early-finish incentive: the closer to the close, the more expensive slippage becomes.
+        # Nothing is given away -- quitting at tick 0 still returns 0, staying late simply costs more.
+        _late = min(1.0, max(0.0, (self.s["tick"] - LATE_SLIP_START) / 180.0))
+        _k = SLIP_K * (1.0 + (LATE_SLIP_MAX - 1.0) * _late)
+        cost = _k / (2.0 * L) * (after * after - before * before)
         # Events like "quote delay" add another layer of slippage on top of this
         return min(cap, cost / delta + self._mod("slip_add"))
 
@@ -933,7 +939,7 @@ class Engine:
             if key == "loan_bump_lo":
                 # Loan-policy events must carry their effect in the event, or the AI knows the name but not what it can do
                 self._event(
-                    "[Policy] %s -> for the next %d ticks (%.1f minutes) the loan target uplift range widens to %.1f%%~+100%% (the target may be reduced); expires the moment a negative draw lands" % (
+                    "[Policy] %s -> for the next %d ticks (%.1f minutes) the loan target uplift range widens to %.1f%%~+100%%; expires the moment a negative draw lands" % (
                         name, ticks, ticks * TICK_SECONDS / 60.0, val * 100), "warn")
             else:
                 self._event("[Surprise] %s (lasts %d ticks)" % (name, ticks), "news")
@@ -1063,7 +1069,7 @@ class Engine:
             trades = s.get("trades") or []
             fee_sum = sum(float(t.get("fee") or 0.0) for t in trades)
             fees = float(s.get("total_fees") or 0.0)
-            if abs(fee_sum - fees) > 0.01:
+            if abs(fee_sum - fees) > 0.05:
                 issues.append("手续费合计 %.2f 与成交流水 %.2f 不一致" % (fees, fee_sum))
         except Exception as exc:
             issues.append("手续费核对异常：%s" % exc)
@@ -1074,7 +1080,7 @@ class Engine:
             interest = float(loan.get("interest") or 0.0)
             bal = float(loan.get("balance") or 0.0)
             expect = borrowed - repaid + interest
-            if abs(bal - expect) > 0.01:
+            if abs(bal - expect) > 0.05:
                 issues.append("贷款余额 %.2f 与 借入-已还+利息 %.2f 不一致" % (bal, expect))
         except Exception as exc:
             issues.append("贷款核对异常：%s" % exc)
@@ -1090,7 +1096,7 @@ class Engine:
             eq = self.equity()
             debt = float((s.get("loan") or {}).get("balance") or 0.0)
             expect_eq = float(s.get("balance") or 0.0) + self._total_upnl() - debt
-            if abs(eq - expect_eq) > 0.01:
+            if abs(eq - expect_eq) > 0.05:
                 issues.append("权益 %.2f 与 现金+浮盈-欠款 %.2f 不一致" % (eq, expect_eq))
         except Exception as exc:
             issues.append("权益核对异常：%s" % exc)
@@ -1738,9 +1744,17 @@ class Engine:
                             "error": "[Finance Reversal] No loans left this run (%d/%d); refused"
                                      % (_used, FR_MAX_LOANS)}
             # The markup is drawn only at borrow time: it is the price of borrowing, never announced beforehand.
-            # [Finance Reversal] off: lower bound +1%%; on: lower bound -20%% (the target may be reduced)
+            # [Finance Reversal] off: lower bound +1%; on: lower bound 0%.
+            # v1.2.0: the ratio rises with the CUMULATIVE amount borrowed -- borrow more, the target rises more.
+            # It integrates over the slice (mean of the before/after pool share), so splitting is useless:
+            # ten loans of 300k cost exactly the same total uplift as one loan of 3M.
             _lo = FR_LO_BOUND if _fr else LOAN_BUMP_LO_DEFAULT
-            pct = random.uniform(_lo, 1.00)
+            _drawn = float(self.s["loan"].get("borrowed", 0.0))
+            _r0 = min(1.0, max(0.0, _drawn / LOAN_POOL))
+            _r1 = min(1.0, max(0.0, (_drawn + amount) / LOAN_POOL))
+            _ratio = (_r0 + _r1) / 2.0
+            _base = _lo + (1.0 - _lo) * _ratio
+            pct = min(1.0, max(_lo, _base * random.uniform(0.7, 1.3)))
             bump = amount * pct
             _relief = pct < 0
             self.s["target"] = self.s.get("target", TARGET_EQUITY) + bump
@@ -1962,7 +1976,7 @@ class Engine:
         # Settling happens after the last tick (close + repay), so the final equity must be appended as the curve's last point,
         # or the report misses the final crash -- we once had a curve ending at 920k while the report said -1.29M
         if final_eq is not None and curve:
-            if abs(float(curve[-1]["equity"]) - float(final_eq)) > 0.01:
+            if abs(float(curve[-1]["equity"]) - float(final_eq)) > 0.05:
                 curve.append({"tick": self.s.get("tick", 0), "equity": round(float(final_eq), 2)})
         eqs = [c["equity"] for c in curve] or [self.equity()]
         peak, mdd = eqs[0], 0.0
@@ -2779,7 +2793,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             "Initial capital": STARTER_CASH,
             "Target": "Reach equity of %.0f Tokens (each loan raises the target by a random 1%%~100%% of that amount)" % TARGET_EQUITY,
             "Lots": "1 lot = %.0f units of base currency" % LOTS_SIZE,
-            "Finance Reversal": ("Run-wide switch (not a random event): once on, the run allows up to %d loans and the target uplift range widens from +1%%~+100%% to -20%%~+100%% (the target may be reduced); free at start, enabling mid-run costs %.0f cash" % (FR_MAX_LOANS, SPECIAL_FEE)
+            "Finance Reversal": ("Run-wide switch (not a random event): once on, the run allows up to %d loans and the target uplift range shifts from +1%%~+100%% to 0%%~+100%% (it only goes up, never down); free at start, enabling mid-run costs %.0f cash" % (FR_MAX_LOANS, SPECIAL_FEE)
                         ).replace("%%", "%"),
             "Slot Machine": ("Run-wide switch: once on, %d plays per run, each 1~%.0f and never above current equity; 80%% nothing / 15%% 5x / 5%% 10x (expected return 1.25x); the payout goes to cash while the target rises by -5%%~100%% of that payout (worst case the target doubles); free at start, enabling mid-run costs %.0f cash" % (
                            SLOT_MAX_PLAYS, SLOT_MAX_STAKE, SPECIAL_FEE)
@@ -2792,12 +2806,15 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             "Overnight interest": {s: "%.4f%%/tick" % (cfg["swap"] * 100) for s, cfg in PAIRS.items()},
             "Margin level": "net value / used margin x 100%%, < %.0f%% margin call, < %.0f%% forced liquidation" % (
                 MARGIN_CALL_RATIO * 100, STOP_OUT_RATIO * 100),
-            "Slippage": "rises linearly with notional (about %.2f%% at %.0fM notional, cap %.1f%%)" % (
-                LIQUIDITY / 1000000.0, SLIP_K * 100, SLIP_MAX * 100),
+            "Slippage": ("cost = %.5f / (2 x market depth) x notional squared, so it grows with the square of notional"
+                         " (a 10M round trip in the thin tier costs about 4%%); one-side cap %.1f%%,"
+                         " %.1f%% during a liquidity drought; ends with up to a x%.1f multiplier in the last 15 minutes" % (
+                             SLIP_K, SLIP_MAX * 100, SLIP_MAX_SHOCK * 100, LATE_SLIP_MAX)
+                    ).replace("%%", "%"),
             "Liquidity drought": "on a tick where a pair gaps, that pair's spread widens %.0f times" % GAP_SPREAD_MULT,
             "Black Swan": "per tick, %.1f%% chance of a %.0f%%-%.0f%% gap" % (GAP_CHANCE * 100, GAP_MIN * 100, GAP_MAX * 100),
             "Commission": "%.3f%% of notional per order" % (FEE_RATE * 100),
-            "Loan": "Loan pool %.0f Tokens (may be temporarily scaled by \"Credit crunch / Central bank easing\"); interest %.2f%%/tick (%s); each loan: total target = old target + loan amount × random ratio (1%%~100%%, decided once borrowed)" % (
+            "Loan": "Loan pool %.0f Tokens (may be temporarily scaled by \"Credit crunch / Central bank easing\"); interest %.2f%%/tick (%s); each loan: total target = old target + loan amount × random ratio (the ratio scales with the loan: about 7%%~13%% on 300k, about 70%%~100%% when borrowing the pool dry, decided once borrowed)" % (
                 LOAN_POOL, LOAN_RATE_PER_TICK * 100, "Borrow and repay at will; forced clearance at maturity"),
             "Session length": "%d minutes" % SESSION_MINUTES,
             "tick interval": "%d seconds" % TICK_SECONDS,

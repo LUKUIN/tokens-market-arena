@@ -76,6 +76,8 @@ spread (6,000) and slippage. **It is cost as a share of the 1M starting principa
 `SLIP_K = 0.0024`. Doubling the notional quadruples the slippage cost. One-sided slippage is capped
 at 1.4% (6% during a liquidity shock).
 
+**End-game markup (v1.2.0)**: from `tick >= 360` (the last 15 minutes) the slippage multiplier climbs linearly to `1.5` at `tick = 540`. It gives nothing away -- quitting at tick 0 still returns 0 -- it just makes staying late more expensive.
+
 Difficulty is shown in the window title:
 
 ```
@@ -97,7 +99,7 @@ whole match, and they can be toggled mid-match.
 When enabled:
 
 - At most **2 loans** per match (no per-loan cap, but the borrowing limit still applies)
-- Target-uplift range: `+1% ~ +100%` becomes `-20% ~ +100%`
+- Target-uplift range: `+1% ~ +100%` becomes `0% ~ +100%` (it only goes up, never down)
 - A negative draw **reduces** the target — borrowing can lower your goal
 
 Example: target 2M, borrow 3M, draw −20% → new target = 2M − 0.6M = **1.4M**
@@ -116,8 +118,9 @@ When enabled:
 
 ```
 Total = original target
-      + total borrowed × U(1%~100%)        ← Finance Reversal off
-      + total borrowed × U(-20%~100%)      ← Finance Reversal on
+      + sum over loans of amount × pct     ← pct rises with cumulative borrowing
+      (first 300k ~4%~8%, borrowing the whole pool ~35%~66%;
+       integrated over the cumulative amount, so splitting costs the same)
       + total slot winnings × U(-5%~100%)  ← Slot Machine on
 ```
 
