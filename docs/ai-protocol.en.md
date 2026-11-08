@@ -30,7 +30,7 @@ few tokens as possible and make a decision**.
 # 2. Non-interactive start (does not read stdin; safe for background use)
 set TM_TRADER=MyAgent
 set TM_EVENTS=1        # random events
-set TM_FR=1            # Preferred Financing (max 5 loans, target range 0.01%~100%)
+set TM_FR=1            # Preferred Financing (unlimited loans, target range 0.01%~100%)
 set TM_SLOT=0          # Slot Machine (3 plays, 80% nothing / 15% 5x / 5% 10x)
 python run.py
 ```
@@ -139,9 +139,9 @@ Every endpoint lives at `http://127.0.0.1:8734`.
   "active_mods": ["央行放水"],          // names of currently active events
   "loan_bump_range": [1.0, 100.0],      // borrow uplift range (%): [1,100] normally, [0.01,100] with Preferred Financing
   "special": {                          // the two global switches
-    "fr": true, "fr_left": 2,           // Preferred Financing on, 2 loans left
+    "fr": true, "fr_left": null,        // Preferred Financing on; the per-run cap is gone, so this is always null
     "slot": false, "slot_left": 3,      // Slot Machine off
-    "slot_win": 0.0, "fr_lo_pct": -20.0 // total slot winnings / borrow lower bound (%)
+    "slot_win": 0.0, "fr_lo_pct": 0.01  // total slot winnings / borrow lower bound (%), 0.01 when on, 1.0 when off
   },
   "seed": 20261105,                     // random seed for this match (written into the report)
 

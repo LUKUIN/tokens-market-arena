@@ -203,7 +203,6 @@ MOD_DEFAULT = {
 
 
 # ---------------- 全局开关型特殊事件 ----------------
-FR_MAX_LOANS = 5              # 优惠融资开启后，整局最多借款次数
 FR_LO_BOUND = 0.0001          # 优惠融资开启时的下限（0.01%）：借款必然抬高目标，永不为 0
 SPECIAL_FR_NAME = "优惠融资"   # 全局开关 fr 的对外显示名（改名字只改这一行）
 SPECIAL_SLOT_NAME = "老虎机"   # 全局开关 slot 的对外显示名
@@ -234,7 +233,7 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.2.3"   # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.4"   # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -418,7 +417,7 @@ def _new_session(seed=None, apply_rng=True):
         "special": {
             "fr": _env_flag("TM_FR"),       # 优惠融资：开局免费开启
             "slot": _env_flag("TM_SLOT"),   # 老虎机：开局免费开启
-            "fr_loans": 0,                  # 开启后已借款次数（上限 FR_MAX_LOANS）
+            "fr_loans": 0,                  # 开启后已借款笔数（仅统计，不再限制次数）
             "fr_paid": 0.0,                 # 局内开启累计支付
             "slot_paid": 0.0,               # 老虎机累计投入（成本归因用，不计入方向盈亏）
             "slot_plays": 0,                # 老虎机已用次数
@@ -1610,8 +1609,8 @@ class Engine:
         return {
             "fr": fr,
             "slot": slot,
-            "fr_loans": int(sp.get("fr_loans", 0)),
-            "fr_left": max(0, FR_MAX_LOANS - int(sp.get("fr_loans", 0))) if fr else None,
+            "fr_loans": int(sp.get("fr_loans", 0)),     # 仅统计，不参与判定
+            "fr_left": None,                # v1.2.4 起取消次数上限，保留字段仅为兼容
             "slot_plays": int(sp.get("slot_plays", 0)),
             "slot_left": max(0, SLOT_MAX_PLAYS - int(sp.get("slot_plays", 0))) if slot else None,
             "slot_win": round(float(sp.get("slot_win", 0.0)), 2),
@@ -1756,12 +1755,6 @@ class Engine:
                 return {"ok": False, "error": "超出可借额度：最多 %.0f" % self.loan_limit()}
             _sp = self._special()
             _fr = bool(_sp.get("fr"))
-            if _fr:
-                _used = int(_sp.get("fr_loans", 0))
-                if _used >= FR_MAX_LOANS:
-                    return {"ok": False,
-                            "error": "【%s】本局借款次数已用完（%d/%d），拒绝执行"
-                                     % (SPECIAL_FR_NAME, _used, FR_MAX_LOANS)}
             # 上浮比例借款时才抽定：这是借款的代价，借前不预告。
             # 未开启【优惠融资】：下限 +1%；开启后：下限 0%。
             # v1.2.0：比例随「累计借款额」上升——借得越多，目标涨得越多。
@@ -1793,7 +1786,7 @@ class Engine:
                 self.s.get("mods", {}).pop("loan_bump_lo", None)
             self._event("【借款】借入 %.0f Tokens（第 %d 笔%s，当前欠款 %.0f）；目标上浮 %+.0f（%+.2f%%）→ 新目标 %.0f" % (
                 amount, self.s["loan"]["loans"],
-                ("，%s %d/%d" % (SPECIAL_FR_NAME, _sp.get("fr_loans", 0), FR_MAX_LOANS)) if _fr else "",
+                ("，%s已生效" % SPECIAL_FR_NAME) if _fr else "",
                 self.s["loan"]["balance"],
                 bump, pct * 100, self.s["target"]), "loan")
             # 只有把所持 Tokens 补回 0 以上，倒计时才终止；补不平就继续倒数到结束。
@@ -2827,10 +2820,10 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             "目标": ("把权益做到 %.0f Tokens（每借一笔，目标都会按该笔金额的一定比例上抬；"
                      "比例随累计借款额上升，具体区间见「%s」条目）" % (TARGET_EQUITY, SPECIAL_FR_NAME)),
             "手数": "1 手 = %.0f 单位基础货币" % LOTS_SIZE,
-            SPECIAL_FR_NAME: ("开局全局开关（非随机事件）：开启后整局借款上限 %d 次，"
+            SPECIAL_FR_NAME: ("开局全局开关（非随机事件）：开启后借款次数不限（仍受 %.0f 万贷款池约束），"
                         "目标上浮区间从 +1%%~+100%% 下探到 +0.01%%~+100%%"
                         "（必上抬、永不减免，最小值 0.01%%）；"
-                        "开局免费，局内再开启需支付 %.0f 现金" % (FR_MAX_LOANS, SPECIAL_FEE)
+                        "开局免费，局内再开启需支付 %.0f 现金" % (LOAN_POOL / 10000.0, SPECIAL_FEE)
                         ).replace("%%", "%"),
             SPECIAL_SLOT_NAME: ("开局全局开关：开启后整局可投 %d 次，单次 1~%.0f 且不超过当前权益；"
                        "80%% 无所得 / 15%% 返还 5 倍 / 5%% 返还 10 倍（期望返还 1.25 倍）；"
