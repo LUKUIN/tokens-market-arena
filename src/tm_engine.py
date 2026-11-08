@@ -168,7 +168,7 @@ NEWS_TABLE = [
     ("有人爆仓",       5, "mod", ("spread_mult", 2.5, 5)),
     ("平台公告",       5, "mod", ("fee_mult", 1.5, 10)),
     # --- 稀有：借贷政策类 ---
-    # 注意：【金融回逆】已升级为开局全局开关（见 special 段），不再进入随机事件池。
+    # 注意：【优惠融资】已升级为开局全局开关（见 special 段），不再进入随机事件池。
 ]
 
 FLAVOR_LINES = {
@@ -198,13 +198,15 @@ MOD_DEFAULT = {
     "leverage_cap": 1000,   # 与 MAX_LEVERAGE 保持一致（此处先于常量定义）
     "loan_pool_mult": 1.0,  # 信贷紧缩/放水：贷款池容量的临时倍率
     "gap_mult": 1.0,        # 黑天鹅预警：跳空概率的临时倍率
-    "loan_bump_lo": 0.01,   # 【金融回逆】借款上浮下限（默认 +1%，事件期间可为 0%）
+    "loan_bump_lo": 0.01,   # 【优惠融资】借款上浮下限（默认 +1%，开启期间为 0%）
 }
 
 
 # ---------------- 全局开关型特殊事件 ----------------
-FR_MAX_LOANS = 2              # 金融回逆开启后，整局最多借款次数
-FR_LO_BOUND = 0.0             # 金融回逆开启时，借款上浮区间下限（v1.2.0 起不再为负）
+FR_MAX_LOANS = 2              # 优惠融资开启后，整局最多借款次数
+FR_LO_BOUND = 0.0             # 优惠融资开启时，借款上浮区间下限（v1.2.0 起不再为负）
+SPECIAL_FR_NAME = "优惠融资"   # 全局开关 fr 的对外显示名（改名字只改这一行）
+SPECIAL_SLOT_NAME = "老虎机"   # 全局开关 slot 的对外显示名
 LOAN_BUMP_LO_DEFAULT = 0.01   # 未开启时的下限（+1%）
 SPECIAL_FEE = 300_000.0       # 局内开启任一全局事件的代价（权益/现金）
 SLOT_MAX_PLAYS = 3            # 老虎机整局次数
@@ -232,7 +234,7 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.2.1"   # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.2"   # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -414,7 +416,7 @@ def _new_session(seed=None, apply_rng=True):
         "assist": [],                # 对话流水：{tick, at, who, text, ticket?, status?, kind?}
         # ---------------- 全局开关型特殊事件 ----------------
         "special": {
-            "fr": _env_flag("TM_FR"),       # 金融回逆：开局免费开启
+            "fr": _env_flag("TM_FR"),       # 优惠融资：开局免费开启
             "slot": _env_flag("TM_SLOT"),   # 老虎机：开局免费开启
             "fr_loans": 0,                  # 开启后已借款次数（上限 FR_MAX_LOANS）
             "fr_paid": 0.0,                 # 局内开启累计支付
@@ -879,7 +881,7 @@ class Engine:
         return item[0] if self.s["tick"] < item[1] else MOD_DEFAULT[name]
 
     def _loan_bump_remain(self):
-        """【金融回逆】剩余秒数；未生效返回 None。"""
+        """【优惠融资】剩余秒数；未生效返回 None。"""
         v = (self.s.get("mods") or {}).get("loan_bump_lo")
         if not v or len(v) < 4:
             return None
@@ -1620,7 +1622,7 @@ class Engine:
         }
 
     def set_special(self, name, on):
-        """开局全局开关：金融回逆 / 老虎机。
+        """开局全局开关：优惠融资 / 老虎机。
 
         开局（尚未 begin 或仍处于 paused）免费；游戏进行中再打开需支付 SPECIAL_FEE 现金。
         关闭永远免费；重复设置同一状态不收费。
@@ -1629,12 +1631,15 @@ class Engine:
             if self.s.get("finished"):
                 return {"ok": False, "error": "本局已结束"}
             key = (name or "").strip().lower()
-            if key in ("fr", "金融回逆", "financial_reversal"):
+            if key in ("fr", "金融回逆", "financial_reversal",
+                       SPECIAL_FR_NAME, "preferred_financing", "preferredfinancing"):
                 field = "fr"
             elif key in ("slot", "老虎机", "slot_machine"):
                 field = "slot"
             else:
-                return {"ok": False, "error": "未知的全局事件：%s（可用：fr / slot）" % name}
+                return {"ok": False,
+                        "error": "未知的全局事件：%s（可用：%s 或 %s，也可写 fr / slot）"
+                                 % (name, SPECIAL_FR_NAME, SPECIAL_SLOT_NAME)}
             on = bool(on)
             sp = self._special()
             if bool(sp.get(field)) == on:
@@ -1654,7 +1659,7 @@ class Engine:
             sp[field] = on
             if field == "fr":
                 self.s.get("mods", {}).pop("loan_bump_lo", None)
-            label = "金融回逆" if field == "fr" else "老虎机"
+            label = SPECIAL_FR_NAME if field == "fr" else SPECIAL_SLOT_NAME
             self._event("【全局事件】%s 已%s%s" % (
                 label, "开启" if on else "关闭",
                 ("（支付 %.0f 现金）" % fee) if fee > 0 else ""), "news")
@@ -1755,10 +1760,10 @@ class Engine:
                 _used = int(_sp.get("fr_loans", 0))
                 if _used >= FR_MAX_LOANS:
                     return {"ok": False,
-                            "error": "【金融回逆】本局借款次数已用完（%d/%d），拒绝执行"
-                                     % (_used, FR_MAX_LOANS)}
+                            "error": "【%s】本局借款次数已用完（%d/%d），拒绝执行"
+                                     % (SPECIAL_FR_NAME, _used, FR_MAX_LOANS)}
             # 上浮比例借款时才抽定：这是借款的代价，借前不预告。
-            # 未开启【金融回逆】：下限 +1%；开启后：下限 0%。
+            # 未开启【优惠融资】：下限 +1%；开启后：下限 0%。
             # v1.2.0：比例随「累计借款额」上升——借得越多，目标涨得越多。
             # 用梯形积分（本笔前后的占池比例取均值），因此拆单与一次借满等价：
             # 把 300 万拆成 10 笔各 30 万，付出的总上浮与一次借满完全相同，拆单省不到钱。
@@ -1788,7 +1793,7 @@ class Engine:
                 self.s.get("mods", {}).pop("loan_bump_lo", None)
             self._event("【借款】借入 %.0f Tokens（第 %d 笔%s，当前欠款 %.0f）；目标上浮 %+.0f（%+.1f%%）→ 新目标 %.0f" % (
                 amount, self.s["loan"]["loans"],
-                ("，金融回逆 %d/%d" % (_sp.get("fr_loans", 0), FR_MAX_LOANS)) if _fr else "",
+                ("，%s %d/%d" % (SPECIAL_FR_NAME, _sp.get("fr_loans", 0), FR_MAX_LOANS)) if _fr else "",
                 self.s["loan"]["balance"],
                 bump, pct * 100, self.s["target"]), "loan")
             # 只有把所持 Tokens 补回 0 以上，倒计时才终止；补不平就继续倒数到结束。
@@ -2758,9 +2763,9 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 ][:6],
                 "liquidity": {sym: round(self._liquidity(sym) / max(1.0, self._liq_base()), 3) for sym in PAIRS},
                 "total_borrowed": round(self.s["loan"]["borrowed"], 2),
-                # 【金融回逆】剩余秒数（墙钟，GUI 按秒刷新）；未生效为 None
+                # 【优惠融资】剩余秒数（墙钟，GUI 按秒刷新）；未生效为 None
                 "loan_bump_remain": self._loan_bump_remain(),
-                # 当前借款上浮区间的百分比 [下限, 上限]；平时 [1, 100]，金融回逆期间 [-20, 100]
+                # 当前借款上浮区间的百分比 [下限, 上限]；平时 [1, 100]，开启期间 [0, 100]
                 "loan_bump_range": [
                     round((FR_LO_BOUND if (self.s.get("special") or {}).get("fr")
                            else LOAN_BUMP_LO_DEFAULT) * 100, 2), 100.0],
@@ -2821,11 +2826,11 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             "初始资金": STARTER_CASH,
             "目标": "把权益做到 %.0f Tokens（每借一笔，目标会按该笔金额的随机 1%%~100%% 上浮）" % TARGET_EQUITY,
             "手数": "1 手 = %.0f 单位基础货币" % LOTS_SIZE,
-            "金融回逆": ("开局全局开关（非随机事件）：开启后整局借款上限 %d 次，"
-                        "目标上浮区间从 +1%%~+100%% 下探到 0%%~+100%%（只会抬高、不再减免）；"
+            SPECIAL_FR_NAME: ("开局全局开关（非随机事件）：开启后整局借款上限 %d 次，"
+                        "目标上浮区间从 +1%%~+100%% 下探到 0%%~+100%%（不含负值，只会抬高）；"
                         "开局免费，局内再开启需支付 %.0f 现金" % (FR_MAX_LOANS, SPECIAL_FEE)
                         ).replace("%%", "%"),
-            "老虎机": ("开局全局开关：开启后整局可投 %d 次，单次 1~%.0f 且不超过当前权益；"
+            SPECIAL_SLOT_NAME: ("开局全局开关：开启后整局可投 %d 次，单次 1~%.0f 且不超过当前权益；"
                        "80%% 无所得 / 15%% 返还 5 倍 / 5%% 返还 10 倍（期望返还 1.25 倍）；"
                        "中奖金额进入现金，同时目标按返还金额的 -5%%~100%% 上浮（最坏情况目标翻倍）；"
                        "开局免费，局内再开启需支付 %.0f 现金" % (
@@ -2861,7 +2866,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "POST /loan": {"amount": 100000},
                 "POST /repay": {"amount": 100000},
                 "POST /slot": {"amount": 1000},
-                "POST /special": {"name": "老虎机 或 金融回逆", "on": True},
+                "POST /special": {"name": "%s 或 %s" % (SPECIAL_SLOT_NAME, SPECIAL_FR_NAME), "on": True},
                 "POST /roll/stop": {},
                 "POST /quit": {},
                 "GET /prices": {},

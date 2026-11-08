@@ -89,7 +89,7 @@
 # 2. 非交互启动（不读 stdin，适合后台）
 set TM_TRADER=MyAgent
 set TM_EVENTS=1        # 随机事件
-set TM_FR=1            # 金融回逆（整局借款 2 次，目标区间 0%~100%）
+set TM_FR=1            # 优惠融资（整局借款 2 次，目标区间 0%~100%）
 set TM_SLOT=0          # 老虎机（整局 3 次，80% 空 / 15% 5 倍 / 5% 10 倍）
 python run.py
 ```
@@ -202,9 +202,9 @@ curl -X POST http://127.0.0.1:8734/roll/stop
   "total_borrowed": 0,
 
   "active_mods": ["央行放水"],          // 当前生效的事件名
-  "loan_bump_range": [1.0, 100.0],      // 借款上浮区间（%）：未开金融回逆 [1,100]，已开 [0,100]；实际值还取决于累计借款额
+  "loan_bump_range": [1.0, 100.0],      // 借款上浮区间（%）：未开优惠融资 [1,100]，已开 [0,100]；实际值还取决于累计借款额
   "special": {                          // 两个全局开关
-    "fr": true, "fr_left": 2,           // 金融回逆已开，还剩 2 次借款
+    "fr": true, "fr_left": 2,           // 优惠融资已开，还剩 2 次借款
     "slot": false, "slot_left": 3,      // 老虎机未开
     "slot_win": 0.0, "fr_lo_pct": -20.0 // 老虎机累计返还 / 借款下限（%）
   },
@@ -228,7 +228,7 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 1. **`equity` vs `target`** —— 还差多少
 2. **`margin_level`** —— 低于 100% 要补保证金，低于 50% 会被强平
 3. **`active_mods`** —— 现在有什么临时规则在改行情
-4. **`loan_bump_range`** —— 现在借钱是什么代价（`[1,100]` 正常，`[0,100]` 是金融回逆）
+4. **`loan_bump_range`** —— 现在借钱是什么代价（`[1,100]` 正常，`[0,100]` 是优惠融资）
 5. **`special`** —— 两个开关开没开、还剩几次（`fr_left` / `slot_left`）
 6. **`ff`** —— 快进额度对象：`remain` 是还能快进多少秒，`cool_left` 是冷却剩余，
    `can5` / `can3` 直接告诉你两个档位此刻能不能用

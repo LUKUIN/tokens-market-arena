@@ -23,7 +23,7 @@ python run.py
 ```
 
 The server listens on `127.0.0.1:8734`; the GUI is a read-only spectator. Startup order:
-player name → random events on/off → **Finance Reversal** switch → **Slot Machine** switch →
+player name → random events on/off → **Preferred Financing** switch → **Slot Machine** switch →
 server starts → difficulty draw (30 s, lock early with `POST /roll/stop`) → clock starts →
 the model trades over HTTP.
 
@@ -78,7 +78,7 @@ Tokens Trading Market | your name (ideal conditions) | Black Swan: low | Liquidi
 
 ---
 
-## Global switches: Finance Reversal and Slot Machine
+## Global switches: Preferred Financing and Slot Machine
 
 These are **not** random events. They are global switches chosen at the start, effective for the
 whole match, and they can be toggled mid-match.
@@ -86,13 +86,14 @@ whole match, and they can be toggled mid-match.
 - Enabling at start: **free**
 - Enabling mid-match: **costs 300,000 cash** (disabling is always free)
 
-### Finance Reversal
+### Preferred Financing
 
 When enabled:
 
 - At most **2 loans** per match (no per-loan cap, but the borrowing limit still applies)
-- Target-uplift range: `+1% ~ +100%` becomes `0% ~ +100%` (it only goes up, never down)
-- A negative draw **reduces** the target — borrowing can lower your goal
+- Target-uplift range: `+1% ~ +100%` becomes `0% ~ +100%` (**never negative**, it only goes up)
+- The uplift grows with cumulative borrowing: first 300k is about 4%-8%, a full 3M in one go is about 35%-66%
+- Splitting a loan into ten parts costs exactly the same as borrowing it all at once
 
 Example: target 2M, borrow 3M, draw −20% → new target = 2M − 0.6M = **1.4M**
 

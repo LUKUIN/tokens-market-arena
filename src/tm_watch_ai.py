@@ -113,6 +113,10 @@ def _apply_icon(win):
         pass
 
 # Fluent 配色
+# 两个全局开关的显示名：与 tm_engine.SPECIAL_FR_NAME / SPECIAL_SLOT_NAME 保持一致。
+# 观众席是独立进程、不 import 引擎，所以这里再声明一份，改名字要同时改两处。
+FR_NAME = "优惠融资"
+SLOT_NAME = "老虎机"
 BG = "#F3F3F3"
 CARD = "#FFFFFF"
 BORDER = "#E1E1E1"
@@ -264,7 +268,7 @@ class Watch:
         self._f_on = tkfont.Font(root=root, family=FONT[0], size=10, weight="bold")
         self._f_off = tkfont.Font(root=root, family=FONT[0], size=10, weight="bold",
                                   overstrike=1)
-        self.lbl_fr = tk.Label(topbar, text="金融回逆", font=self._f_off,
+        self.lbl_fr = tk.Label(topbar, text=FR_NAME, font=self._f_off,
                                bg=TOPBAR, fg="#D6DFEC")
         self.lbl_fr.pack(side="left", padx=(22, 0))
         self.lbl_slot = tk.Label(topbar, text="老虎机", font=self._f_off,
@@ -733,11 +737,11 @@ class Watch:
                 title += " | 难度抽选中…"
             self._base_title = title
             self.root.title(title)
-        # 【金融回逆】是不改目标就会长期吃钱的特殊事件，倒计时单独放标题栏（不占状态栏）
+        # 【优惠融资】开启后，倒计时单独放标题栏（不占状态栏）
         _lbr = st.get("loan_bump_remain")
         _bt = getattr(self, "_base_title", "")
         if _lbr:
-            self.root.title(_bt + " | 金融回逆 剩余 %d 秒" % int(_lbr + 0.999))
+            self.root.title(_bt + " | %s 剩余 %d 秒" % (FR_NAME, int(_lbr + 0.999)))
         elif _bt:
             self.root.title(_bt)
         # 全局开关状态（只在变化时重设字体，避免每次刷新都动控件）
@@ -849,7 +853,7 @@ class Watch:
                 _rm2 = float(_f2.get("remain") or 0)
                 _pr["ff"].config(
                     text=_fmt_ff(_rm2))
-                _on = [n for n, v in (("金融回逆", sp.get("fr")), ("老虎机", sp.get("slot"))) if v]
+                _on = [n for n, v in ((FR_NAME, sp.get("fr")), (SLOT_NAME, sp.get("slot"))) if v]
                 _pr["special"].config(text="、".join(_on) if _on else "无")
             except Exception as exc:
                 sys.stderr.write("panel rows: %r\n" % (exc,))

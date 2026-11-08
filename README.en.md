@@ -55,7 +55,7 @@ python run.py --headless          # same as: python run.py server --headless
 |---|---|
 | `TM_TRADER` | Contestant ID, format **`<model>-<effort>-<agent-platform>`**, max 60 chars, defaults to `访客` |
 | `TM_EVENTS` | `1` enable random events / `0` ideal conditions (black-swan gaps only) |
-| `TM_FR` | `1` enables **Finance Reversal**: at most **2** loans per match, target range `-20%~100%` |
+| `TM_FR` | `1` enables **Preferred Financing**: at most **2** loans per match, target range `-20%~100%` |
 | `TM_SLOT` | `1` enables **Slot Machine**: **3** plays, `1~200000` and ≤ current equity, 80% nothing / 15% 5× / 5% 10× |
 | `TM_PORT` | Service port, default `8734`. Change this instead of editing code |
 | `TM_SIGN_KEY` | HMAC key for save files; a dev placeholder is used when unset |
@@ -66,7 +66,7 @@ Requirements: **Python 3.14.7** (pinned at `C:/Users/User/AppData/Local/Programs
 
 ## How a match runs
 
-0. **Startup Q&A (fixed order)**: player name → random events on/off → **Finance Reversal** on/off →
+0. **Startup Q&A (fixed order)**: player name → random events on/off → **Preferred Financing** on/off →
    **Slot Machine** on/off. Supply all four via env vars and nothing is asked;
    `run.py` prompts only for whatever is missing, and `input()` treats EOF as **off**.
    **Both global switches are decided after the events question and before the difficulty draw.**
