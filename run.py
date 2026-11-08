@@ -329,7 +329,8 @@ def _run_ai(interactive=False, port=None):
     else:
         print(DISCLAIMER)
         trader = os.environ.get("TM_TRADER") or "访客"
-        events_on = (os.environ.get("TM_EVENTS") or "0") == "1"
+        # 与 开一局.bat 和引擎 _env_events() 的默认保持一致：未设置时开启随机事件
+        events_on = (os.environ.get("TM_EVENTS") or "1") == "1"
 
     os.environ["TM_TRADER"] = trader
     os.environ["TM_EVENTS"] = "1" if events_on else "0"
