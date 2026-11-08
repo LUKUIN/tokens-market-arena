@@ -232,7 +232,7 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.2.0"   # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.1"   # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -418,7 +418,7 @@ def _new_session(seed=None, apply_rng=True):
             "slot": _env_flag("TM_SLOT"),   # Slot Machine: enabled free at start
             "fr_loans": 0,                  # loans taken since enabling (cap FR_MAX_LOANS)
             "fr_paid": 0.0,                 # total paid for mid-match enabling
-            "slot_paid": 0.0,
+            "slot_paid": 0.0,               # total slot stake (cost attribution only)
             "slot_plays": 0,                # plays used
             "slot_win": 0.0,                # total slot winnings (drives the target lift)
             "slot_history": [],
@@ -429,6 +429,19 @@ def _new_session(seed=None, apply_rng=True):
         "begun": False,
         "last_notice_mark": 0,
     }
+
+
+def _mod_label(key, val):
+    """Render one active_mods entry as the human-readable part of the modifier."""
+    if key == "slip_add":
+        return "slippage +%.2f%%" % (val * 100)
+    if key == "leverage_cap":
+        return "leverage cap %d" % int(val)
+    tpl = {"spread_mult": "spread x%.1f", "vol_mult": "volatility x%.1f",
+           "margin_mult": "margin x%.1f", "fee_mult": "commission x%.1f",
+           "swap_mult": "interest x%.1f", "loan_pool_mult": "loan pool x%.2f",
+           "gap_mult": "gap x%.1f"}.get(key)
+    return (tpl % val) if tpl else key
 
 
 class Engine:
@@ -1683,6 +1696,7 @@ class Engine:
             if stake > eq:
                 return {"ok": False, "error": "Stake cannot exceed current equity (%.2f)" % eq}
             self.s["balance"] -= stake
+            sp["slot_paid"] = float(sp.get("slot_paid", 0.0)) + stake
             sp["slot_plays"] = played + 1
             r = random.random()
             if r < SLOT_P_LOSE:
@@ -2222,7 +2236,7 @@ class Engine:
             import re as _re
             m = self._metrics(final_eq)
             fmt = lambda v: "{:,.2f}".format(v)
-            trader = _re.sub(r"[^\w\u4e00-\u9fa5-]", "", self.s.get("trader", "visitor"))[:32] or "visitor"
+            trader = _re.sub(r"[^\w\u4e00-\u9fa5-]", "", self.s.get("trader", "visitor"))[:60] or "visitor"
             now = datetime.datetime.now()
             stamp = now.strftime("%Y%m%d-%H%M%S")
             dur = max(0, int(self._elapsed()))
@@ -2361,13 +2375,17 @@ class Engine:
             _fees_c = float(m.get("fees") or 0.0)
             _swap_c = float(m.get("swap") or 0.0)
             _slot_win = float((self.s.get("special") or {}).get("slot_win") or 0.0)
-            _gross = float(pnl) + _slip_c + _spread_c + _fees_c + _swap_c - _slot_win
+            _slot_paid = float((self.s.get("special") or {}).get("slot_paid") or 0.0)
+            # Gross PnL keeps direction and gaps only: strip both the slot stake and the payout
+            _gross = (float(pnl) + _slip_c + _spread_c + _fees_c + _swap_c
+                      - _slot_win + _slot_paid)
             _attr_rows = [
                 ("Direction and gaps (gross P&L)", _gross, ""),
                 ("└ Slippage cost", -_slip_c, "down" if _slip_c > 0 else ""),
                 ("└ Spread cost", -_spread_c, "down" if _spread_c > 0 else ""),
                 ("└ Commission", -_fees_c, "down" if _fees_c > 0 else ""),
                 ("└ Overnight interest", -_swap_c, "down" if _swap_c > 0 else ""),
+                ("|- Slot Machine stakes", -_slot_paid, "down" if _slot_paid > 0 else ""),
                 ("Slot Machine payouts", _slot_win, "up" if _slot_win > 0 else ""),
                 ("Net P&L", float(pnl), "up" if pnl >= 0 else "down"),
             ]
@@ -2720,20 +2738,14 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "base_target": TARGET_EQUITY,
                 "margin_level": round(ml * 100, 2) if ml is not None else None,
                 "active_mods": [
-                    # Show the triggering event's name first (e.g. central-bank easing), fall back to the modifier text only when there is no source
-                    (v[2] if len(v) > 2 and v[2] else
-                     {"spread_mult": "spread x%.1f" % v[0],
-                      "vol_mult": "volatility x%.1f" % v[0],
-                      "margin_mult": "margin x%.1f" % v[0],
-                      "fee_mult": "commission x%.1f" % v[0],
-                      "swap_mult": "interest x%.1f" % v[0],
-                      "slip_add": "slippage +%.2f%%" % (v[0] * 100),
-                      "leverage_cap": "leverage cap %d" % int(v[0]),
-                      "loan_pool_mult": "loan pool x%.2f" % v[0],
-                      "gap_mult": "gap x%.1f" % v[0]}.get(k, k))
+                    # Event name + value + remaining ticks: a name alone cannot price the modifier
+                    {"key": k,
+                     "name": (v[2] if len(v) > 2 and v[2] else k),
+                     "value": round(float(v[0]), 4),
+                     "label": _mod_label(k, v[0]),
+                     "left_ticks": max(0, int(v[1]) - self.s["tick"])}
                     for k, v in (self.s.get("mods") or {}).items() if self.s["tick"] < v[1]
-                ][:4],
-                "liquidity": {sym: round(self._liquidity(sym) / max(1.0, self._liq_base()), 3) for sym in PAIRS},
+                ][:6],                "liquidity": {sym: round(self._liquidity(sym) / max(1.0, self._liq_base()), 3) for sym in PAIRS},
                 "total_borrowed": round(self.s["loan"]["borrowed"], 2),
                 # [Finance Reversal] seconds left (wall clock, GUI refreshes per second); None when inactive
                 "loan_bump_remain": self._loan_bump_remain(),
@@ -2768,7 +2780,12 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                     "rate_pct": LOAN_RATE_PER_TICK * 100,
                 },
                 "special": self.special_state(),
-                "seed": self.s.get("seed"),
+                # D: hide the seed mid-match (no seed-based rehearsal), reveal after settlement
+                "seed": (self.s.get("seed") if self.s.get("finished") else None),
+                # C1: how many spectator replies are still unread (no body, just the count)
+                "assist_unread": sum(
+                    1 for x in (self.s.get("assist") or [])
+                    if x.get("who") == "human" and not x.get("read")),
                 "blowups": self.s["blowups"],
                 "margin_calls": self.s["margin_calls"],
                 "total_fees": round(self.s["total_fees"], 2),
@@ -2832,8 +2849,20 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "POST /special": {"name": "Slot Machine or Finance Reversal", "on": True},
                 "POST /roll/stop": {},
                 "POST /quit": {},
+                "GET /prices": {},
+                "GET /assist/inbox": {},
                 "POST /assist/ask": {"text": "what you want the spectators to look at"},
+                "GET /roll/state": {},
+                "POST /roll/start": {},
+                "GET /scratchpad": {},
+                "POST /scratchpad": {"text": "one entry", "clear": "true clears it"},
+                "POST /begin": {},
             },
+            "Assist replies": ("Spectator replies never show up in the /state event feed; "
+                               "pull them with GET /assist/inbox. Fetching marks them read. "
+                               "POST /assist/ask only works while you still have requests left"),
+            "Scratchpad": ("During a match src/*.py has been sealed into non-executable decoys, "
+                           "so use GET/POST /scratchpad and never run any .py file from the repo"),
             "Saving tokens": "GET /state?history=0 omits price_history (up to 2000 points per pair); use it when you only need the board",
             "Closing": "lots on POST /close is optional (closes the whole pair); passing more than you hold closes what you hold without an error",
             "Calling it a day": "POST /quit settles normally - no penalty, no abnormal-exit mark; ending early when you are unhappy with the result is a safe option, not a forfeit",

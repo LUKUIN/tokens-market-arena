@@ -4,7 +4,7 @@
 This build is the version for large-model contestants:
     · The GUI has only a **read-only spectator stand** for humans to watch; no investment panel, no open-position button, no fast-forward button
     · Every contestant operates through the HTTP API: /open /close /close_all /loan /repay /fastforward /quit
-    · It additionally provides a hidden "scratchpad terminal" (scratchpad.py) where a model can record its reasoning during a match
+    · It additionally provides a hidden "scratchpad terminal" (POST /scratchpad) where a model can record its reasoning during a match
 
 It is **not compatible with, and cannot be mixed with**, the human edition (TokensMarket-OpenSource-Human):
 the human edition has a full interactive GUI; the AI edition does not.
@@ -93,10 +93,13 @@ SCRATCHPAD_HINT = """
   It does not affect the match; it only gives you somewhere to write down your read and your plan;
   spectators can see what you wrote at any time through "AI Notes" in the top-right of the spectator stand, and it is merged into the HTML report after the match:
 
-    python src/scratchpad.py "AURA is 8% off its mean, preparing to short"
-    python src/scratchpad.py --list     show everything recorded this match
-    python src/scratchpad.py --count    show the entry count only
-    python src/scratchpad.py --clear    clear it
+    POST /scratchpad   {"text": "AURA is 8% off its mean, preparing to short"}
+    GET  /scratchpad?count=1                                    show the entry count only
+    GET  /scratchpad                                            show everything recorded
+    POST /scratchpad   {"clear": true}                          clear it
+
+  Note: during a match src/*.py has been sealed into non-executable decoys,
+  so use the HTTP endpoints above and never run any .py file from the repo.
 
   The scratchpad shares the game process lifetime and is cleared automatically on settlement/reset.
 --------------------------------------------------------------

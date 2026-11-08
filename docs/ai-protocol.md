@@ -339,3 +339,7 @@ POST /assist/reject   {"ticket": "a1"}                    # spectators decline
 
 Set `TM_ASSIST=1` before starting to enable it for free. Asking does not block: `/assist/ask`
 returns at once and the contestant polls `/assist/inbox` on its own schedule.
+
+**Replies never enter the `/state` event feed.** Polling only `/state` means never seeing
+the answer -- `/state` carries just `assist_unread` (the unread count); the text itself needs
+`GET /assist/inbox`. Fetching marks them read; unread ones stay queued.
