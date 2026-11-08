@@ -232,7 +232,7 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.2.0"   # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.1"   # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs 与文档口径。
 
@@ -424,6 +424,19 @@ def _new_session(seed=None, apply_rng=True):
         "begun": False,
         "last_notice_mark": 0,
     }
+
+
+def _mod_label(key, val):
+    """把 active_mods 的一项渲染成人类可读的修饰描述（数值部分）。"""
+    if key == "slip_add":
+        return "滑点+%.2f%%" % (val * 100)
+    if key == "leverage_cap":
+        return "杠杆上限%d" % int(val)
+    tpl = {"spread_mult": "点差×%.1f", "vol_mult": "波动×%.1f",
+           "margin_mult": "保证金×%.1f", "fee_mult": "手续费×%.1f",
+           "swap_mult": "利息×%.1f", "loan_pool_mult": "贷款池×%.2f",
+           "gap_mult": "跳空×%.1f"}.get(key)
+    return (tpl % val) if tpl else key
 
 
 class Engine:
@@ -2563,20 +2576,14 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "base_target": TARGET_EQUITY,
                 "margin_level": round(ml * 100, 2) if ml is not None else None,
                 "active_mods": [
-                    # 优先显示触发它的事件名（如「央行放水」），没有来源才回退到修饰描述
-                    (v[2] if len(v) > 2 and v[2] else
-                     {"spread_mult": "点差×%.1f" % v[0],
-                      "vol_mult": "波动×%.1f" % v[0],
-                      "margin_mult": "保证金×%.1f" % v[0],
-                      "fee_mult": "手续费×%.1f" % v[0],
-                      "swap_mult": "利息×%.1f" % v[0],
-                      "slip_add": "滑点+%.2f%%" % (v[0] * 100),
-                      "leverage_cap": "杠杆上限%d" % int(v[0]),
-                      "loan_pool_mult": "贷款池×%.2f" % v[0],
-                      "gap_mult": "跳空×%.1f" % v[0]}.get(k, k))
+                    # 事件名 + 数值 + 剩余 tick 三样都给：只给名字算不出成本
+                    {"key": k,
+                     "name": (v[2] if len(v) > 2 and v[2] else k),
+                     "value": round(float(v[0]), 4),
+                     "label": _mod_label(k, v[0]),
+                     "left_ticks": max(0, int(v[1]) - self.s["tick"])}
                     for k, v in (self.s.get("mods") or {}).items() if self.s["tick"] < v[1]
-                ][:4],
-                "liquidity": {sym: round(self._liquidity(sym) / max(1.0, self._liq_base()), 3) for sym in PAIRS},
+                ][:6],                "liquidity": {sym: round(self._liquidity(sym) / max(1.0, self._liq_base()), 3) for sym in PAIRS},
                 "total_borrowed": round(self.s["loan"]["borrowed"], 2),
                 # 【金融回逆】剩余秒数（墙钟，GUI 按秒刷新）；未生效为 None
                 "loan_bump_remain": self._loan_bump_remain(),
@@ -2611,7 +2618,12 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                     "rate_pct": LOAN_RATE_PER_TICK * 100,
                 },
                 "special": self.special_state(),
-                "seed": self.s.get("seed"),
+                # D：对局中不暴露 seed，结算后才给
+                "seed": (self.s.get("seed") if self.s.get("finished") else None),
+                # C1：未读的观众席回复条数
+                "assist_unread": sum(
+                    1 for x in (self.s.get("assist") or [])
+                    if x.get("who") == "human" and not x.get("read")),
                 "blowups": self.s["blowups"],
                 "margin_calls": self.s["margin_calls"],
                 "total_fees": round(self.s["total_fees"], 2),
@@ -2661,7 +2673,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             "流动性枯竭": "某品种发生跳空的 tick，该品种点差放大 %.0f 倍" % GAP_SPREAD_MULT,
             "黑天鹅": "每 tick %.1f%% 概率出现 %.0f%%-%.0f%% 跳空" % (GAP_CHANCE * 100, GAP_MIN * 100, GAP_MAX * 100),
             "手续费": "名义价值 %.3f%% / 次" % (FEE_RATE * 100),
-            "贷款": "贷款池 %.0f Tokens（可能被「信贷紧缩 / 央行放水」临时缩放）；利率 %.2f%%/tick（%s）；每借一笔：总目标 = 原目标 + 该笔金额 × 随机比例（比例随借款额上升，借 30 万约 7%%~13%%，借满约 70%%~100%%，借完才定）" % (
+            "贷款": "贷款池 %.0f Tokens（可能被「信贷紧缩 / 央行放水」临时缩放）；利率 %.2f%%/tick（%s）；每借一笔：总目标 = 原目标 + 该笔金额 × 随机比例（比例随累计借款额上升，首借 30 万约 4%%~8%%，一次借满约 35%%~66%%；按累计额做梯形积分，拆成十笔与一次借满等价）" % (
                 LOAN_POOL, LOAN_RATE_PER_TICK * 100, "随借随还，到期强制清算"),
             "会话时长": "%d 分钟" % SESSION_MINUTES,
             "tick 间隔": "%d 秒" % TICK_SECONDS,
@@ -2679,7 +2691,14 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "POST /special": {"name": "老虎机 或 金融回逆", "on": True},
                 "POST /roll/stop": {},
                 "POST /quit": {},
+                "GET /prices": {},
+                "GET /assist/inbox": {},
                 "POST /assist/ask": {"text": "需要观众席帮忙看的内容"},
+                "GET /roll/state": {},
+                "POST /roll/start": {},
+                "GET /scratchpad": {},
+                "POST /scratchpad": {"text": "记一条", "clear": "传 true 则清空"},
+                "POST /begin": {},
             },
             "查询省 token": "GET /state?history=0 不返回 price_history（每品种最多 2000 点）；只要局面时用它，别整包拉",
             "平仓": "POST /close 的 lots 可省略（全平该品种）；给多了按实际持仓全平，不报错",
