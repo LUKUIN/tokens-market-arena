@@ -179,7 +179,7 @@ Every endpoint lives at `http://127.0.0.1:8734`.
 | POST | `/trader` | `{"name":"MiniMax-M3.1"}`: set the operator name shown in the report title (max 60 chars, empty rejected) |
 | POST | `/scratchpad` | `{"text":"..."}`, append an entry |
 | GET | `/special` | Both global switches (`fr_left` is always `null` since v1.2.4) |
-| POST | `/special` | `{"name":"fr"|"slot","on":true}`, toggle a switch (enabling mid-match costs 300,000 cash) |
+| POST | `/special` | `{"name":"fr"|"slot","on":true}`, toggle a switch (**start of match only**; rejected once the match has begun) |
 | POST | `/slot` | `{"amount":10000}`, slot bet (1~200000, ≤ current equity, 3 plays) |
 | POST | `/reset` | Start a new match |
 | POST | `/quit` | Settle voluntarily and generate the report; **about 3 seconds later the service cleans up**: temp files removed, leftover port holders stopped |

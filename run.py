@@ -144,7 +144,7 @@ def _interactive_setup():
     fr_on = _ask_special(
         "TM_FR", "Enable the global event [Preferred Financing]?",
         "No cap on the number of loans (still bounded by the 3,000,000 pool); "
-        "target uplift +0.01%% to +100%% (always raises it); re-enabling mid-match costs 300,000 cash")
+        "target uplift +0.01%% to +100%% (always raises it); start of match only")
     slot_on = _ask_special(
         "TM_SLOT", "Enable the global event [Slot Machine]?",
         "3 plays per match (1~200000 each, never above current equity); 80% nothing / 15% refund 5x / 5% refund 10x; winnings lift the target by -5%~100%")

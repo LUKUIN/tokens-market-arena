@@ -207,7 +207,6 @@ FR_LO_BOUND = 0.0001          # lower bound with Preferred Financing (0.01%): a 
 SPECIAL_FR_NAME = "Preferred Financing"   # public label of the fr switch (rename here only)
 SPECIAL_SLOT_NAME = "Slot Machine"        # public label of the slot switch
 LOAN_BUMP_LO_DEFAULT = 0.01   # lower bound when it is off (+1%)
-SPECIAL_FEE = 300_000.0       # cost of enabling a global switch mid-match
 SLOT_MAX_PLAYS = 3            # plays per match
 SLOT_MIN_STAKE = 1.0          # minimum stake
 SLOT_MAX_STAKE = 200_000.0    # maximum stake
@@ -233,7 +232,7 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.2.5"   # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.6"   # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -418,7 +417,7 @@ def _new_session(seed=None, apply_rng=True):
             "fr": _env_flag("TM_FR"),       # Preferred Financing: enabled free at start
             "slot": _env_flag("TM_SLOT"),   # Slot Machine: enabled free at start
             "fr_loans": 0,                  # loans taken since enabling (stat only)
-            "fr_paid": 0.0,                 # total paid for mid-match enabling
+            "fr_paid": 0.0,                 # legacy field: always 0 since v1.2.6 (mid-match enabling removed)
             "slot_paid": 0.0,               # total slot stake (cost attribution only)
             "slot_plays": 0,                # plays used
             "slot_win": 0.0,                # total slot winnings (drives the target lift)
@@ -1268,6 +1267,7 @@ class Engine:
                 self._event("Time up: final equity %.2f Tokens (%s: target %.0f)" % (eq, verdict, self.s["target"]), "end")
                 self._save()
                 self._write_report("Time up", eq)
+                self._clear_running()         # time up is a normal settlement too: do not let the next run count it as an abnormal exit
                 # Ended is ended: time up means no auto restart either; wait for an explicit POST /reset
                 purge_agent_dir(self.home)    # keep the original cleanup of this match's _agent leftovers
                 return self.state()
@@ -1623,7 +1623,7 @@ class Engine:
     def set_special(self, name, on):
         """Run-wide switches: Preferred Financing / Slot Machine.
 
-        Free at start (before begin or while still paused); enabling mid-run costs SPECIAL_FEE in cash.
+        Can only be set before the match starts (before begin or while still paused).
         Disabling is always free, and setting the same state twice is not charged.
         """
         with LOCK:
@@ -1644,26 +1644,19 @@ class Engine:
             if bool(sp.get(field)) == on:
                 return {"ok": True, "changed": False,
                         "special": self.special_state(), "state": self._state_light()}
-            fee = 0.0
             if on:
                 pre_game = bool(self.s.get("paused")) or not self.s.get("begun")
                 if not pre_game:
-                    fee = SPECIAL_FEE
-                    if self.s["balance"] < fee:
-                        return {"ok": False,
-                                "error": "Enable failed: enabling mid-run costs %.0f cash and current cash %.0f is not enough"
-                                         % (fee, self.s["balance"])}
-                    self.s["balance"] -= fee
-                    sp["%s_paid" % field] = float(sp.get("%s_paid" % field, 0.0)) + fee
+                    return {"ok": False,
+                            "error": "%s can only be enabled before the match starts"
+                                     % (SPECIAL_FR_NAME if field == "fr" else SPECIAL_SLOT_NAME)}
             sp[field] = on
             if field == "fr":
                 self.s.get("mods", {}).pop("loan_bump_lo", None)
             label = SPECIAL_FR_NAME if field == "fr" else SPECIAL_SLOT_NAME
-            self._event("[Global event] %s is now %s%s" % (
-                label, "on" if on else "off",
-                (" (paid %.0f cash)" % fee) if fee > 0 else ""), "news")
+            self._event("[Global event] %s is now %s" % (label, "on" if on else "off"), "news")
             self._save()
-            return {"ok": True, "changed": True, "fee": fee,
+            return {"ok": True, "changed": True, "fee": 0.0,
                     "special": self.special_state(), "state": self._state_light()}
 
     def slot(self, amount):
@@ -2671,6 +2664,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             _purge_data_dir(self.home)         # clear everything under data/ except reports/
             self._save()
             purge_agent_dir(self.home)
+            self._mark_running()               # the purge above also removed .running; put it back for the new run
             return {"ok": True, "state": self._state_light(), "resets": n}
 
     # ---------------- views ----------------
@@ -2810,10 +2804,10 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                        "the share grows with cumulative borrowing, see \"%s\" for the exact range)"
                        % (TARGET_EQUITY, SPECIAL_FR_NAME)),
             "Lots": "1 lot = %.0f units of base currency" % LOTS_SIZE,
-            SPECIAL_FR_NAME: ("Run-wide switch (not a random event): once on, loans are unlimited (still bounded by the %.1fM pool) and the target uplift range shifts from +1%%~+100%% to +0.01%%~+100%% (it always goes up, never reduces the target; minimum 0.01%%); free at start, enabling mid-run costs %.0f cash" % (LOAN_POOL / 1000000.0, SPECIAL_FEE)
+            SPECIAL_FR_NAME: ("Run-wide switch (not a random event): once on, loans are unlimited (still bounded by the %.1fM pool) and the target uplift range shifts from +1%%~+100%% to +0.01%%~+100%% (it always goes up, never reduces the target; minimum 0.01%%); can only be enabled before the match starts" % (LOAN_POOL / 1000000.0)
                         ).replace("%%", "%"),
-            "Slot Machine": ("Run-wide switch: once on, %d plays per run, each 1~%.0f and never above current equity; 80%% nothing / 15%% 5x / 5%% 10x (expected return 1.25x); the payout goes to cash while the target rises by -5%%~100%% of that payout (worst case the target doubles); free at start, enabling mid-run costs %.0f cash" % (
-                           SLOT_MAX_PLAYS, SLOT_MAX_STAKE, SPECIAL_FEE)
+            "Slot Machine": ("Run-wide switch: once on, %d plays per run, each 1~%.0f and never above current equity; 80%% nothing / 15%% 5x / 5%% 10x (expected return 1.25x); the payout goes to cash while the target rises by -5%%~100%% of that payout (worst case the target doubles); can only be enabled before the match starts" % (
+                           SLOT_MAX_PLAYS, SLOT_MAX_STAKE)
                        ).replace("%%", "%"),
             "Leverage": "Selectable %d - %d x (the cap can be temporarily lowered by events; trust the error message)" % (MIN_LEVERAGE, MAX_LEVERAGE),
             "Dynamic modifiers": ("Leverage cap, fees, spread, overnight swap, gap chance and the loan pool can all be"

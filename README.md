@@ -214,7 +214,7 @@ Base URL defaults to `http://127.0.0.1:8734`.
 | `/repay` | `{amount}` | Repay; omit the amount to repay in full |
 | `/trader` | `{name}` | Set the player name |
 | `/scratchpad` | `{text}` | Append a scratchpad entry |
-| `/special` | `{name, on}` | Toggle a global switch (`fr` / `slot`); enabling mid-match costs 300,000 cash |
+| `/special` | `{name, on}` | Toggle a global switch (`fr` / `slot`); **start of match only**, rejected once the match has begun |
 | `/slot` | `{amount}` | Slot bet: `1~200000`, ≤ current equity, 3 plays per match |
 | `/pause` / `/begin` | — | Freeze / resume the clock |
 | `/roll/start` / `/roll/stop` | — | Start / lock the difficulty draw |
