@@ -988,7 +988,7 @@ class Watch:
         info.pack(fill="x", padx=24, pady=(10, 4))
         tk.Label(info, text="可借额度  %s" % ("{:,.0f}".format(limit_) if limit_ > 0 else "—"),
                  bg=CARD, fg=TEXT, font=FONT).pack(anchor="w", padx=16, pady=(10, 2))
-        tk.Label(info, text="借款会补上现金、同时增加欠款，净值不变——它买的是继续下注的保证金。每借一笔：总目标 = 原目标 + 该笔金额 × 随机比例（1%~100%，借完才定）。",
+        tk.Label(info, text="借款会补上现金、同时增加欠款，净值不变——它买的是继续下注的保证金。每借一笔：总目标 = 原目标 + 该笔金额 × 比例（1%~100%，随累计借款额上升，借越多比例越高，借完才定）。",
                  bg=CARD, fg=MUTED, font=FONT_SMALL).pack(anchor="w", padx=16, pady=(0, 10))
 
         bar = tk.Frame(win, bg=BG)
@@ -2133,7 +2133,7 @@ class Watch:
             self._tp_say("金额必须大于 0", RED)
             return
         # 只讲清机制与范围，不预告本次抽到的比例——随机加成是借款的代价
-        if not _ask_yesno(self.root, "确认借款", '借入 %s Tokens？\n\n⚠ 代价：总目标 = 原目标 + 本笔金额 × 随机比例（1%%~100%%），\n   比例借完才抽定，借前无法预知。\n\n这不是免费资金，是拿更难的目标换来的续命机会。\n\n确定？' % "{:,.0f}".format(amt)):
+        if not _ask_yesno(self.root, "确认借款", '借入 %s Tokens？\n\n⚠ 代价：总目标 = 原目标 + 本笔金额 × 比例（1%%~100%%），\n   比例随累计借款额上升（借得越多越高），借完才抽定，借前无法预知。\n\n这不是免费资金，是拿更难的目标换来的续命机会。\n\n确定？' % "{:,.0f}".format(amt)):
             return
         try:
             r = post("/loan", {"amount": amt})
