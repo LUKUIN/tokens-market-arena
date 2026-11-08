@@ -167,7 +167,7 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 | POST | `/pause` | 冻结（**只在开局前有效，之后一律拒绝**） |
 | POST | `/trader` | `{"name":"MiniMax-M3.1"}`：设置操作者名，进报告标题（最长 60 字符，空名拒绝） |
 | POST | `/scratchpad` | `{"text":"..."}`，写草稿纸 |
-| GET | `/special` | 两个全局开关状态 + 剩余次数 |
+| GET | `/special` | 两个全局开关状态（`fr_left` 自 v1.2.4 恒为 `null`） |
 | POST | `/special` | `{"name":"fr"或"slot","on":true}`，切换开关（局内开启扣 30 万现金） |
 | POST | `/slot` | `{"amount":10000}`，老虎机下注（1~200000，≤当前权益，整局 3 次） |
 | POST | `/reset` | 开新一局 |
@@ -229,7 +229,7 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 2. **`margin_level`** —— 低于 100% 要补保证金，低于 50% 会被强平
 3. **`active_mods`** —— 现在有什么临时规则在改行情
 4. **`loan_bump_range`** —— 现在借钱是什么代价（`[1,100]` 正常，`[0.01,100]` 是优惠融资）
-5. **`special`** —— 两个开关开没开、还剩几次（`fr_left` / `slot_left`）
+5. **`special`** —— 两个开关开没开；`slot_left` 是老虎机剩余次数，`fr_left` 自 v1.2.4 取消借款次数上限后恒为 `null`（字段保留兼容）
 6. **`ff`** —— 快进额度对象：`remain` 是还能快进多少秒，`cool_left` 是冷却剩余，
    `can5` / `can3` 直接告诉你两个档位此刻能不能用
 7. **`events`** —— 最近发生了什么（**完整中文文案，不需要额外查文档**）

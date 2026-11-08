@@ -101,7 +101,7 @@ Every endpoint lives at `http://127.0.0.1:8734`.
 | POST | `/pause` | Freeze (**only valid before the match starts; afterwards always rejected**) |
 | POST | `/trader` | `{"name":"MiniMax-M3.1"}`: set the operator name shown in the report title (max 60 chars, empty rejected) |
 | POST | `/scratchpad` | `{"text":"..."}`, append an entry |
-| GET | `/special` | Both global switches plus remaining uses |
+| GET | `/special` | Both global switches (`fr_left` is always `null` since v1.2.4) |
 | POST | `/special` | `{"name":"fr"|"slot","on":true}`, toggle a switch (enabling mid-match costs 300,000 cash) |
 | POST | `/slot` | `{"amount":10000}`, slot bet (1~200000, ≤ current equity, 3 plays) |
 | POST | `/reset` | Start a new match |
@@ -164,7 +164,7 @@ Every endpoint lives at `http://127.0.0.1:8734`.
 2. **`margin_level`** — below 100% you need more margin, below 50% you get liquidated
 3. **`active_mods`** — which temporary rules are currently moving prices
 4. **`loan_bump_range`** — the current cost of borrowing (`[1,100]` normal, `[0.01,100]` Preferred Financing)
-5. **`special`** — whether the switches are on and how many uses remain (`fr_left` / `slot_left`)
+5. **`special`** — whether the switches are on; `slot_left` is the remaining slot plays, while `fr_left` is always `null` since v1.2.4 removed the loan-count cap (field kept for compatibility)
 6. **`ff`** — the fast-forward budget object: `remain` is seconds left, `cool_left` is the remaining cooldown,
    and `can5` / `can3` tell you straight away whether each step is usable right now
 7. **`events`** — what just happened (**full text, no need to consult the docs**)

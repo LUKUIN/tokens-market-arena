@@ -182,7 +182,7 @@ AI 每发一次求助（`POST /assist/ask`），屏幕正中会弹一个**系统
 | `/prices` | 报价表 |
 | `/roll/state` | 盲盒倒计时与当前定格结果 |
 | `/scratchpad` | 本局草稿纸全部条目 |
-| `/special` | 两个全局开关状态 + 剩余次数（`fr`/`slot`/`fr_left`/`slot_left`/`slot_win`） |
+| `/special` | 两个全局开关状态（`fr`/`slot`/`slot_left`/`slot_win`；`fr_left` 自 v1.2.4 恒为 `null`） |
 
 ### POST（JSON body）
 

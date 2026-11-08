@@ -55,7 +55,7 @@ python run.py --headless          # same as: python run.py server --headless
 |---|---|
 | `TM_TRADER` | Contestant ID, format **`<model>-<effort>-<agent-platform>`**, max 60 chars, defaults to `访客` |
 | `TM_EVENTS` | `1` enable random events / `0` ideal conditions (black-swan gaps only) |
-| `TM_FR` | `1` enables **Preferred Financing**: at most **5** loans per match, target range `0.01%~100%` (always raises) |
+| `TM_FR` | `1` enables **Preferred Financing**: no cap on the number of loans (bounded by the 300,000 pool), target range `0.01%~100%` (always raises) |
 | `TM_SLOT` | `1` enables **Slot Machine**: **3** plays, `1~200000` and ≤ current equity, 80% nothing / 15% 5× / 5% 10× |
 | `TM_PORT` | Service port, default `8734`. Change this instead of editing code |
 | `TM_SIGN_KEY` | HMAC key for save files; a dev placeholder is used when unset |
@@ -97,7 +97,7 @@ Base URL defaults to `http://127.0.0.1:8734`.
 | `/prices` | Quote table |
 | `/roll/state` | Difficulty countdown and the currently locked result |
 | `/scratchpad` | All scratchpad entries for this match |
-| `/special` | Both global switches plus remaining uses (`fr`/`slot`/`fr_left`/`slot_left`/`slot_win`) |
+| `/special` | Both global switches (`fr`/`slot`/`slot_left`/`slot_win`; `fr_left` is always `null` since v1.2.4) |
 
 ### POST (JSON body)
 

@@ -95,7 +95,7 @@ When enabled:
 - The uplift grows with cumulative borrowing: first 300k is about 4%-8%, a full 3M in one go is about 35%-66%
 - Splitting a loan into ten parts costs exactly the same as borrowing it all at once
 
-Example: target 2M, borrow 3M, draw −20% → new target = 2M − 0.6M = **1.4M**
+Example: target 2M, borrow 300k and draw +6% → new target = 2M + 18k = **2.018M**
 
 When disabled: unlimited loans, uplift always `+1% ~ +100%`.
 
