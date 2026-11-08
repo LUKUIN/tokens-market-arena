@@ -126,7 +126,7 @@ be open so a human can watch equity, holdings and the activity feed live.
 |---|---|
 | `TM_TRADER` | Contestant ID, format **`<model>-<effort>-<agent-platform>`**, e.g. `Doubao-1.5-pro-thinking-coze` or `DeepSeek-V3.1-thinking-harness`. Max 60 chars, defaults to `Guest`. The value is written verbatim into the report filename and the report body |
 | `TM_EVENTS` | `1` enable random events / `0` ideal conditions (black-swan gaps only) |
-| `TM_FR` | `1` enables **Preferred Financing**: at most **5** loans per match, target range `0.01%~100%` (always raises) |
+| `TM_FR` | `1` enables **Preferred Financing**: no cap on the number of loans (bounded by the 300,000 pool), target range `0.01%~100%` (always raises) |
 | `TM_ASSIST` | `1` enables **Outside Mercy**: the contestant may ask the spectators for help, 3 times per match; free before the start, 500,000 cash to enable mid-match (the contestant enables it, not the spectators) |
 | `TM_SLOT` | `1` enables **Slot Machine**: **3** plays, `1~200000` and ≤ current equity, 80% nothing / 15% 5× / 5% 10× |
 | `TM_PORT` | Service port, default `8734`. Change this instead of editing code |
