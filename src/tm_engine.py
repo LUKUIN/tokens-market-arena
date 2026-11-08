@@ -232,7 +232,7 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.2.7"   # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.8"   # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -2800,9 +2800,15 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             "Name": "Tokens Trading Market",
             "Currency unit": "Tokens",
             "Initial capital": STARTER_CASH,
-            "Target": ("Reach equity of %.0f Tokens (every loan raises the target by a share of the amount borrowed; "
-                       "the share grows with cumulative borrowing, see \"%s\" for the exact range)"
-                       % (TARGET_EQUITY, SPECIAL_FR_NAME)),
+            "Target": (("Reach equity of %.0f Tokens. Total target = starting target + loan uplift + slot uplift:"
+                       + chr(10) + "  - loan: each amount x pct, where pct grows with cumulative borrowing; "
+                       "range +1%%~+100%% without [%s], +0.01%%~+100%% with it "
+                       "(always up, never waived; the upper bound is reachable but the draw is not uniform, "
+                       "small loans land near the floor)"
+                       + chr(10) + "  - slot: each payout x U(-5%%, +100%%), drawn independently per play; "
+                       "that term is exactly 0 unless [%s] is on"
+                       + chr(10) + "  - the two terms are independent; with only one switch on, only that term applies")
+                       % (TARGET_EQUITY, SPECIAL_FR_NAME, SPECIAL_SLOT_NAME)),
             "Lots": "1 lot = %.0f units of base currency" % LOTS_SIZE,
             SPECIAL_FR_NAME: ("Run-wide switch (not a random event): once on, loans are unlimited (still bounded by the %.1fM pool) and the target uplift range shifts from +1%%~+100%% to +0.01%%~+100%% (it always goes up, never reduces the target; minimum 0.01%%); can only be enabled before the match starts" % (LOAN_POOL / 1000000.0)
                         ).replace("%%", "%"),
