@@ -203,8 +203,8 @@ MOD_DEFAULT = {
 
 
 # ---------------- 全局开关型特殊事件 ----------------
-FR_MAX_LOANS = 2              # 优惠融资开启后，整局最多借款次数
-FR_LO_BOUND = 0.0             # 优惠融资开启时，借款上浮区间下限（v1.2.0 起不再为负）
+FR_MAX_LOANS = 5              # 优惠融资开启后，整局最多借款次数
+FR_LO_BOUND = 0.0001          # 优惠融资开启时的下限（0.01%）：借款必然抬高目标，永不为 0
 SPECIAL_FR_NAME = "优惠融资"   # 全局开关 fr 的对外显示名（改名字只改这一行）
 SPECIAL_SLOT_NAME = "老虎机"   # 全局开关 slot 的对外显示名
 LOAN_BUMP_LO_DEFAULT = 0.01   # 未开启时的下限（+1%）
@@ -234,7 +234,7 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.2.2"   # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.3"   # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -1791,7 +1791,7 @@ class Engine:
             if _relief:
                 # 旧版随机事件残留清理（减免只送一次的语义已由开关接管）
                 self.s.get("mods", {}).pop("loan_bump_lo", None)
-            self._event("【借款】借入 %.0f Tokens（第 %d 笔%s，当前欠款 %.0f）；目标上浮 %+.0f（%+.1f%%）→ 新目标 %.0f" % (
+            self._event("【借款】借入 %.0f Tokens（第 %d 笔%s，当前欠款 %.0f）；目标上浮 %+.0f（%+.2f%%）→ 新目标 %.0f" % (
                 amount, self.s["loan"]["loans"],
                 ("，%s %d/%d" % (SPECIAL_FR_NAME, _sp.get("fr_loans", 0), FR_MAX_LOANS)) if _fr else "",
                 self.s["loan"]["balance"],
@@ -1806,7 +1806,7 @@ class Engine:
             return {"ok": True, "amount": amount,
                     "pct": round(pct * 100, 2), "bump": round(bump, 2),
                     "new_target": self.s["target"],
-                    "warning": "本笔借款已使目标上浮 %+.2f%%（当前区间：%+.1f%%~+100%%）。"
+                    "warning": "本笔借款已使目标上浮 %+.2f%%（当前区间：%+.2f%%~+100%%）。"
                                "这是借款的代价，不是免费资金。" % (
                                    pct * 100, (FR_LO_BOUND if _fr else LOAN_BUMP_LO_DEFAULT) * 100),
                     "state": self._state_light()}
@@ -2339,7 +2339,7 @@ class Engine:
                     _rows_loan.append(
                         '<div class="kv" style="grid-column:1/-1"><span>逐笔借款（目标上浮）</span>'
                         '<span>%s</span></div>' % " ｜ ".join(
-                            "t%s 借 %s（%+.1f%% → %+.0f）" % (
+                            "t%s 借 %s（%+.2f%% → %+.0f）" % (
                                 b.get("tick", "—"), fmt(b.get("amount", 0)),
                                 float(b.get("pct") or 0), float(b.get("bump") or 0))
                             for b in _bumps))
@@ -2824,10 +2824,12 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             "名称": "Tokens 交易市场",
             "资金单位": "Tokens",
             "初始资金": STARTER_CASH,
-            "目标": "把权益做到 %.0f Tokens（每借一笔，目标会按该笔金额的随机 1%%~100%% 上浮）" % TARGET_EQUITY,
+            "目标": ("把权益做到 %.0f Tokens（每借一笔，目标都会按该笔金额的一定比例上抬；"
+                     "比例随累计借款额上升，具体区间见「%s」条目）" % (TARGET_EQUITY, SPECIAL_FR_NAME)),
             "手数": "1 手 = %.0f 单位基础货币" % LOTS_SIZE,
             SPECIAL_FR_NAME: ("开局全局开关（非随机事件）：开启后整局借款上限 %d 次，"
-                        "目标上浮区间从 +1%%~+100%% 下探到 0%%~+100%%（不含负值，只会抬高）；"
+                        "目标上浮区间从 +1%%~+100%% 下探到 +0.01%%~+100%%"
+                        "（必上抬、永不减免，最小值 0.01%%）；"
                         "开局免费，局内再开启需支付 %.0f 现金" % (FR_MAX_LOANS, SPECIAL_FEE)
                         ).replace("%%", "%"),
             SPECIAL_SLOT_NAME: ("开局全局开关：开启后整局可投 %d 次，单次 1~%.0f 且不超过当前权益；"

@@ -55,7 +55,7 @@ python run.py --headless          # same as: python run.py server --headless
 |---|---|
 | `TM_TRADER` | Contestant ID, format **`<model>-<effort>-<agent-platform>`**, max 60 chars, defaults to `访客` |
 | `TM_EVENTS` | `1` enable random events / `0` ideal conditions (black-swan gaps only) |
-| `TM_FR` | `1` enables **Preferred Financing**: at most **2** loans per match, target range `-20%~100%` |
+| `TM_FR` | `1` enables **Preferred Financing**: at most **5** loans per match, target range `0.01%~100%` (always raises) |
 | `TM_SLOT` | `1` enables **Slot Machine**: **3** plays, `1~200000` and ≤ current equity, 80% nothing / 15% 5× / 5% 10× |
 | `TM_PORT` | Service port, default `8734`. Change this instead of editing code |
 | `TM_SIGN_KEY` | HMAC key for save files; a dev placeholder is used when unset |

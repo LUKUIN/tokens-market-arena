@@ -118,6 +118,7 @@ def _ask(prompt, default=""):
 
 
 def _interactive_setup():
+    from tm_engine import FR_MAX_LOANS   # 只为提示文案取真值，避免与引擎失同步
     print(DISCLAIMER)
     if _ask("输入 y 表示你已经读过并同意以上内容：").lower() != "y":
         print("  已取消。")
@@ -145,7 +146,8 @@ def _interactive_setup():
 
     fr_on = _ask_special(
         "TM_FR", "是否开启全局事件【优惠融资】？",
-        "整局借款上限 2 次；目标上浮区间 -20%~100%；局内再开启需支付 30 万现金")
+        "整局借款上限 %d 次；目标上浮区间 +0.01%%~+100%%（必抬高，永不减免）；"
+        "局内再开启需支付 30 万现金" % FR_MAX_LOANS)
     slot_on = _ask_special(
         "TM_SLOT", "是否开启全局事件【老虎机】？",
         "整局可投 3 次（每次 1~200000，且不超过当前权益）；"
