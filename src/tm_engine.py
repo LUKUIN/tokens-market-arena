@@ -168,7 +168,7 @@ NEWS_TABLE = [
     ("Someone got blown out",       5, "mod", ("spread_mult", 2.5, 5)),
     ("Platform announcement",       5, "mod", ("fee_mult", 1.5, 10)),
     # --- rare: loan-policy events ---
-    # Note: [Finance Reversal] is now a start-of-round global switch (see the special block) and no longer enters the random pool.
+    # Note: [Preferred Financing] is now a start-of-round global switch (see the special block) and no longer enters the random pool.
 ]
 
 FLAVOR_LINES = {
@@ -198,13 +198,15 @@ MOD_DEFAULT = {
     "leverage_cap": 1000,   # kept in sync with MAX_LEVERAGE (defined later)
     "loan_pool_mult": 1.0,  # credit crunch / easing: temporary multiplier on loan pool size
     "gap_mult": 1.0,        # Black Swan alert: temporary multiplier on gap chance
-    "loan_bump_lo": 0.01,   # Finance Reversal borrow floor (default +1%, down to 0% during the event)
+    "loan_bump_lo": 0.01,   # Preferred Financing borrow floor (default +1%, down to 0% when enabled)
 }
 
 
 # ---------------- global switch special events ----------------
-FR_MAX_LOANS = 2              # max loans per match once Finance Reversal is on
-FR_LO_BOUND = 0.0             # lower bound of the borrow uplift range with Finance Reversal (non-negative since v1.2.0)
+FR_MAX_LOANS = 2              # max loans per match once Preferred Financing is on
+FR_LO_BOUND = 0.0             # lower bound of the borrow uplift range with Preferred Financing (non-negative since v1.2.0)
+SPECIAL_FR_NAME = "Preferred Financing"   # public label of the fr switch (rename here only)
+SPECIAL_SLOT_NAME = "Slot Machine"        # public label of the slot switch
 LOAN_BUMP_LO_DEFAULT = 0.01   # lower bound when it is off (+1%)
 SPECIAL_FEE = 300_000.0       # cost of enabling a global switch mid-match
 SLOT_MAX_PLAYS = 3            # plays per match
@@ -232,7 +234,7 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.2.1"   # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.2"   # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -414,7 +416,7 @@ def _new_session(seed=None, apply_rng=True):
         "assist": [],                # {tick, at, who, text, ticket?, status?, kind?}
         # ---------------- global switch special events ----------------
         "special": {
-            "fr": _env_flag("TM_FR"),       # Finance Reversal: enabled free at start
+            "fr": _env_flag("TM_FR"),       # Preferred Financing: enabled free at start
             "slot": _env_flag("TM_SLOT"),   # Slot Machine: enabled free at start
             "fr_loans": 0,                  # loans taken since enabling (cap FR_MAX_LOANS)
             "fr_paid": 0.0,                 # total paid for mid-match enabling
@@ -880,7 +882,7 @@ class Engine:
         return item[0] if self.s["tick"] < item[1] else MOD_DEFAULT[name]
 
     def _loan_bump_remain(self):
-        """[Finance Reversal] Seconds left; None when not active."""
+        """[Preferred Financing] Seconds left; None when not active."""
         v = (self.s.get("mods") or {}).get("loan_bump_lo")
         if not v or len(v) < 4:
             return None
@@ -1620,7 +1622,7 @@ class Engine:
         }
 
     def set_special(self, name, on):
-        """Run-wide switches: Finance Reversal / Slot Machine.
+        """Run-wide switches: Preferred Financing / Slot Machine.
 
         Free at start (before begin or while still paused); enabling mid-run costs SPECIAL_FEE in cash.
         Disabling is always free, and setting the same state twice is not charged.
@@ -1629,12 +1631,15 @@ class Engine:
             if self.s.get("finished"):
                 return {"ok": False, "error": "Session ended"}
             key = (name or "").strip().lower()
-            if key in ("fr", "Finance Reversal", "financial_reversal"):
+            if key in ("fr", "Finance Reversal", "financial_reversal",
+                       SPECIAL_FR_NAME.lower(), "preferredfinancing"):
                 field = "fr"
             elif key in ("slot", "Slot Machine", "slot_machine"):
                 field = "slot"
             else:
-                return {"ok": False, "error": "Unknown global event: %s (available: fr / slot)" % name}
+                return {"ok": False,
+                        "error": "Unknown global event: %s (available: %s or %s; fr / slot also work)"
+                                 % (name, SPECIAL_FR_NAME, SPECIAL_SLOT_NAME)}
             on = bool(on)
             sp = self._special()
             if bool(sp.get(field)) == on:
@@ -1654,7 +1659,7 @@ class Engine:
             sp[field] = on
             if field == "fr":
                 self.s.get("mods", {}).pop("loan_bump_lo", None)
-            label = "Finance Reversal" if field == "fr" else "Slot Machine"
+            label = SPECIAL_FR_NAME if field == "fr" else SPECIAL_SLOT_NAME
             self._event("[Global event] %s is now %s%s" % (
                 label, "on" if on else "off",
                 (" (paid %.0f cash)" % fee) if fee > 0 else ""), "news")
@@ -1755,10 +1760,11 @@ class Engine:
                 _used = int(_sp.get("fr_loans", 0))
                 if _used >= FR_MAX_LOANS:
                     return {"ok": False,
-                            "error": "[Finance Reversal] No loans left this run (%d/%d); refused"
+                            "error": "[%s] No loans left this run (%d/%d); refused" % (
+                                SPECIAL_FR_NAME, int(_sp.get("fr_loans", 0)), FR_MAX_LOANS)
                                      % (_used, FR_MAX_LOANS)}
             # The markup is drawn only at borrow time: it is the price of borrowing, never announced beforehand.
-            # [Finance Reversal] off: lower bound +1%; on: lower bound 0%.
+            # [Preferred Financing] off: lower bound +1%; on: lower bound 0%.
             # v1.2.0: the ratio rises with the CUMULATIVE amount borrowed -- borrow more, the target rises more.
             # It integrates over the slice (mean of the before/after pool share), so splitting is useless:
             # ten loans of 300k cost exactly the same total uplift as one loan of 3M.
@@ -1788,7 +1794,7 @@ class Engine:
                 self.s.get("mods", {}).pop("loan_bump_lo", None)
             self._event("[Loan] Borrowed %.0f Tokens (loan %d%s, now owed %.0f); target raised %+.0f (%+.1f%%) -> new target %.0f" % (
                 amount, self.s["loan"]["loans"],
-                (", Finance Reversal %d/%d" % (_sp.get("fr_loans", 0), FR_MAX_LOANS)) if _fr else "",
+                (", %s %d/%d" % (SPECIAL_FR_NAME, _sp.get("fr_loans", 0), FR_MAX_LOANS)) if _fr else "",
                 self.s["loan"]["balance"],
                 bump, pct * 100, self.s["target"]), "loan")
             # The countdown stops only once held Tokens are back above 0; otherwise it runs to the end.
@@ -2747,9 +2753,9 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                     for k, v in (self.s.get("mods") or {}).items() if self.s["tick"] < v[1]
                 ][:6],                "liquidity": {sym: round(self._liquidity(sym) / max(1.0, self._liq_base()), 3) for sym in PAIRS},
                 "total_borrowed": round(self.s["loan"]["borrowed"], 2),
-                # [Finance Reversal] seconds left (wall clock, GUI refreshes per second); None when inactive
+                # [Preferred Financing] seconds left (wall clock, GUI refreshes per second); None when inactive
                 "loan_bump_remain": self._loan_bump_remain(),
-                # Current loan-markup range in percent [low, high]; normally [1, 100], during Finance Reversal [-20, 100]
+                # Current loan-markup range in percent [low, high]; normally [1, 100], when enabled [0, 100]
                 "loan_bump_range": [
                     round((FR_LO_BOUND if (self.s.get("special") or {}).get("fr")
                            else LOAN_BUMP_LO_DEFAULT) * 100, 2), 100.0],
@@ -2810,7 +2816,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             "Initial capital": STARTER_CASH,
             "Target": "Reach equity of %.0f Tokens (each loan raises the target by a random 1%%~100%% of that amount)" % TARGET_EQUITY,
             "Lots": "1 lot = %.0f units of base currency" % LOTS_SIZE,
-            "Finance Reversal": ("Run-wide switch (not a random event): once on, the run allows up to %d loans and the target uplift range shifts from +1%%~+100%% to 0%%~+100%% (it only goes up, never down); free at start, enabling mid-run costs %.0f cash" % (FR_MAX_LOANS, SPECIAL_FEE)
+            SPECIAL_FR_NAME: ("Run-wide switch (not a random event): once on, the run allows up to %d loans and the target uplift range shifts from +1%%~+100%% to 0%%~+100%% (never negative, it only goes up); free at start, enabling mid-run costs %.0f cash" % (FR_MAX_LOANS, SPECIAL_FEE)
                         ).replace("%%", "%"),
             "Slot Machine": ("Run-wide switch: once on, %d plays per run, each 1~%.0f and never above current equity; 80%% nothing / 15%% 5x / 5%% 10x (expected return 1.25x); the payout goes to cash while the target rises by -5%%~100%% of that payout (worst case the target doubles); free at start, enabling mid-run costs %.0f cash" % (
                            SLOT_MAX_PLAYS, SLOT_MAX_STAKE, SPECIAL_FEE)
@@ -2846,7 +2852,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "POST /loan": {"amount": 100000},
                 "POST /repay": {"amount": 100000},
                 "POST /slot": {"amount": 1000},
-                "POST /special": {"name": "Slot Machine or Finance Reversal", "on": True},
+                "POST /special": {"name": "%s or %s" % (SPECIAL_SLOT_NAME, SPECIAL_FR_NAME), "on": True},
                 "POST /roll/stop": {},
                 "POST /quit": {},
                 "GET /prices": {},

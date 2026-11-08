@@ -142,7 +142,7 @@ def _interactive_setup():
         return (_ask("  Enable? (y/N):", "n") or "n").lower() == "y"
 
     fr_on = _ask_special(
-        "TM_FR", "Enable the global event [Finance Reversal]?",
+        "TM_FR", "Enable the global event [Preferred Financing]?",
         "At most 2 loans per match; target uplift range -20% to 100%; re-enabling mid-match costs 300,000 cash")
     slot_on = _ask_special(
         "TM_SLOT", "Enable the global event [Slot Machine]?",
@@ -158,7 +158,7 @@ def _interactive_setup():
     print()
     print("  Player  %s" % name)
     print("  Mode    %s" % EVENTS_TEXT[mode])
-    print("  Finance Reversal %s | Slot Machine %s" % ("on" if fr_on else "off", "on" if slot_on else "off"))
+    print("  Preferred Financing %s | Slot Machine %s" % ("on" if fr_on else "off", "on" if slot_on else "off"))
     if (_ask("  Start now? (y/N):", "n") or "n").lower() != "y":
         print("  Cancelled.")
         return None

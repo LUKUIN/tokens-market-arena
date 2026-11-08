@@ -126,7 +126,7 @@ be open so a human can watch equity, holdings and the activity feed live.
 |---|---|
 | `TM_TRADER` | Contestant ID, format **`<model>-<effort>-<agent-platform>`**, e.g. `Doubao-1.5-pro-thinking-coze` or `DeepSeek-V3.1-thinking-harness`. Max 60 chars, defaults to `Guest`. The value is written verbatim into the report filename and the report body |
 | `TM_EVENTS` | `1` enable random events / `0` ideal conditions (black-swan gaps only) |
-| `TM_FR` | `1` enables **Finance Reversal**: at most **2** loans per match, target range `0%~100%` |
+| `TM_FR` | `1` enables **Preferred Financing**: at most **2** loans per match, target range `0%~100%` |
 | `TM_ASSIST` | `1` enables **Outside Mercy**: the contestant may ask the spectators for help, 3 times per match; free before the start, 500,000 cash to enable mid-match (the contestant enables it, not the spectators) |
 | `TM_SLOT` | `1` enables **Slot Machine**: **3** plays, `1~200000` and ≤ current equity, 80% nothing / 15% 5× / 5% 10× |
 | `TM_PORT` | Service port, default `8734`. Change this instead of editing code |
@@ -153,7 +153,7 @@ Sections, top to bottom:
 
 | Area | Content |
 |---|---|
-| Dark title bar | market name, contestant identity, mode, global event switches (Finance Reversal / Slot Machine), End processes / Minimize / AI Notes / Outside Mercy |
+| Dark title bar | market name, contestant identity, mode, global event switches (Preferred Financing / Slot Machine), End processes / Minimize / AI Notes / Outside Mercy |
 | KPI cards | equity, total P&L, margin level, progress to target |
 | Status row | credit / cash / borrowed / owed / interest; target / drawdown / Sharpe / trades / win rate / fees; ledger-audit slot; previous-run abnormal-exit banner |
 | Equity curve | primary visual, fixed 500k Y ticks (0 / 1M / 2M land on grid lines) |
@@ -166,7 +166,7 @@ Sections, top to bottom:
 
 ## How a match runs
 
-0. **Nothing is asked.** Contestant ID, random events, **Finance Reversal** and **Slot Machine**
+0. **Nothing is asked.** Contestant ID, random events, **Preferred Financing** and **Slot Machine**
    all come from environment variables; an unset key falls back to its default.
    `python run.py --interactive` does ask four questions in that order, but it exists for a human
    demo only — an agent must not use it, because a backgrounded process reads `input()` as EOF and

@@ -113,6 +113,11 @@ def _apply_icon(win):
         pass
 
 # Fluent color palette
+# Display names of the two global switches: keep in sync with
+# tm_engine.SPECIAL_FR_NAME / SPECIAL_SLOT_NAME. The spectator runs in its own
+# process and does not import the engine, so the names are repeated here.
+FR_NAME = "Preferred Financing"
+SLOT_NAME = "Slot Machine"
 BG = "#F3F3F3"
 CARD = "#FFFFFF"
 BORDER = "#E1E1E1"
@@ -264,7 +269,7 @@ class Watch:
         self._f_on = tkfont.Font(root=root, family=FONT[0], size=10, weight="bold")
         self._f_off = tkfont.Font(root=root, family=FONT[0], size=10, weight="bold",
                                   overstrike=1)
-        self.lbl_fr = tk.Label(topbar, text="Finance Reversal", font=self._f_off,
+        self.lbl_fr = tk.Label(topbar, text=FR_NAME, font=self._f_off,
                                bg=TOPBAR, fg="#D6DFEC")
         self.lbl_fr.pack(side="left", padx=(22, 0))
         self.lbl_slot = tk.Label(topbar, text="Slot Machine", font=self._f_off,
@@ -734,11 +739,11 @@ class Watch:
                 title += " | Choosing difficulty..."
             self._base_title = title
             self.root.title(title)
-        # [Finance Reversal] keeps draining money until the target is changed, so its countdown goes in the title bar (not the status bar)
+        # [Preferred Financing] countdown goes in the title bar (not the status bar)
         _lbr = st.get("loan_bump_remain")
         _bt = getattr(self, "_base_title", "")
         if _lbr:
-            self.root.title(_bt + " | Finance Reversal %d s left" % int(_lbr + 0.999))
+            self.root.title(_bt + " | %s %d s left" % (FR_NAME, int(_lbr + 0.999)))
         elif _bt:
             self.root.title(_bt)
         # Global switch state (reset fonts only on change; avoid touching widgets on every refresh)
@@ -850,7 +855,7 @@ class Watch:
                 _rm2 = float(_f2.get("remain") or 0)
                 _pr["ff"].config(
                     text=_fmt_ff(_rm2))
-                _on = [n for n, v in (("Finance Reversal", sp.get("fr")), ("Slot Machine", sp.get("slot"))) if v]
+                _on = [n for n, v in ((FR_NAME, sp.get("fr")), (SLOT_NAME, sp.get("slot"))) if v]
                 _pr["special"].config(text=", ".join(_on) if _on else "none")
             except Exception as exc:
                 sys.stderr.write("panel rows: %r\n" % (exc,))

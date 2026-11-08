@@ -39,7 +39,7 @@ echo   ==========================================
 echo   Endpoint        http://127.0.0.1:%TM_PORT%
 echo   Player          %TM_TRADER%
 echo   Random events   %TM_EVENTS%
-echo   Finance Reversal %TM_FR%    Slot Machine %TM_SLOT%    Outside Mercy %TM_ASSIST%
+echo   Preferred Financing %TM_FR%  Slot Machine %TM_SLOT%  Outside Mercy %TM_ASSIST%
 echo   The read-only spectator opens together with the server.
 echo.
 rem run.py seals the sources itself and restores them on exit. Do NOT start guard.py

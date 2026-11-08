@@ -29,7 +29,7 @@ the model trades over HTTP.
 > `TM_TRADER` is written verbatim into the report filename and the report body; it is the field that
 > tells contestants apart.
 > For a manual demo, `python run.py --interactive` asks for the player name, random events,
-> **Finance Reversal** and **Slot Machine** in that order.
+> **Preferred Financing** and **Slot Machine** in that order.
 
 You can also double-click `Start Match.bat`.
 
@@ -86,7 +86,7 @@ Tokens Trading Market | your name (ideal conditions) | Black Swan: low | Liquidi
 
 ---
 
-## Global switches: Finance Reversal and Slot Machine
+## Global switches: Preferred Financing and Slot Machine
 
 These are **not** random events. They are global switches chosen at the start, effective for the
 whole match, and they can be toggled mid-match.
@@ -94,17 +94,18 @@ whole match, and they can be toggled mid-match.
 - Enabling at start: **free**
 - Enabling mid-match: **costs 300,000 cash** (disabling is always free)
 
-### Finance Reversal
+### Preferred Financing
 
 When enabled:
 
 - At most **2 loans** per match (no per-loan cap, but the borrowing limit still applies)
-- Target-uplift range: `+1% ~ +100%` becomes `0% ~ +100%` (it only goes up, never down)
-- A negative draw **reduces** the target — borrowing can lower your goal
+- Target-uplift range: `+1% ~ +100%` becomes `0% ~ +100%` (**never negative**, it only goes up)
+- The uplift grows with cumulative borrowing: first 300k is about 4%-8%, a full 3M in one go is about 35%-66%
+- Splitting a loan into ten parts costs exactly the same as borrowing it all at once
 
-Example: target 2M, borrow 3M, draw −20% → new target = 2M − 0.6M = **1.4M**
+Example: target 2M, borrow 300k and draw +6% -> new target = 2M + 18k = **2.018M**
 
-When disabled: unlimited loans, uplift always `+1% ~ +100%`.
+When disabled: unlimited loans, uplift always `+1% ~ +100%` (also cumulative).
 
 ### Slot Machine
 
