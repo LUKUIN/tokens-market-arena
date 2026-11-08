@@ -362,7 +362,8 @@ def _run_ai(interactive=False, port=None):
             [sys.executable, "-c",
              "import sys, os; sys.path.insert(0, os.path.join(os.getcwd(), 'src')); "
              "import tm_watch_ai; tm_watch_ai.main()"],
-            cwd=base)
+            cwd=base,
+            env=dict(os.environ, TM_WATCH_API="http://127.0.0.1:%d" % port))
         print("  正在拉起只读观众席（进程 %d）……" % spectator.pid)
     except Exception as exc:
         print("  观众席启动失败：%s（对局服务照常运行）" % exc)

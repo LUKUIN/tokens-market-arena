@@ -18,7 +18,9 @@ import tkinter.font as tkfont
 from tkinter import ttk, messagebox
 import urllib.request
 
-API = "http://127.0.0.1:8734"
+# 服务端端口可以变（run.py 的 TM_PORT 或命令行参数），观众席必须跟着走，
+# 否则服务在 8740 而这里连 8734，界面会永远停在「等待服务启动」。
+API = (os.environ.get("TM_WATCH_API") or "http://127.0.0.1:8734").rstrip("/")
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 # 单实例锁：占住一个本地端口，进程退出自动释放。
@@ -278,6 +280,8 @@ class Watch:
         self._assist_pend = []
         self._assist_seen = set()
         self._assist_n = 0
+        self._api_fail = 0
+        self._api_ever = False
         self._assist_last_ticket = None
 
         _b = dict(font=FONT_SMALL, bd=0, relief="flat", cursor="hand2", padx=12, pady=4)
@@ -510,13 +514,30 @@ class Watch:
         try:
             st = get("/state")
             self._render(st)
+            self._api_fail = 0
+            self._api_ever = True
         except Exception:
-            self.lbl_status.config(text="等待服务启动（python startgame.pyc api 127.0.0.1 8734）",
-                                   fg=ORANGE)
+            self._api_fail += 1
+            self._set_offline()
         self._assist_n += 1
         if self._assist_n % 5 == 0:
             self._poll_assist()
         self.root.after(300, self.refresh)
+
+    def _set_offline(self):
+        """连不上服务时的状态栏文案。
+
+        区分「还没起来」和「连上过又断了」：一次瞬时失败不该被读成
+        「进程死了」——旧文案会把启动命令写出来，误导性很强。
+        """
+        n = self._api_fail
+        if not self._api_ever:
+            txt, fg = "等待服务启动（%s）" % API, ORANGE
+        elif n < 3:
+            txt, fg = "服务无响应，重试中…（%s）" % API, ORANGE
+        else:
+            txt, fg = "服务无响应（已重试 %d 次，数据停在最后一次成功）" % n, RED
+        self.lbl_status.config(text=txt, fg=fg)
 
     # ---------------- 外部的怜悯 ----------------
     def _poll_assist(self):
