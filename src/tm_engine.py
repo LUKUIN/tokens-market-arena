@@ -2831,7 +2831,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             "Liquidity drought": "on a tick where a pair gaps, that pair's spread widens %.0f times" % GAP_SPREAD_MULT,
             "Black Swan": "per tick, %.1f%% chance of a %.0f%%-%.0f%% gap" % (GAP_CHANCE * 100, GAP_MIN * 100, GAP_MAX * 100),
             "Commission": "%.3f%% of notional per order" % (FEE_RATE * 100),
-            "Loan": "Loan pool %.0f Tokens (may be temporarily scaled by \"Credit crunch / Central bank easing\"); interest %.2f%%/tick (%s); each loan: total target = old target + loan amount × random ratio (the ratio scales with the loan: about 7%%~13%% on 300k, about 70%%~100%% when borrowing the pool dry, decided once borrowed)" % (
+            "Loan": "Loan pool %.0f Tokens (may be temporarily scaled by \"Credit crunch / Central bank easing\"); interest %.2f%%/tick (%s); each loan: total target = old target + loan amount × random ratio (the ratio rises with cumulative borrowing: about 4%%~8%% on the first 300k, about 35%%~66%% when borrowing the pool dry; trapezoid integration over the cumulative amount, so ten small loans cost exactly the same as one big one, decided once borrowed)" % (
                 LOAN_POOL, LOAN_RATE_PER_TICK * 100, "Borrow and repay at will; forced clearance at maturity"),
             "Session length": "%d minutes" % SESSION_MINUTES,
             "tick interval": "%d seconds" % TICK_SECONDS,

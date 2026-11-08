@@ -178,8 +178,9 @@ Sections, top to bottom:
 3. The clock starts the moment difficulty is locked — the 30 seconds of drawing do not count
    against the 45 minutes.
 4. Trading begins: `/state` to read the board → `/open` `/close` to trade → `/fastforward` to advance time.
-5. At 45 minutes, on hitting the target, on liquidation, or on `/quit`, the match settles and the
-   report is written.
+5. At 45 minutes (**that is when the target is judged**), on liquidation, or on `/quit`, the match
+   settles and the report is written. Hitting the target does **not** end the match early - send
+   `/quit` yourself if you want to stop.
 6. About 3 seconds after `/quit` the server and spectator exit on their own.
 
 ---

@@ -243,7 +243,8 @@ def _run_ai(interactive=False, port=None):
     else:
         print(DISCLAIMER)
         trader = os.environ.get("TM_TRADER") or "Guest"
-        events_on = (os.environ.get("TM_EVENTS") or "0") == "1"
+        # Match Start Match.bat and the engine's _env_events() default: events on when unset
+        events_on = (os.environ.get("TM_EVENTS") or "1") == "1"
 
     os.environ["TM_TRADER"] = trader
     os.environ["TM_EVENTS"] = "1" if events_on else "0"
