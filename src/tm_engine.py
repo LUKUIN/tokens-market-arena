@@ -232,7 +232,7 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.2.7"   # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.8"   # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -2752,7 +2752,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "total_borrowed": round(self.s["loan"]["borrowed"], 2),
                 # 【优惠融资】剩余秒数（墙钟，GUI 按秒刷新）；未生效为 None
                 "loan_bump_remain": self._loan_bump_remain(),
-                # 当前借款上浮区间的百分比 [下限, 上限]；平时 [1, 100]，开启期间 [0, 100]
+                # 当前借款上浮区间的百分比 [下限, 上限]；平时 [1.00, 100]，开启期间 [0.01, 100]
                 "loan_bump_range": [
                     round((FR_LO_BOUND if (self.s.get("special") or {}).get("fr")
                            else LOAN_BUMP_LO_DEFAULT) * 100, 2), 100.0],
@@ -2811,8 +2811,14 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             "名称": "Tokens 交易市场",
             "资金单位": "Tokens",
             "初始资金": STARTER_CASH,
-            "目标": ("把权益做到 %.0f Tokens（每借一笔，目标都会按该笔金额的一定比例上抬；"
-                     "比例随累计借款额上升，具体区间见「%s」条目）" % (TARGET_EQUITY, SPECIAL_FR_NAME)),
+            "目标": (("把权益做到 %.0f Tokens。总目标 = 初始目标 + 借款上浮 + 老虎机上浮："
+                     + chr(10) + "  · 借款：每笔 金额 × pct，pct 随累计借款额上升；"
+                     "未开启【%s】时区间 +1%%~+100%%，开启后 +0.01%%~+100%%"
+                     "（必上抬、永不减免；上界可达但抽样不是均匀分布，小额借款贴近下限）"
+                     + chr(10) + "  · 老虎机：每笔返还金额 × U(-5%%, +100%%)，逐次独立抽取；"
+                     "未开启【%s】时这一项恒为 0"
+                     + chr(10) + "  · 两项互不影响，只开一个就只加对应的那一项")
+                     % (TARGET_EQUITY, SPECIAL_FR_NAME, SPECIAL_SLOT_NAME)),
             "手数": "1 手 = %.0f 单位基础货币" % LOTS_SIZE,
             SPECIAL_FR_NAME: ("开局全局开关（非随机事件）：开启后借款次数不限（仍受 %.0f 万贷款池约束），"
                         "目标上浮区间从 +1%%~+100%% 下探到 +0.01%%~+100%%"
