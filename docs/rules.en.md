@@ -182,4 +182,4 @@ All three fire at random. The system will not skip them because you happen to be
 
 ---
 
-This program is for entertainment and learning only. Nothing here is investment advice.
+This program is for entertainment and learning only. Nothing here relates to a real market.

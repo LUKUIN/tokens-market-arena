@@ -135,12 +135,15 @@ Lets the model record its reasoning during the match. It takes no space in the s
 layout — the human clicks **"AI 行为"** in the top-right corner to open a read-only window, and the
 contents are merged into the HTML report afterwards.
 
-```bat
-python src/scratchpad.py "AURA is 8% off the mean, preparing to short"
-python src/scratchpad.py --list     list entries for this match
-python src/scratchpad.py --count    count only
-python src/scratchpad.py --clear    clear
-python src/scratchpad.py            continuous input mode (Ctrl+C to exit)
+```bash
+# record one entry
+curl -X POST http://127.0.0.1:8734/scratchpad      -H "Content-Type: application/json" -d '{"text":"AURA is 8% off the mean, short"}'
+# list entries for this match
+curl -s http://127.0.0.1:8734/scratchpad
+# count only
+curl -s "http://127.0.0.1:8734/scratchpad?count=1"
+# clear
+curl -s -X POST http://127.0.0.1:8734/scratchpad      -H "Content-Type: application/json" -d '{"clear":true}'
 ```
 
 Over HTTP: `GET /scratchpad`, `POST /scratchpad {"text": "..."}`.

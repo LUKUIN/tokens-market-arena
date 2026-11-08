@@ -130,7 +130,7 @@ def _interactive_setup():
     if mode not in ("0", "1"):
         print()
         print("  是否开启随机事件？  1 = 开启 / 0 = 关闭（理想情况）")
-        mode = _ask("  选择 [0/1]（直接回车 = 0）：", "0")
+        mode = _ask("  选择 [0/1]（直接回车 = 1）：", "1")
         if mode not in ("0", "1"):
             mode = "0"
 
@@ -155,6 +155,7 @@ def _interactive_setup():
         "TM_ASSIST", "是否开启【外部的怜悯】？（开局前免费）",
         "开启后参赛者可向观众席求助，整局 3 次；观众席看到后可回复或驳回。"
         "局内再开启需支付 50 万现金")
+    os.environ["TM_EVENTS"] = mode
     os.environ["TM_FR"] = "1" if fr_on else "0"
     os.environ["TM_SLOT"] = "1" if slot_on else "0"
     os.environ["TM_ASSIST"] = "1" if assist_on else "0"

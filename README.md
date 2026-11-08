@@ -57,7 +57,7 @@ C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
 ```bash
 cd <项目目录>
 
-TM_TRADER="Doubao-1.5-pro-深度思考-扣子" TM_EVENTS=1 TM_FR=0 TM_SLOT=0 \
+TM_TRADER="Doubao-1.5-pro-深度思考-扣子" TM_EVENTS=1 TM_FR=1 TM_SLOT=1 TM_ASSIST=1 \
   nohup "C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe" run.py > run.log 2>&1 &
 
 for i in $(seq 1 30); do
@@ -116,11 +116,11 @@ python run.py --headless          # 等价于 run.py server --headless
 | 变量 | 作用 |
 |---|---|
 | `TM_TRADER` | 参赛模型标识，格式 **【模型名-思考强度-Agent平台】**，例：`Doubao-1.5-pro-深度思考-扣子`、`DeepSeek-V3.1-深度思考-Harness`。最长 60 字符，缺省「访客」。这个值原样写进报告文件名与报告正文 |
-| `TM_EVENTS` | `1` 开启随机事件 / `0` 理想情况（只有黑天鹅跳空） |
-| `TM_FR` | `1` 开启【优惠融资】：借款次数不限（受 300 万池约束），目标区间 `0.01%~100%`（必上抬）|
-| `TM_ASSIST` | `1` 开启【外部的怜悯】：参赛者可向观众席求助，整局 3 次；开局前开启免费，局内开启扣 500,000 现金 |
-| `TM_SLOT` | `1` 开启【老虎机】：整局 **3 次**，`1~200000` 且不超当前权益，80% 空 / 15% 5 倍 / 5% 10 倍 |
-| `TM_PORT` | 端口号 | 服务端口，默认 `8734`。被占用时改这个，别改代码 |
+| `TM_EVENTS` | `1` 开启随机事件 / `0` 理想情况（只有黑天鹅跳空）；未设置时按 `1` 处理 |
+| `TM_FR` | `1` 开启【优惠融资】：借款次数不限（受 300 万池约束），目标区间 `0.01%~100%`（必上抬）；未设置时按 `1` 处理 |
+| `TM_ASSIST` | `1` 开启【外部的怜悯】：参赛者可向观众席求助，整局 3 次；开局前开启免费，局内开启扣 500,000 现金；未设置时按 `1` 处理 |
+| `TM_SLOT` | `1` 开启【老虎机】：整局 **3 次**，`1~200000` 且不超当前权益，80% 空 / 15% 5 倍 / 5% 10 倍；未设置时按 `1` 处理 |
+| `TM_PORT` | 端口号 | 服务端口，默认 `8734` |
 | `TM_SIGN_KEY` | 存档 HMAC 密钥，不设则用 dev 占位值 |
 
 要求：**Python 3.14.7**（本机固定为 `C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe`）、Windows（观众席依赖 Win32 图标），无第三方依赖。
@@ -251,15 +251,16 @@ AI 每发一次求助（`POST /assist/ask`），屏幕正中会弹一个**系统
 观众随时点右上角的 **「AI 行为」** 按钮，就能打开只读窗口查看 AI 写了什么；
 赛后内容同样并入 HTML 报告。
 
-```bat
-python src/scratchpad.py "AURA 偏离均值 8%，准备做空"
-python src/scratchpad.py --list     查看本局已记内容
-python src/scratchpad.py --count    只看条数
-python src/scratchpad.py --clear    清空
-python src/scratchpad.py            连续输入模式（Ctrl+C 退出）
+```bash
+# 记一条
+curl -X POST http://127.0.0.1:8734/scratchpad      -H "Content-Type: application/json" -d '{"text":"AURA 偏离均值 8%，准备做空"}'
+# 查看本局已记内容
+curl -s http://127.0.0.1:8734/scratchpad
+# 只看条数
+curl -s "http://127.0.0.1:8734/scratchpad?count=1"
+# 清空
+curl -s -X POST http://127.0.0.1:8734/scratchpad      -H "Content-Type: application/json" -d '{"clear":true}'
 ```
-
-也可以走 HTTP：`GET /scratchpad`、`POST /scratchpad {"text": "..."}`。
 
 每写一条立刻落盘（`src/data/.scratchpad.jsonl`），中途关终端不丢；结算/重置时自动清除。
 不用也可以——报告里会写「无内容」。

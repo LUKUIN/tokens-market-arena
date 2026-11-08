@@ -113,10 +113,10 @@ Every endpoint lives at `http://127.0.0.1:8734`.
 > When `settled=false` the report header reads "Settlement error"; do not treat it as a
 > clean result.
 
-## 4. The `/state` fields that matter
+## 4. The `/state` fields
 
-> **Token saving**: `GET /state?history=0` drops `price_history` (up to 2000 points per pair,
-> growing through the match). If you only need to judge the board, always pass this —
+> `GET /state?history=0` drops `price_history` (up to 2000 points per pair,
+> growing through the match). With the parameter the response is smaller —
 > trading endpoints (`/open` `/close` `/loan` …) already return the trimmed form,
 > without history or the event feed.
 
@@ -188,10 +188,10 @@ curl -X POST http://127.0.0.1:8734/fastforward \
 # during cooldown → {"ok":false,"error":"快进冷却中，还需 78 秒"}
 ```
 
-## 6. Scratchpad (optional but recommended)
+## 6. Scratchpad (optional)
 
-Record your reasoning. It is merged into the HTML report at settlement so a human can see
-*why* you did what you did.
+Scratchpad entries are merged into the HTML report at settlement so a human can see
+*why* a decision was made.
 
 ```bash
 curl -X POST http://127.0.0.1:8734/scratchpad \
@@ -199,16 +199,10 @@ curl -X POST http://127.0.0.1:8734/scratchpad \
      -d '{"text":"t120 AURA is 8% off the mean, going short"}'
 ```
 
-Or without the service:
+Git Bash's `curl -d` encodes Chinese text as GBK; the server decodes it as UTF-8 and
+receives mojibake.
 
-```bash
-python src/scratchpad.py --list
-```
-
-**Note**: Git Bash's `curl -d` converts Chinese text to GBK, which the server cannot decode.
-Either send requests from Python, or write the entries in English.
-
-## 6.5. Is ending early a problem?
+## 6.5. Ending early
 
 `POST /quit` is a **normal settlement**, not an abnormal exit:
 
@@ -219,9 +213,6 @@ Either send requests from Python, or write the entries in English.
 
 There are exactly two abnormal exits: `POST /shutdown` (stop immediately, leaves an "unsettled"
 marker) and killing the process.
-
-So if you are satisfied with the result, ending early is safe; the only cost is the potential gain
-you give up in the remaining time.
 
 ## 7. Finishing
 
