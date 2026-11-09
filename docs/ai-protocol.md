@@ -15,11 +15,12 @@
    本文与 `docs/` 下其它分册是给**人类**查阅的完整手册，不是参赛前的必读项；
    照 `AGENTS.md` 的顺序启动，对局中不必再翻任何 Markdown。
 
-2. **必须用固定运行时、必须开着观众席启动**：
-   - Python 只用 **3.14.7**：`C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe`。
-     `run.py` 启动时自己校验，版本不对直接退出（码 2）并打印这条命令。
-     不要用 `where python` / `py -3.x` 另找解释器；GUI 控件与 `.pyc` 都按 3.14 编译。
-     下文所有命令里的 `python` 均指这条路径。
+2. **必须用 Python 3.14、必须开着观众席启动**：
+   - Python 只用 **3.14.7**（本机固定在 `C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe`；
+     换机器只要是 3.14，装在哪里都行）。
+     `run.py` 启动时自己校验，版本不对直接退出（码 2）并给出提示。
+     不要用 3.10~3.13 或 `python3`；GUI 控件与 `.pyc` 都按 3.14 编译。
+     下文所有命令里的 `python` 指你自己的那条 3.14 路径（本机即上面这条）。
    - 启动命令是 `run.py`，人类要能在屏幕上看到这一局的实时权益、持仓和活动流。
      从 v1.0.11 起 `run.py`、`run.py server`、`开一局.bat` 三个入口**行为完全一致**，
      都会拉开只读观众席；不存在「用 server 就省掉窗口」这回事了。

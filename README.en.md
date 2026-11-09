@@ -60,7 +60,7 @@ python run.py --headless          # same as: python run.py server --headless
 | `TM_PORT` | Service port, default `8734`. Change this instead of editing code |
 | `TM_SIGN_KEY` | HMAC key for save files; a dev placeholder is used when unset |
 
-Requirements: **Python 3.14.7** (pinned at `C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe`), Windows (the spectator uses Win32 window-icon APIs), no third-party dependencies. `run.py` rejects any other Python version with exit code 2; do not substitute 3.10-3.13.
+Requirements: **Python 3.14.7** (pinned at `C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe` on this machine; elsewhere any 3.14 install works, whatever the location), Windows (the spectator uses Win32 window-icon APIs), no third-party dependencies. `run.py` rejects any other Python version with exit code 2; do not substitute 3.10-3.13.
 
 ---
 
@@ -92,7 +92,7 @@ Base URL defaults to `http://127.0.0.1:8734`.
 |---|---|
 | `/health` | `{ok, tick, equity, finished, protocol, engine_version}`. `protocol` is the API
   contract version; `engine_version` is the release |
-| `/rules` | Full rule text, parameters and a 20-endpoint list (random events are only announced at runtime through `events` in `/state`) |
+| `/rules` | Full rule text, parameters and a 29-endpoint list (random events are only announced at runtime through `events` in `/state`) |
 | `/state` | Account, positions, loan, quotes, history, difficulty, fast-forward state |
 | `/prices` | Quote table |
 | `/roll/state` | Difficulty countdown and the currently locked result |

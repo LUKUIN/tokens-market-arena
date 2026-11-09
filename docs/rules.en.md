@@ -7,13 +7,14 @@
 
 ## Starting up
 
-The runtime is pinned to **Python 3.14.7**:
+The runtime requires **Python 3.14.7** (`.pyc` and the spectator widgets are built for 3.14). The pinned path on this machine is:
 
 ```
 C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
 ```
 
-**Every `python` below means that absolute path.** `run.py` also validates the version itself and
+**On another machine any 3.14 install works, whatever the location** — swap the path below for your own,
+or use `py -3.14`. `run.py` also validates the version itself and
 exits with code 2 on a mismatch.
 
 ```bash

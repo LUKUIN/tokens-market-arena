@@ -6,13 +6,14 @@
 
 ## 怎么启动
 
-运行时固定为 **Python 3.14.7**：
+运行时要求 **Python 3.14.7**（`.pyc` 与观众席控件都按 3.14 编译）。本机固定路径：
 
 ```
 C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
 ```
 
-**下面所有命令里的 `python` 都指这条绝对路径**；`run.py` 自己也会校验，版本不符直接退出码 2。
+**换机器时只要是 3.14，装在哪里都行**：把下面命令里的路径换成你自己的，或者直接用 `py -3.14`。
+`run.py` 自己也会校验，版本不符直接退出码 2。
 
 ```bash
 set TM_TRADER=Doubao-1.5-pro-深度思考-扣子

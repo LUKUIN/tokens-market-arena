@@ -37,15 +37,15 @@
 
 ### 给 Agent / 脚本（常态）
 
-**唯一的运行时**是 **Python 3.14.7**：
+**运行时要求 Python 3.14.7**——`.pyc` 与观众席控件都按 3.14 编译。本机固定在这条路径：
 
 ```
 C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
 ```
 
-> **本文档余下所有命令里的 `python` 都指这条绝对路径。** 照着抄就行，不要换成 PATH 里的 `python`。
+> **换一台机器不必放在同样的位置。** 只要是 3.14，把下面命令里的路径换成你自己的，或者直接用 `py -3.14`——`run.py` 只校验版本号，不校验安装路径。
 
-`run.py` 启动第一件事就校验版本：不是 3.14 直接退出（退出码 2），并把上面这条命令打出来。
+`run.py` 启动第一件事就校验版本：不是 3.14 直接退出（退出码 2），并提示去哪里找。
 不要用 `where python`、`py -3.12`、`python3` 去找别的解释器——观众席的 GUI 控件和 `.pyc` 都按 3.14 编译，换版本只会得到 `bad magic number`。
 
 `run.py` 是**前台阻塞**命令，会一直跑到本局结束（最长 45 分钟）：执行器若把它当普通命令等待返回，会触发自己的超时并 kill 进程，服务随之消失，之后所有请求都是 `connection refused`。
@@ -84,7 +84,7 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 ### 双击启动
 
 `开一局.bat` 是双击入口，行为与 `python run.py` 完全一致：同样零交互、同样自动打开观众席。
-脚本里写死了固定运行时 `C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe`，不经过 `where python`。
+脚本按顺序找 Python 3.14：本机固定路径 → `py -3.14` → PATH 里的 `python`（先校验版本）。三条都不命中时明确报错并停住，不会带病启动。
 
 ### 只开观众席（窗口被误关时用）
 
@@ -120,10 +120,10 @@ python run.py --headless          # 等价于 run.py server --headless
 | `TM_FR` | `1` 开启【优惠融资】：借款次数不限（受 300 万池约束），目标区间 `0.01%~100%`（必上抬）；未设置时按 `1` 处理 |
 | `TM_ASSIST` | `1` 开启【外部的怜悯】：参赛者可向观众席求助，整局 3 次；开局前开启免费，局内开启扣 500,000 现金；未设置时按 `1` 处理 |
 | `TM_SLOT` | `1` 开启【老虎机】：整局 **3 次**，`1~200000` 且不超当前权益，80% 空 / 15% 5 倍 / 5% 10 倍；未设置时按 `1` 处理 |
-| `TM_PORT` | 端口号 | 服务端口，默认 `8734` |
+| `TM_PORT` | 服务端口，默认 `8734` |
 | `TM_SIGN_KEY` | 存档 HMAC 密钥，不设则用 dev 占位值 |
 
-要求：**Python 3.14.7**（本机固定为 `C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe`）、Windows（观众席依赖 Win32 图标），无第三方依赖。
+要求：**Python 3.14.7**（本机固定在 `C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe`；换机器只要是 3.14，装在哪里都行）、Windows（观众席依赖 Win32 图标），无第三方依赖。
 不要改用 3.10~3.13：`.pyc` 的 magic number 与 tkinter 控件都按 3.14 编译，换版本必然起不来；`.github/workflows/ci.yml` 里的版本号是 CI 测试矩阵，不是运行要求。
 
 ---
@@ -178,7 +178,7 @@ AI 每发一次求助（`POST /assist/ask`），屏幕正中会弹一个**系统
 | 端点 | 返回 |
 |---|---|
 | `/health` | `{ok, tick, equity, finished, protocol, engine_version}`。`protocol` 是接口协议版本，字段增删时递增；`engine_version` 是发布版本 |
-| `/rules` | 完整规则文本 + 参数 + 20 条接口清单（随机事件只在运行期由 `/state` 的 `events` 播报，规则表不预列清单） |
+| `/rules` | 完整规则文本 + 参数 + 29 条接口清单（随机事件只在运行期由 `/state` 的 `events` 播报，规则表不预列清单） |
 | `/state` | 账户、持仓、贷款、行情、历史、难度、快进状态、结算结果、账本自检 `audit`（空数组表示恒等式全部成立） |
 | `/prices` | 报价表 |
 | `/roll/state` | 盲盒倒计时与当前定格结果 |
@@ -225,7 +225,7 @@ AI 每发一次求助（`POST /assist/ask`），屏幕正中会弹一个**系统
 - POST /roll/stop 可提前定格难度，否则 30 秒抽签结束自动定格。
 
 接口
-- GET /rules、/state、/health、/reports
+- GET /rules、/state、/health、/prices
 - POST /open、/close、/close_all、/fastforward、/loan、/repay、/quit
 - 草稿纸：python scratchpad.py "……"，内容并入最终 HTML 报告
 

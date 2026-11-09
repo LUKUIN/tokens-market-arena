@@ -5,20 +5,46 @@ title Tokens 交易市场 · AI 版 · 观众席
 setlocal
 
 rem ==================================================================
-rem 固定运行时：只能用下面这个 Python 3.14.7。
-rem GUI 控件与 .pyc 都按 3.14 编译，换成 where python / py -3.x
-rem 找到的别的版本会直接起不来。换机时只改这一行。
+rem 运行时只接受 Python 3.14：GUI 控件与 .pyc 都按 3.14 编译。
+rem 下面按顺序查找，任一命中即可：
+rem   1) 本机固定安装路径   2) py 启动器的 -3.14   3) PATH 里的 python（先校验版本）
 rem ==================================================================
-set "PY=C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe"
-if not exist "%PY%" (
-    echo.
-    echo   [错误] 找不到固定运行时：
-    echo     %PY%
-    echo   本版只支持 Python 3.14.7，不要改用其它 Python。
-    echo.
-    pause
-    exit /b 1
+set "PY="
+set "PYARGS="
+
+rem ---------- 按顺序找 Python 3.14 ----------
+rem 1 本机固定路径（存在就用，最快）
+set "PY_PINNED=C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe"
+if exist "%PY_PINNED%" (
+    set "PY=%PY_PINNED%"
+    goto :py_ready
 )
+rem 2 py 启动器：-3.14 已经把版本限定住
+py -3.14 -c "import sys" >nul 2>&1
+if not errorlevel 1 (
+    set "PY=py"
+    set "PYARGS=-3.14"
+    goto :py_ready
+)
+rem 3 PATH 里的 python，且必须是 3.14
+python -c "import sys; sys.exit(0 if sys.version_info[:2]==(3,14) else 1)" >nul 2>&1
+if not errorlevel 1 (
+    set "PY=python"
+    goto :py_ready
+)
+
+echo.
+echo   [错误] 没找到 Python 3.14。
+echo     已依次查找：
+echo       %PY_PINNED%
+echo       py -3.14
+echo       PATH 里的 python
+echo   请先安装 Python 3.14.7；其他版本会因 .pyc 与界面控件不兼容而起不来。
+echo.
+pause
+exit /b 1
+
+:py_ready
 
 rem ------------------------------------------------------------------
 rem 本版不等待任何键盘输入。所有参数走环境变量，未设置的用下面默认值。
@@ -43,7 +69,7 @@ echo   以上三项只能在开局前设定，进入对局后不再提供开关。
 echo.
 rem run.py 自己会封存源码、退出时还原。这里不要再起一份守卫：
 rem 起两份守卫会封两次，第二次封的是已经换上去的诱饵，真源码就再也还原不回来了。
-"%PY%" run.py
+"%PY%" %PYARGS% run.py
 echo.
 echo   [已退出] 服务与观众席都已关闭。
 pause
