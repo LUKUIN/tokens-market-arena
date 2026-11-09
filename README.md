@@ -377,7 +377,7 @@ It does two things:
 TokensMarket-OpenSource-AI-v97/
 ├── run.py                  entry point (ai / --interactive demo / server / --headless / state)
 ├── bench.py                paired multi-round benchmark over a fixed seed set
-├── Start Match.bat          zero-prompt launcher; same behaviour as python run.py (spectator included)
+├── Start Match.bat          double-click entry (5-second confirm; console-less calls start directly)
 ├── Spectator.bat            recovery window when you closed the spectator; attaches, or starts one
 ├── DeepClean Process.bat    interactive cleanup for humans (contains pause)
 ├── deep-clean.ps1          cleanup implementation (non-interactive; callable from a script)

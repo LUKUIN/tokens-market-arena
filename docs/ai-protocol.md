@@ -27,8 +27,9 @@ few tokens as possible and make a decision**.
      Do not hunt for 3.10-3.13 or `python3` — the GUI widgets and the `.pyc` files are built for 3.14.
      Every `python` in the commands below means your own 3.14 path.
    - The start command is `run.py`, and a human has to be able to watch your equity, positions and
-     event feed live. Since v1.0.11 `run.py`, `run.py server` and `Start Match.bat` behave
-     identically and all open the read-only spectator; "use server to skip the window" no longer exists.
+     event feed live. `run.py` and `run.py server` both open the read-only spectator;
+     "use server to skip the window" does not exist. Double-clicking `Start Match.bat` adds a
+     5-second mis-click guard (press `Y` to start); a console-less call starts directly.
    - `--headless` is the only windowless mode, allowed only where there is genuinely no desktop
      (CI, containers, pure SSH). It is forbidden for a local match.
    - If you closed the window by accident, attach again with `Spectator.bat` (or
