@@ -38,7 +38,7 @@ unset falls back to a default. There is no `input()`, no "press any key", no con
 **Runtime requirement: Python 3.14.7** — the `.pyc` files and the spectator widgets are built for 3.14. The pinned path on this machine is:
 
 ```
-C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
+%LOCALAPPDATA%\Programs\Python\Python314\python.exe
 ```
 
 > **On another machine it does not have to live at that exact path.** Any Python 3.14 install works —
@@ -66,7 +66,7 @@ Background start followed by a readiness poll:
 cd <project-directory>
 
 TM_TRADER="Doubao-1.5-pro-thinking-coze" TM_EVENTS=1 TM_FR=1 TM_SLOT=1 TM_ASSIST=1 \
-  nohup "C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe" run.py > run.log 2>&1 &
+  nohup python run.py > run.log 2>&1 &     # a 3.14 on PATH; otherwise your full path
 
 for i in $(seq 1 30); do
   curl -sf http://127.0.0.1:8734/health >/dev/null 2>&1 && break
@@ -78,7 +78,7 @@ On Windows `cmd`:
 
 ```bat
 cd /d <project-directory>
-start "" /b "C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe" run.py
+start "" /b python run.py      rem a 3.14 on PATH; otherwise your full path
 ```
 
 A fixed `sleep 6 && curl` gives false failures: startup takes 3–8 seconds and a slow machine
@@ -136,10 +136,10 @@ be open so a human can watch equity, holdings and the activity feed live.
 | `TM_ASSIST` | `1` enables **Outside Mercy**: the contestant may ask the spectators for help, 3 times per match; free before the start, 500,000 cash to enable mid-match (the contestant enables it, not the spectators); defaults to `1` when unset |
 | `TM_SLOT` | `1` enables **Slot Machine**: **3** plays, `1~200000` and ≤ current equity, 80% nothing / 15% 5× / 5% 10×; defaults to `1` when unset |
 | `TM_PORT` | Service port, default `8734` |
-| `TM_IDLE_ABORT` | Idle abort: settle after N minutes with no write call, default `12`, `0` disables |
+| `TM_IDLE_ABORT` | Idle abort: settle after N minutes with no **state-changing action**. Default `0` (off); `Start Match.bat` sets `12`, `AI Start.bat` keeps `0` |
 | `TM_SIGN_KEY` | HMAC key for save files; a dev placeholder is used when unset |
 
-Requirements: **Python 3.14.7** (pinned on this machine at `C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe`; elsewhere any 3.14 install works, whatever the location), Windows (the spectator uses Win32 window-icon APIs), no third-party dependencies. Do not switch to 3.10-3.13: the `.pyc` magic number and the tkinter widgets are built for 3.14, so another version cannot start. The numbers in `.github/workflows/ci.yml` are the CI test matrix, not a runtime requirement.
+Requirements: **Python 3.14** (any install location: `run.py` validates the version, not the path), Windows (the spectator uses Win32 window-icon APIs), no third-party dependencies. Do not switch to 3.10-3.13: the `.pyc` magic number and the tkinter widgets are built for 3.14, so another version cannot start. The numbers in `.github/workflows/ci.yml` are the CI test matrix, not a runtime requirement.
 
 ---
 
@@ -188,10 +188,13 @@ Sections, top to bottom:
 5. At 45 minutes (**that is when the target is judged**), on liquidation, or on `/quit`, the match
    settles and the report is written. Hitting the target does **not** end the match early - send
    `/quit` yourself if you want to stop.
-6. **Idle abort**: if no write call (open/close/loan/repay/fastforward/scratchpad/difficulty lock/assist)
-   happens for 12 minutes after the difficulty lock, the match settles itself and the report says
-   "No contestant activity". This exists for accidental starts — the AI edition has no trading UI.
-   `TM_IDLE_ABORT` tunes it, `0` disables.
+6. **Idle abort** (on by default only for the human double-click entry): if no **state-changing
+   action** (open/close, loan/repay, fastforward, scratchpad, difficulty lock, assist, trader name)
+   happens for `TM_IDLE_ABORT` minutes after the difficulty lock, the match settles itself and the
+   report says "No contestant activity". Read-only calls (`/state`, `/prices`, `/rules`) do **not**
+   count, so a slow model may observe, reason and wait without being cut short. Default `0` (off):
+   `Start Match.bat` sets `12`, `AI Start.bat` keeps `0`. The timer counts ticks, so a contestant
+   over HTTP and the headless baseline in `bench.py` share one rule and one effective match length.
 7. About 3 seconds after `/quit` the server and spectator exit on their own.
 
 ---

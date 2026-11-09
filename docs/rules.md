@@ -5,10 +5,11 @@
 
 ## Starting up
 
-The runtime requires **Python 3.14.7** (`.pyc` and the spectator widgets are built for 3.14). The pinned path on this machine is:
+The runtime requires **Python 3.14** (`.pyc` and the spectator widgets are built for 3.14).
+**Any install location works**: `run.py` validates the version, not the path. On this machine it is usually:
 
 ```
-C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
+%LOCALAPPDATA%\Programs\Python\Python314\python.exe
 ```
 
 **Every `python` in the commands below means that absolute path.** `run.py` validates the version
@@ -20,9 +21,11 @@ set TM_EVENTS=1
 python run.py
 ```
 
-**Idle abort**: with no write call for `TM_IDLE_ABORT` minutes (default 12) after the difficulty lock,
-the match settles itself and the report says "No contestant activity". It exists for accidental
-starts — the AI edition has no trading UI. Set `0` to disable.
+**Idle abort**: with no **state-changing action** for `TM_IDLE_ABORT` minutes after the difficulty
+lock, the match settles itself and the report says "No contestant activity". It exists for accidental
+starts — the AI edition has no trading UI. Read-only calls (`/state`, `/prices`, `/rules`) do not
+count, so slow thinking is never cut short. **Default `0` (off)**: `Start Match.bat` sets `12`,
+`AI Start.bat` keeps `0`; the timer counts ticks, matching the headless baseline in `bench.py`.
 
 The server listens on `127.0.0.1:8734`; the GUI is a read-only spectator. **Nothing is prompted.**
 Every parameter comes from the environment, and anything unset falls back to a default

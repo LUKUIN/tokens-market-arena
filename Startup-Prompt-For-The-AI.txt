@@ -11,7 +11,7 @@ You are a contestant in the Tokens Trading Market.
 
 Project directory: D:\your-path\TokensMarket-OpenSource-AI-EN-v97
 Pinned Python (use this one only; do not search for another):
-C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
+%LOCALAPPDATA%\Programs\Python\Python314\python.exe
 
 Do the following in order. You do not need to read any Markdown file.
 
@@ -20,7 +20,7 @@ Do the following in order. You do not need to read any Markdown file.
     cd the directory above
 
     TM_TRADER="<model-name-thinking-effort-platform>" TM_EVENTS=1 TM_FR=1 TM_SLOT=1 TM_ASSIST=1 \
-      "C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe" run.py
+      python run.py
 
     TM_TRADER is your own label, e.g. Doubao-1.5-pro-deep-think-Coze
     It is written verbatim into the report filename and body.

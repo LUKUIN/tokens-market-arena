@@ -6,10 +6,11 @@ A match lasts 45 minutes: starting equity **1,000,000 Tokens**, target **2,000,0
 
 ## 0. Which Python (hard requirement, do not search)
 
-**Python 3.14.7** — the spectator's GUI widgets and the `.pyc` files are built for 3.14. The pinned path on this machine is:
+**Python 3.14** — the spectator's GUI widgets and the `.pyc` files are built for 3.14.
+**Any install location works**: `run.py` validates the version, not the path. On this machine it is usually:
 
 ```
-C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
+%LOCALAPPDATA%\Programs\Python\Python314\python.exe
 ```
 
 `run.py` validates the version as its very first action: anything but 3.14 aborts with exit code 2
@@ -53,7 +54,7 @@ cd <project directory>
 
 TM_TRADER="<model-name-thinking-effort-platform>" \
 TM_EVENTS=1 TM_FR=1 TM_SLOT=1 TM_ASSIST=1 \
-  nohup "C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe" run.py > run.log 2>&1 &
+  nohup python run.py > run.log 2>&1 &     # a 3.14 on PATH; otherwise your full path
 
 # readiness check: startup takes 3-8 seconds, a fixed sleep produces false failures
 for i in $(seq 1 30); do
@@ -70,7 +71,7 @@ Three entry points:
 | Entry | Behaviour |
 |---|---|
 | `python run.py` | Standard; the agent default |
-| `AI Start.bat` | Unattended; runs `run.py` directly — **safest for scripts / agents** |
+| `AI Start.bat` | Unattended: sets `TM_NO_CONFIRM=1` and `TM_IDLE_ABORT=0`, then `call`s `Start Match.bat`, so the launch path has one source of truth — **safest for scripts / agents** |
 | `Start Match.bat` | Human double-click entry. Cleans up and exits unless `Y` is pressed within 5 seconds; **invoking it from a terminal with `cmd /c` also counts as human**, so it dies after 5 seconds |
 
 - Do not start `run.py spectator` yourself to "add" a window — a normal start already has one
@@ -85,7 +86,7 @@ Three entry points:
 | `TM_SLOT` | `1` enables the **Slot Machine**: 3 plays per match |
 | `TM_ASSIST` | `1` enables **Outside Mercy**: 3 asks to the spectators per match |
 | `TM_PORT` | Service port, default `8734` |
-| `TM_IDLE_ABORT` | Minutes without a write call before the match settles itself, default `12`, `0` disables |
+| `TM_IDLE_ABORT` | Minutes without any state-changing action before the match settles itself. Default `0` (off); `Start Match.bat` sets `12`, `AI Start.bat` keeps `0` |
 
 ## 3. Lock the difficulty
 

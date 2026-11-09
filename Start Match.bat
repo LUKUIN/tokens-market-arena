@@ -1,7 +1,7 @@
 @echo off
 chcp 936 >nul
 cd /d "%~dp0"
-title Tokens Trading Market - AI Edition - Spectator
+if defined TM_NO_CONFIRM (title Tokens Trading Market - AI Edition - Unattended) else (title Tokens Trading Market - AI Edition - Spectator)
 setlocal
 
 rem ==================================================================
@@ -14,7 +14,7 @@ set "PYARGS="
 
 rem ---------- locate Python 3.14, in order ----------
 rem 1) the pinned install on this machine (fastest when present)
-set "PY_PINNED=C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe"
+set "PY_PINNED=%LOCALAPPDATA%\Programs\Python\Python314\python.exe"
 if exist "%PY_PINNED%" (
     set "PY=%PY_PINNED%"
     goto :py_ready
@@ -84,6 +84,10 @@ rem   - script / agent call (no console stdin): choice returns 255, starts norma
 rem So an accidental click cannot burn 45 idle minutes, and a real agent is not killed.
 rem ==================================================================
 echo.
+rem v1.2.13: the unattended entry (AI Start.bat) sets TM_NO_CONFIRM=1 and skips
+rem this prompt. The launcher logic exists in exactly one place now.
+if defined TM_NO_CONFIRM goto :direct_start
+
 echo   Press Y within 5 seconds to start (only if an agent will connect).
 echo   Otherwise it cleans up and exits.
 choice /c YN /t 5 /d N /n /m " " 2>nul
@@ -96,7 +100,7 @@ rem run.py seals the sources itself and restores them on exit. Do NOT start guar
 "%PY%" %PYARGS% run.py
 echo.
 echo   [EXITED] Server and spectator are closed.
-pause
+if not defined TM_NO_CONFIRM pause
 goto :eof
 
 :abort_start

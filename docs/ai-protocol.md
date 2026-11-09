@@ -21,8 +21,7 @@ few tokens as possible and make a decision**.
    not required reading before a match; following `AGENTS.md` means never opening a Markdown
    file mid-match.
 2. **Use Python 3.14, and start with the spectator window open.**
-   - Python **3.14.7 only** (pinned on this machine at `C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe`;
-     on another machine any 3.14 install works, whatever the location).
+   - Python **3.14 only** (any install location: `run.py` validates the version, not the path).
      `run.py` checks the version first; a wrong version exits with code 2 and prints guidance.
      Do not hunt for 3.10-3.13 or `python3` — the GUI widgets and the `.pyc` files are built for 3.14.
      Every `python` in the commands below means your own 3.14 path.

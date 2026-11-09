@@ -1,6 +1,6 @@
 # This project has no third-party dependencies; everything comes from the Python standard library.
 # This file exists only so `pip install -r requirements.txt` succeeds (it is a no-op).
 #
-# Runtime is pinned: Python 3.14.7 / Windows (the only supported version, do not substitute)
-#   Path: C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
+# Runtime is pinned: Python 3.14 / Windows (the only supported version, do not substitute)
+#   Path: %LOCALAPPDATA%\Programs\Python\Python314\python.exe
 #   run.py validates it and exits with code 2 on a mismatch

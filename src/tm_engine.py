@@ -7,6 +7,7 @@ forced liquidation, and a draw-anytime Tokens loan pool (forced clearance at mat
 Currency unit: Tokens    Lots: 1 lot = 1000 units
 """
 
+import functools
 import hashlib
 import hmac
 from html import escape as _html_escape
@@ -247,11 +248,33 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-# Idle abort: settle when nobody has acted for N minutes after the difficulty
-# lock, so a human who double-clicks the AI launcher does not burn 45 idle mn.
-# 0 disables it. Default 12 - a real agent usually acts within seconds.
-IDLE_ABORT_MINUTES = int(os.environ.get("TM_IDLE_ABORT") or 12)
-ENGINE_VERSION = "1.2.12"  # 发布版本号：报告页脚与文档口径以此为准
+# Idle abort: settle when no state-changing action happens for N minutes after
+# the difficulty lock, so a human who double-clicks the AI launcher does not
+# burn 45 idle minutes.
+# Default 0 (disabled): evaluation and development paths must not be affected by
+# inactivity timing. The human double-click entry (Start Match.bat) sets
+# TM_IDLE_ABORT=12; AI Start.bat keeps it at 0.
+# The timer counts ticks, not wall-clock -- so an Agent over HTTP and the
+# headless baseline in bench.py share one rule and one effective match length.
+IDLE_ABORT_MINUTES = int(os.environ.get("TM_IDLE_ABORT") or 0)
+IDLE_ABORT_TICKS = (IDLE_ABORT_MINUTES * 60) // TICK_SECONDS
+
+# What counts as "acting": only state-changing actions. Read-only endpoints do
+# not count, so a slow model may observe, reason and wait without being settled.
+IDLE_ACTION_LABELS = ("open/close", "loan/repay", "fastforward", "scratchpad",
+                      "difficulty lock", "assist", "trader name")
+
+
+def _idle_rule_text():
+    """The "Idle abort" entry in /rules -- same source as the decision logic."""
+    if IDLE_ABORT_TICKS <= 0:
+        return "disabled (TM_IDLE_ABORT=0): the match is never settled for inactivity"
+    return ("settles automatically when no state-changing action (%s) happens for "
+            "%d minutes after the difficulty lock; the report says 'No contestant "
+            "activity'. Read-only calls (/state, /prices, /rules) do not count, so "
+            "slow thinking is never cut short. TM_IDLE_ABORT tunes it, 0 disables"
+            % ("/".join(IDLE_ACTION_LABELS), IDLE_ABORT_MINUTES))
+ENGINE_VERSION = "1.2.13"  # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -379,6 +402,7 @@ def _new_session(seed=None, apply_rng=True):
         "seed": seed,
         "tick": 0,
         "last_action_at": time.time(),
+        "last_action_tick": 0,
         "balance": STARTER_CASH,
         "genesis": STARTER_CASH,
         "target": TARGET_EQUITY,
@@ -462,6 +486,35 @@ def _mod_label(key, val):
            "swap_mult": "interest x%.1f", "loan_pool_mult": "loan pool x%.2f",
            "gap_mult": "gap x%.1f"}.get(key)
     return (tpl % val) if tpl else key
+
+
+def _writing(fn):
+    """Count a state-changing action as activity, for the idle-abort timer.
+
+    Records only when the method does not return ok=False -- a failed request
+    with bad parameters must not keep the match alive.
+    The hook used to live in the HTTP layer (ACTION_PATHS + note_action), which
+    meant the headless baseline calling the engine directly was governed by a
+    different rule, a forgotten route killed the contestant, and the docs kept a
+    second copy of the same list. Now the timer follows the method itself.
+    """
+    @functools.wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        # Track "a write is in progress": a method may advance several ticks
+        # (/fastforward can fast-forward the whole allowance), and those
+        # intermediate ticks must not trip the idle check.
+        self._writing_depth = getattr(self, "_writing_depth", 0) + 1
+        try:
+            r = fn(self, *args, **kwargs)
+        finally:
+            self._writing_depth = getattr(self, "_writing_depth", 1) - 1
+        try:
+            if not (isinstance(r, dict) and r.get("ok") is False):
+                self._mark_action()
+        except Exception:
+            pass
+        return r
+    return wrapper
 
 
 class Engine:
@@ -644,6 +697,7 @@ class Engine:
         phase = float(self.s.get("roll_phase") or 0.0)
         return int(t / ROLL_STEP + phase) % ROLL_COMBOS
 
+    @_writing
     def start_roll(self):
         """Starts only the difficulty draw countdown; does not unpause or reset the session timer.
 
@@ -668,6 +722,7 @@ class Engine:
         left = ROLL_SECONDS - (time.time() - start)
         return {"roll_left": max(0.0, round(left, 1)), "rolled": False}
 
+    @_writing
     def roll_stop(self):
         """Lock the difficulty. Returns the existing result when already locked; a timeout lands here too."""
         with LOCK:
@@ -680,7 +735,7 @@ class Engine:
             idx = self._roll_index()
             gap_i = idx % len(GAP_LEVELS)
             liq_i = idx // len(GAP_LEVELS)
-            self.s["last_action_at"] = time.time()
+            self._mark_action()
             self.s["difficulty"] = {"gap": gap_i, "liq": liq_i, "at": time.time(),
                                     "gap_pct": GAP_LEVELS[gap_i][1],
                                     "liq_depth": LIQ_LEVELS[liq_i][1]}
@@ -1235,13 +1290,20 @@ class Engine:
         self.s["blowups"] += 1
         self._event("[Blown out] Account capital %.0f Tokens (lost %.0f this run, %d positions force-closed)" % (self.s["balance"], loss, n), "blowup")
 
-    def note_action(self):
-        """Record that the contestant did something.
+    def _mark_action(self):
+        """Record a state-changing action, for the idle-abort timer only.
 
-        Only feeds the idle-abort timer; it changes no ledger or quote.
+        Both tick and wall-clock are recorded: the decision uses ticks (same
+        semantics as the headless advance in bench.py), wall-clock stays in
+        /state for humans. Changes no ledger or quote.
         """
+        self.s["last_action_at"] = time.time()
+        self.s["last_action_tick"] = int(self.s.get("tick") or 0)
+
+    def note_action(self):
+        """Compatibility entry: mark one action by hand (the HTTP layer no longer calls it)."""
         with LOCK:
-            self.s["last_action_at"] = time.time()
+            self._mark_action()
 
     def tick(self, manual=False):
         with LOCK:
@@ -1278,9 +1340,9 @@ class Engine:
                 self.s["last_notice_mark"] = mark
                 remain = max(0, int(SESSION_MINUTES * 60 - el))
                 self._event("Time check: %d minutes elapsed, %d left" % (int(el // 60), int(remain // 60)), "info")
-            if IDLE_ABORT_MINUTES > 0:
-                _idle = time.time() - float(self.s.get("last_action_at") or 0)
-                if _idle >= IDLE_ABORT_MINUTES * 60:
+            if IDLE_ABORT_TICKS > 0 and not getattr(self, "_writing_depth", 0):
+                _idle = int(self.s.get("tick") or 0) - int(self.s.get("last_action_tick") or 0)
+                if _idle >= IDLE_ABORT_TICKS:
                     self._end_session("No contestant activity (%d minutes idle)" % IDLE_ABORT_MINUTES)
                     return self.state()
             if el > SESSION_MINUTES * 60:
@@ -1327,6 +1389,7 @@ class Engine:
             if self.s["trader"] == "Guest":
                 self._save()
 
+    @_writing
     def set_trader(self, name):
         with LOCK:
             raw = (name or "").strip()
@@ -1341,6 +1404,7 @@ class Engine:
             return {"ok": True, "trader": self.s["trader"]}
 
     # ---------------- loans ----------------
+    @_writing
     def pause(self):
         """Pause the run: valid only before it formally starts.
 
@@ -1359,6 +1423,7 @@ class Engine:
             self._save()
             return {"ok": True, "state": self._state_light()}
 
+    @_writing
     def begin(self):
         """Formally start: clear the pause and set the timing base to now (45 minutes from this instant).
 
@@ -1425,6 +1490,7 @@ class Engine:
             self._assist_push("system", "Assistance enabled (%s)" % why)
             return {"ok": True, "already": False}
 
+    @_writing
     def assist_enable(self):
         """Enable after the match has started; costs 500,000 cash."""
         with LOCK:
@@ -1443,6 +1509,7 @@ class Engine:
                               % self.ASSIST_PRICE)
             return {"ok": True, "cost": self.ASSIST_PRICE, "balance": round(self.s["balance"], 2)}
 
+    @_writing
     def assist_ask(self, text):
         """Contestant asks the spectators; 3 per match."""
         with LOCK:
@@ -1487,6 +1554,7 @@ class Engine:
                 return x
         return None
 
+    @_writing
     def assist_reply(self, ticket, text):
         """Spectators answer one ask."""
         with LOCK:
@@ -1500,6 +1568,7 @@ class Engine:
             self._assist_push("human", t[:2000], ticket=ticket, kind="reply")
             return {"ok": True, "ticket": ticket}
 
+    @_writing
     def assist_reject(self, ticket):
         """Spectators decline one ask."""
         with LOCK:
@@ -1510,6 +1579,7 @@ class Engine:
             self._assist_push("human", "(rejected)", ticket=ticket, kind="reject")
             return {"ok": True, "ticket": ticket}
 
+    @_writing
     def scratch_append(self, text):
         """Scratchpad: record your reasoning and countermeasures. Optional — the player decides whether to use it."""
         with LOCK:
@@ -1554,6 +1624,7 @@ class Engine:
             pass
         return out
 
+    @_writing
     def scratch_clear(self):
         """Wipe the scratchpad. Always allowed mid-run; costs nothing."""
         with LOCK:
@@ -1588,6 +1659,7 @@ class Engine:
             "left3": int(remain // 180),
         }
 
+    @_writing
     def fast_forward(self, seconds=None):
         """Fast-forward one step: 300 s (5 minutes) or 180 s (3 minutes).
 
@@ -1657,6 +1729,7 @@ class Engine:
             "slot_win_range": [SLOT_WIN_LO * 100, SLOT_WIN_HI * 100],
         }
 
+    @_writing
     def set_special(self, name, on):
         """Run-wide switches: Preferred Financing / Slot Machine.
 
@@ -1696,6 +1769,7 @@ class Engine:
             return {"ok": True, "changed": True, "fee": 0.0,
                     "special": self.special_state(), "state": self._state_light()}
 
+    @_writing
     def slot(self, amount):
         """Slot Machine: stake 1~200000 Tokens, up to 3 times.
 
@@ -1763,6 +1837,7 @@ class Engine:
                     "new_target": self.s["target"], "special": self.special_state(),
                     "state": self._state_light()}
 
+    @_writing
     def borrow(self, amount):
         with LOCK:
             if self.s.get("finished"):
@@ -1833,6 +1908,7 @@ class Engine:
                                    pct * 100, (FR_LO_BOUND if _fr else LOAN_BUMP_LO_DEFAULT) * 100),
                     "state": self._state_light()}
 
+    @_writing
     def repay(self, amount=None):
         with LOCK:
             if self.s.get("finished"):
@@ -1875,6 +1951,7 @@ class Engine:
         self._event("[Loan matured] Forced clearance: repaid %.0f Tokens, account capital %.0f" % (debt, self.s["balance"]), "loan")
 
     # ---------------- trading ----------------
+    @_writing
     def open_position(self, pair, side, lots, leverage):
         with LOCK:
             if self.s.get("finished"):
@@ -1960,6 +2037,7 @@ class Engine:
             self._save()
             return {"ok": True, "position": pos, "state": self._state_light()}
 
+    @_writing
     def close_position(self, pair, lots=None):
         with LOCK:
             if self.s.get("finished"):
@@ -2001,6 +2079,7 @@ class Engine:
             self._save()
             return {"ok": True, "closed": closed, "state": self._state_light()}
 
+    @_writing
     def close_all(self):
         with LOCK:
             if self.s.get("finished"):
@@ -2874,9 +2953,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             "Loan": "Loan pool %.0f Tokens (may be temporarily scaled by \"Credit crunch / Central bank easing\"); interest %.2f%%/tick (%s); each loan: total target = old target + loan amount × random ratio (the ratio rises with cumulative borrowing: about 4%%~8%% on the first 300k, about 35%%~66%% when borrowing the pool dry; trapezoid integration over the cumulative amount, so ten small loans cost exactly the same as one big one, decided once borrowed)" % (
                 LOAN_POOL, LOAN_RATE_PER_TICK * 100, "Borrow and repay at will; forced clearance at maturity"),
             "Session length": "%d minutes" % SESSION_MINUTES,
-            "Idle abort": ("settles automatically when no write call (open/close/loan/repay/fastforward/"
-                          "scratchpad/difficulty lock/assist) happens for %d minutes after the difficulty lock; "
-                          "the report says 'No contestant activity'. TM_IDLE_ABORT tunes it, 0 disables" % IDLE_ABORT_MINUTES),
+            "Idle abort": _idle_rule_text(),
             "tick interval": "%d seconds" % TICK_SECONDS,
             "Endpoints": {
                 "GET /state": "current board: equity, positions, quotes, book depth, event feed, fast-forward",

@@ -14,9 +14,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Test matrix, not a runtime requirement. **The runtime is pinned to Python 3.14.7** (see AGENTS.md).
-        # These two deliberately non-3.14 entries verify that run.py's version guard actually blocks them.
-        python: ["3.11", "3.13"]
+        # Test matrix, not a runtime requirement. **The runtime is Python 3.14**
+        # (see AGENTS.md). 3.11 / 3.13 exist to prove run.py's version guard
+        # rejects them; 3.14 is the only supported runtime and must pass the
+        # whole suite (added in v1.2.13).
+        python: ["3.11", "3.13", "3.14"]
 
     steps:
       - uses: actions/checkout@v4
@@ -25,18 +27,26 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
-      - name: Version guard (non-3.14 must exit with code 2)
+      - name: Version guard (non-3.14 rejected, 3.14 allowed)
         shell: bash
         run: |
           set +e
           python run.py state > /dev/null 2>&1
           rc=$?
           echo "guard exit code: $rc"
-          if [ "$rc" -ne 2 ]; then
-            echo "::error::version guard broken: expected exit code 2, got $rc"
-            exit 1
+          if [ "${{ matrix.python }}" = "3.14" ]; then
+            if [ "$rc" -eq 2 ]; then
+              echo "::error::the only supported runtime is rejected by its own guard"
+              exit 1
+            fi
+            echo "guard allows 3.14 (rc=$rc)"
+          else
+            if [ "$rc" -ne 2 ]; then
+              echo "::error::version guard broken: expected exit code 2, got $rc"
+              exit 1
+            fi
+            echo "guard OK: non-3.14 rejected (exit code 2)"
           fi
-          echo "version guard OK (exit code 2)"
 
       - name: Syntax check
         run: python -m py_compile run.py bench.py src/tm_engine.py src/tm_api.py src/tm_watch_ai.py src/scratchpad.py

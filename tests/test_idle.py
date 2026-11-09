@@ -1,18 +1,24 @@
 # -*- coding: utf-8 -*-
-"""无活动自动收尾的回归测试。
+"""Regression tests for the idle abort (v1.2.13: engine-level, tick-based).
 
-这条防线针对的是「人类误点 AI 版的启动脚本」：
-对局会正常开始，但没有任何人下单，45 分钟全部空转。
-所以两个方向都必须测到——
-  · 真的没人操作时，必须提前结算；
-  · 有人操作时，绝不能误杀。
+The original reason for this guard: a human double-clicks the AI launcher and
+the match runs for 45 minutes with nobody trading.
+
+Four directions must hold:
+  · with nobody acting, the match must settle early;
+  · with a real write action, it must never kill the contestant;
+  · a failed request (bad parameters) must not keep the match alive;
+  · read-only observation does not count, so slow thinking is never cut short.
+
+One more hard constraint: the accounting must live in the engine. v1.2.12 put
+the hook in the HTTP layer, so the headless baseline in bench.py was governed
+by a different rule than a contestant over HTTP.
 """
-
+import json
 import os
 import shutil
 import sys
 import tempfile
-import time
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
@@ -20,42 +26,116 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 import tm_engine as T  # noqa: E402
 
 
-class IdleAbortCase(unittest.TestCase):
+class _IdleBase(unittest.TestCase):
+    """Shrink the threshold to 1 minute so the decision fits in a few ticks."""
+
+    def setUp(self):
+        self._saved = (T.IDLE_ABORT_MINUTES, T.IDLE_ABORT_TICKS)
+        T.IDLE_ABORT_MINUTES = 1
+        T.IDLE_ABORT_TICKS = (1 * 60) // T.TICK_SECONDS
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        T.IDLE_ABORT_MINUTES, T.IDLE_ABORT_TICKS = self._saved
+
     def make(self):
         home = tempfile.mkdtemp(prefix="tmidle_")
         self.addCleanup(shutil.rmtree, home, True)
         eng = T.Engine(home)
-        eng.roll_stop()
+        eng.roll_stop()          # the clock only starts after the difficulty lock
         return eng
 
+    def push_idle(self, eng):
+        """Move the last action just past the threshold."""
+        eng.s["last_action_tick"] = eng.s["tick"] - T.IDLE_ABORT_TICKS
 
-class TestIdleAbort(IdleAbortCase):
+
+class TestIdleAbort(_IdleBase):
     def test_idle_abort_triggers(self):
-        """连续无操作超过阈值必须自动结算，并把原因写进 last_settle。"""
-        if T.IDLE_ABORT_MINUTES <= 0:
-            self.skipTest("TM_IDLE_ABORT=0，功能已关闭")
+        """No action past the threshold must settle, with the reason recorded."""
         eng = self.make()
-        eng.s["last_action_at"] = time.time() - (T.IDLE_ABORT_MINUTES * 60 + 1)
+        self.push_idle(eng)
         eng.tick()
         self.assertTrue(eng.s["finished"])
         self.assertIn(str(T.IDLE_ABORT_MINUTES), eng.s["last_settle"]["reason"])
 
-    def test_action_resets_idle(self):
-        """note_action 必须重置计时，活跃参赛者不能被误杀。"""
-        if T.IDLE_ABORT_MINUTES <= 0:
-            self.skipTest("TM_IDLE_ABORT=0，功能已关闭")
+    def test_write_actions_reset_idle(self):
+        """Every state-changing method refreshes the timer -- direct calls included."""
+        cases = [
+            ("open_position", lambda e: e.open_position("AURA/CORE", "LONG", 1, 20)),
+            ("borrow", lambda e: e.borrow(100000)),
+            ("fast_forward", lambda e: e.fast_forward(180)),
+            ("scratch_append", lambda e: e.scratch_append("note")),
+            ("set_trader", lambda e: e.set_trader("regression")),
+            ("slot", lambda e: e.slot(10000)),
+            ("assist_enable", lambda e: e.assist_enable()),
+            ("close_all", lambda e: e.close_all()),
+        ]
+        for name, call in cases:
+            eng = self.make()
+            self.push_idle(eng)
+            r = call(eng)
+            self.assertIsNot(r.get("ok"), False, "%s failed: %s" % (name, r))
+            self.assertEqual(eng.s["last_action_tick"], eng.s["tick"],
+                             "%s did not refresh the idle timer" % name)
+            eng.tick()
+            self.assertFalse(eng.s["finished"], "killed the contestant after %s" % name)
+
+    def test_failed_request_does_not_reset(self):
+        """A request with bad parameters cannot keep the match alive."""
         eng = self.make()
-        eng.s["last_action_at"] = time.time() - (T.IDLE_ABORT_MINUTES * 60 + 1)
-        eng.note_action()
+        self.push_idle(eng)
+        r = eng.open_position("NOT_A_PAIR", "LONG", 1, 20)
+        self.assertIs(r.get("ok"), False)
+        self.assertNotEqual(eng.s["last_action_tick"], eng.s["tick"])
         eng.tick()
+        self.assertTrue(eng.s["finished"])
+
+    def test_read_only_does_not_reset(self):
+        """Read-only observation is not activity: waiting is a legal strategy."""
+        eng = self.make()
+        before = eng.s["last_action_tick"]
+        eng.state()
+        eng.rules()
+        eng.state()
+        self.assertEqual(eng.s["last_action_tick"], before)
+
+    def test_rules_text_comes_from_engine(self):
+        """/rules text shares its source with the decision: threshold, scope, read-only note."""
+        eng = self.make()
+        text = json.dumps(eng.rules(), ensure_ascii=False)
+        self.assertIn(str(T.IDLE_ABORT_MINUTES), text)
+        self.assertIn("Read-only", text)
+        self.assertIn("slow thinking", text)
+
+
+class TestIdleDisabled(unittest.TestCase):
+    """Behaviour with the default (TM_IDLE_ABORT unset or 0)."""
+
+    def setUp(self):
+        self._saved = (T.IDLE_ABORT_MINUTES, T.IDLE_ABORT_TICKS)
+        T.IDLE_ABORT_MINUTES = 0
+        T.IDLE_ABORT_TICKS = 0
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        T.IDLE_ABORT_MINUTES, T.IDLE_ABORT_TICKS = self._saved
+
+    def test_no_abort_when_disabled(self):
+        home = tempfile.mkdtemp(prefix="tmidleoff_")
+        self.addCleanup(shutil.rmtree, home, True)
+        eng = T.Engine(home)
+        eng.roll_stop()
+        for _ in range(200):
+            eng.tick()
         self.assertFalse(eng.s["finished"])
 
-    def test_rules_mentions_idle(self):
-        """/rules 必须把这条规则写出来，否则 Agent 无从得知。"""
-        eng = self.make()
-        rules = eng.rules()
-        text = str(rules)
-        self.assertIn(str(T.IDLE_ABORT_MINUTES), text)
+    def test_rules_say_disabled(self):
+        home = tempfile.mkdtemp(prefix="tmidleoff_")
+        self.addCleanup(shutil.rmtree, home, True)
+        eng = T.Engine(home)
+        text = json.dumps(eng.rules(), ensure_ascii=False)
+        self.assertIn("disabled", text)
 
 
 if __name__ == "__main__":

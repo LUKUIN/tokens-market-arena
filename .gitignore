@@ -25,3 +25,9 @@ _guard_vault/
 
 # 运行日志（每次开局都会写，不该进版本库）
 *.log
+
+# Release bundles stay out of the repo: they ship as release assets
+*.zip
+
+# Local scripts and scratch output
+_scratch/

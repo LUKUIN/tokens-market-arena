@@ -12,7 +12,7 @@ set "PYARGS="
 
 rem ---------- locate Python 3.14, in order ----------
 rem 1) the pinned install on this machine (fastest when present)
-set "PY_PINNED=C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe"
+set "PY_PINNED=%LOCALAPPDATA%\Programs\Python\Python314\python.exe"
 if exist "%PY_PINNED%" (
     set "PY=%PY_PINNED%"
     goto :py_ready

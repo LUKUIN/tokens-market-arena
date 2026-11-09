@@ -10,7 +10,7 @@ It is **not compatible with, and cannot be mixed with**, the human edition (Toke
 the human edition has a full interactive GUI; the AI edition does not.
 
 Runtime (the only supported one):
-    C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe run.py
+    python run.py            # a 3.14 on PATH; otherwise your full interpreter path
 
 Usage:
     python run.py                 start the match AND open the read-only spectator (the normal path)
@@ -49,10 +49,32 @@ except Exception:
 # of letting the contestant guess.
 # ---------------------------------------------------------------------------
 PY_REQUIRED = (3, 14)
-PY_PINNED = r"C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe"
+
+
+def _python_hint():
+    """Return the full retry command, without hard-coding a user name.
+
+    Looks at the usual per-user install location first, then falls back to the
+    py launcher. Not finding a local install does not matter: run.py validates
+    the version, never the path, so a 3.14 install elsewhere works fine.
+    """
+    candidates = []
+    local = os.environ.get("LOCALAPPDATA") or ""
+    if local:
+        candidates.append(os.path.join(local, "Programs", "Python", "Python314", "python.exe"))
+    pf = os.environ.get("ProgramFiles") or ("C:" + os.sep + "Program Files")
+    candidates.append(os.path.join(pf, "Python314", "python.exe"))
+    for path in candidates:
+        try:
+            if os.path.exists(path):
+                return '"%s" run.py' % path
+        except OSError:
+            pass
+    return "py -3.14 run.py"
+
 
 if sys.version_info[:2] != PY_REQUIRED:
-    _hint = PY_PINNED if os.path.exists(PY_PINNED) else "py -3.14"
+    _hint = _python_hint()
     print()
     print("  " + "=" * 62)
     print("  Startup aborted: wrong Python version.")
@@ -61,7 +83,7 @@ if sys.version_info[:2] != PY_REQUIRED:
     print("  The GUI widgets and .pyc files are built for 3.14; another version will fail.")
     print("  Re-run with:")
     print()
-    print('    "%s" run.py' % _hint)
+    print('    %s' % _hint)
     print()
     print("  " + "=" * 62)
     print()

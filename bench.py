@@ -115,6 +115,12 @@ def run_one(seed, policy, outdir):
 
 
 def cmd_run(args):
+    # Offline evaluation disables the idle abort by default: the ticks below
+    # complete a whole match in a few hundred milliseconds, so a tick-based
+    # idle decision would truncate the baseline at 12 minutes and make it
+    # incomparable with a real HTTP match. Pass --idle-abort N to test it.
+    T.IDLE_ABORT_MINUTES = max(0, int(args.idle_abort))
+    T.IDLE_ABORT_TICKS = (T.IDLE_ABORT_MINUTES * 60) // T.TICK_SECONDS
     outdir = args.out or tempfile.mkdtemp(prefix="tmbench_")
     os.makedirs(outdir, exist_ok=True)
     seeds = _parse_seeds(args.seeds)
@@ -194,6 +200,8 @@ def main(argv=None):
 
     p_run = sub.add_parser("run", help="play one match per seed")
     p_run.add_argument("--seeds", required=True, help="e.g. 1,2,3 or 1-5")
+    p_run.add_argument("--idle-abort", type=int, default=0,
+                       help="idle-abort minutes; default 0 (off) so evaluation stays comparable")
     p_run.add_argument("--policy", default="noop", choices=sorted(POLICIES),
                        help="headless baseline policy (default noop)")
     p_run.add_argument("--out", default="", help="output directory (default: temp dir)")
