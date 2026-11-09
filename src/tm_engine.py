@@ -2472,7 +2472,7 @@ class Engine:
             # The audit verdict goes into the report body: a warning that lives only in
             # /state is a warning nobody reads.
             _audit = self._audit_ledger()
-            body["auditline"] = ("Ledger audit: passed (fees / loan / positions / equity all reconcile)"
+            body["auditline"] = ("Ledger audit: passed (fees / loan / positions all reconcile)"
                                  if not _audit else
                                  "Ledger audit FAILED: " + "; ".join(_audit))
             body["auditcolor"] = "var(--up)" if not _audit else "var(--down)"
