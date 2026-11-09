@@ -29,6 +29,26 @@ ENGINE = Engine(HOME)
 SERVER = None
 
 
+def _hard_exit():
+    """Restore sealed sources, then call os._exit.
+
+    os._exit skips atexit and finally; without this unseal the next start imports a
+    decoy, which immediately calls sys.exit(1) and prints "CHEATING DETECTED" --
+    it looks like a false cheating verdict.
+    """
+    try:
+        import sys
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if root not in sys.path:
+            sys.path.insert(0, root)
+        import guard
+        guard.unseal()
+    except Exception:
+        pass
+    os._exit(0)
+
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "TokensMarket/2.0"
 
@@ -134,7 +154,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 pass
             self._send({"ok": True, "msg": "Service stopped (abnormal-exit report generated)"})
-            threading.Timer(0.3, lambda: os._exit(0)).start()
+            threading.Timer(0.3, _hard_exit).start()
             return
         if path == "/trader":
             return self._send(ENGINE.set_trader(b.get("name")))

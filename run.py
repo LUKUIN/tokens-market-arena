@@ -29,6 +29,7 @@ Environment variables:
 """
 
 import os
+import subprocess
 import sys
 import time
 
@@ -405,6 +406,17 @@ def _self_heal(port=None):
 _self_heal()
 
 
+def _env_int(raw, default):
+    """环境变量 / 位置参数转端口或整数：非法值回退默认值并提示，不抛异常。"""
+    if raw is None or str(raw).strip() == "":
+        return default
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        print("  Invalid number %r, falling back to %d" % (raw, default))
+        return default
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     mode = argv[0].lower() if argv else "auto"
@@ -426,7 +438,7 @@ def main(argv=None):
         # `run.py --headless 127.0.0.1 8737` work.
         rest = [a for a in argv[1:] if a != "--headless"]
         host = rest[0] if rest else "127.0.0.1"
-        port = int(rest[1]) if len(rest) > 1 else 8734
+        port = _env_int(rest[1] if len(rest) > 1 else os.environ.get("TM_PORT"), 8734)
         if "--headless" not in argv:
             # Since v1.0.11 `server` no longer means "headless": it behaves exactly like
             # `python run.py` and opens the read-only spectator. A human must be able to

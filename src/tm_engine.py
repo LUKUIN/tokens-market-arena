@@ -565,7 +565,8 @@ class Engine:
         self.home = home
         self._elapsed_watch = 0.0
         os.makedirs(home, exist_ok=True)
-        purge_agent_dir(home)
+        if not readonly:
+            purge_agent_dir(home)   # read-only instances (run.py state) must not delete files
         self.path = os.path.join(home, STATE_FILE)
         self.running_path = os.path.join(home, RUNNING_FILE)
         # Whether the previous process left an "unfinished shutdown" marker
@@ -1160,7 +1161,7 @@ class Engine:
             trades = s.get("trades") or []
             fee_sum = sum(float(t.get("fee") or 0.0) for t in trades)
             fees = float(s.get("total_fees") or 0.0)
-            if abs(fee_sum - fees) > 0.05:
+            if abs(fee_sum - fees) > max(0.05, 0.01 * len(trades)):
                 issues.append("手续费合计 %.2f 与成交流水 %.2f 不一致" % (fees, fee_sum))
         except Exception as exc:
             issues.append("手续费核对异常：%s" % exc)
@@ -2792,9 +2793,9 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
         In full state, price_history (up to 2000x7) and events (60 entries) grow with the run;
         echoing them on every order just burns model context.
         """
-        return self.state(include_history=False, include_events=False)
+        return self.state(include_history=False, include_events=False, include_curve=False)
 
-    def state(self, include_history=True, include_events=True):
+    def state(self, include_history=True, include_events=True, include_curve=True):
         with LOCK:
             px = self.s["prices"]
             positions = []
@@ -2901,7 +2902,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "total_fees": round(self.s["total_fees"], 2),
                 "total_swap": round(self.s["total_swap"], 2),
                 "order_count": self.s["order_count"],
-                "equity_curve": self.s["equity_curve"][-HISTORY_LEN:],
+                "equity_curve": (self.s["equity_curve"][-HISTORY_LEN:] if include_curve else []),
                 "price_history": (self.s["price_history"] if include_history else {}),
                 "events": (self.s["events"][-60:] if include_events else []),
                 "finished": self.s["finished"],

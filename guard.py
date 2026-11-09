@@ -113,6 +113,22 @@ def _post(port, path, timeout=2.0):
         return None
 
 
+def _write_synced(path, data):
+    """写文件并 fsync，再用 os.replace 原子替换。
+
+    崩溃时只会看到「完整的旧文件」或「完整的新文件」，不会留下半截内容。
+    """
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(data)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
+def _write_json_synced(path, obj):
+    _write_synced(path, json.dumps(obj, ensure_ascii=False, indent=1).encode("utf-8"))
+
 def seal(port=None):
     """Encrypt the sources into a vault outside the project, then drop decoys.
 
@@ -142,8 +158,8 @@ def seal(port=None):
     box = os.path.join(GUARD_ROOT, session)
     os.makedirs(box, exist_ok=True)
     key = os.urandom(32)
-    with open(os.path.join(box, "_k"), "wb") as f:
-        f.write(key)
+    _write_synced(os.path.join(box, "_k"), key)
+    # Pass 1: encrypt into the box only; do not touch the sources yet.
     sealed, mapping = [], {}
     for rel in SOURCES:
         src = os.path.join(HERE, rel)
@@ -152,16 +168,20 @@ def seal(port=None):
         with open(src, "rb") as f:
             data = f.read()
         name = os.urandom(8).hex() + ".bin"
-        with open(os.path.join(box, name), "wb") as f:
-            f.write(_encrypt(key, data))
+        _write_synced(os.path.join(box, name), _encrypt(key, data))
         mapping[name] = rel
-        with io.open(src, "w", encoding="utf-8", newline="\n") as f:
-            f.write(DECOY)
         sealed.append(rel)
+    # STATE must hit the disk before any source is replaced: it holds the box name
+    # and the name->rel map. The old order (replace decoys first, write STATE last)
+    # left a window where a crash or taskkill stranded the real sources in the box
+    # with no record of which .bin belongs to which file -- unrecoverable.
     state = {"sealed": sealed, "started": time.time(), "box": session, "map": mapping,
              "port": core_port(port)}
-    with io.open(STATE, "w", encoding="utf-8") as f:
-        json.dump(state, f, ensure_ascii=False, indent=1)
+    _write_json_synced(STATE, state)
+    # Pass 2: swap in the decoys. Even if this is interrupted, unseal() can restore
+    # everything from STATE.
+    for rel in sealed:
+        _write_synced(os.path.join(HERE, rel), DECOY.encode("utf-8"))
     return sealed
 
 

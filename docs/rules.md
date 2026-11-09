@@ -140,44 +140,47 @@ Calling either after its uses run out returns `This run has used all of them; re
 
 ## Fast-forward
 
-Each match gets **900 seconds (15 minutes)** of fast-forward budget, in two freely mixed tiers:
+Each match gives **15 minutes (900 seconds)** of fast-forward budget. The two tiers can be mixed freely:
 
-| Tier | Each jump | Cooldown after |
+| Tier | Each step | Cooldown after |
 |---|---:|---:|
 | 5 minutes | 300 s | 120 s |
 | 3 minutes | 180 s | 90 s |
 
-- The 30-second difficulty draw does not count against the 45 minutes — the clock starts at lock.
-- The cooldown follows the tier you used.
-- During cooldown the buttons are greyed out.
+- The 30-second difficulty draw does not count against the 45 minutes — the clock starts when you lock in.
+- The cooldown matches the tier you just used.
+- During cooldown `POST /fastforward` returns `ok: false`; `ff.cool_left` gives the seconds left.
 - If the remaining budget cannot cover a tier, that jump does not execute.
   Example: used `5′+3′+3′+3′ = 840 s`, 60 s left — neither tier is usable.
-- The UI shows remaining budget, the record of jumps, and the cooldown countdown.
+- Budget and cooldown live in the `ff` field of `GET /state`: `used` / `remain` / `cool_left` / `can5` / `can3`.
 - Time advances one way only: fast-forward. 900 s per match, 300 or 180 s per step, 120/90 s cooldown — it cannot be bypassed.
 
-### The three buttons
+### What the spectator window can do
 
-| Button | Effect |
+The AI edition's spectator is **read-only**: no order buttons, no fast-forward button, and no "settle" button. The window offers exactly two actions:
+
+| Action | Effect |
 |---|---|
 | Minimize | Hides the window; the match keeps running |
 | End processes | Stops the server and closes the window — **counts as one abnormal exit** |
-| Settle | Ends the match normally and generates the report |
+
+End a match normally with `POST /quit` (settles and writes the report); do not use "End processes" for that.
 
 ---
 
 ## FAQ
 
 **Q: Double-clicked the bat and it sits at "drawing difficulty"?**
-A: That is the 30-second countdown. Click "lock" to freeze it early.
+A: That is the 30-second countdown; `POST /roll/stop` freezes it early.
 
-**Q: The main window never appears?**
+**Q: The window never appears?**
 A: You are still in the difficulty draw or the rules window — check whether another window covers it.
 
 **Q: Where is the report?**
 A: One `.html` file per match under `src/data/reports/`.
 
 **Q: How do I start over?**
-A: The bottom of the investment panel has "restart match".
+A: `POST /reset` (30-second cooldown). The AI edition has no investment panel and no "restart match" button.
 
 **Q: Windows warned and blocked the file?**
 A: The source edition has no `.pyd`; only the `.bat` may be blocked by SmartScreen.
@@ -201,9 +204,9 @@ This program is for entertainment and learning only. Nothing here relates to a r
 
 ## Outside Mercy
 
-A two-way channel between the contestant and the spectators. Off by default.
+A two-way channel between the contestant and the spectators. **On by default** (`TM_ASSIST` unset counts as `1`, matching `TM_EVENTS` / `TM_FR` / `TM_SLOT`; set `TM_ASSIST=0` to disable).
 
-- **Before the match**: `set TM_ASSIST=1`, or pick "yes" in the interactive prompt. Free.
+- **Before the match**: already on and free; set `TM_ASSIST=0` to turn it off. The interactive prompt can also switch it.
 - **After the start**: `POST /assist/enable`, which deducts **500,000** cash. Refused when cash
   is short.
 - The spectator window has no enable control: whether to enable this is the contestant's decision alone.

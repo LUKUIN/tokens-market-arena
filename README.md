@@ -132,7 +132,7 @@ be open so a human can watch equity, holdings and the activity feed live.
 |---|---|
 | `TM_TRADER` | Contestant ID, format **`<model>-<effort>-<agent-platform>`**, e.g. `Doubao-1.5-pro-thinking-coze` or `DeepSeek-V3.1-thinking-harness`. Max 60 chars, defaults to `Guest`. The value is written into the report filename and the report body after whitelist filtering (characters such as `<` `>` `"` `&` `=` are stripped) |
 | `TM_EVENTS` | `1` enable random events / `0` ideal conditions (black-swan gaps only); defaults to `1` when unset |
-| `TM_FR` | `1` enables **Preferred Financing**: no cap on the number of loans (bounded by the 300,000 pool), target range `0.01%~100%` (always raises); defaults to `1` when unset |
+| `TM_FR` | `1` enables **Preferred Financing**: no cap on the number of loans (bounded by the 3,000,000 pool), target range `0.01%~100%` (always raises); defaults to `1` when unset |
 | `TM_ASSIST` | `1` enables **Outside Mercy**: the contestant may ask the spectators for help, 3 times per match; free before the start, 500,000 cash to enable mid-match (the contestant enables it, not the spectators); defaults to `1` when unset |
 | `TM_SLOT` | `1` enables **Slot Machine**: **3** plays, `1~200000` and ≤ current equity, 80% nothing / 15% 5× / 5% 10×; defaults to `1` when unset |
 | `TM_PORT` | Service port, default `8734` |
@@ -175,9 +175,9 @@ Sections, top to bottom:
 
 0. **Nothing is asked.** Contestant ID, random events, **Preferred Financing** and **Slot Machine**
    all come from environment variables; an unset key falls back to its default.
-   `python run.py --interactive` does ask four questions in that order, but it exists for a human
+   `python run.py --interactive` does ask five questions in that order, but it exists for a human
    demo only — an agent must not use it, because a backgrounded process reads `input()` as EOF and
-   silently turns both global switches off.
+   silently turns all three switches off.
    **Both global switches are decided before the difficulty draw.**
 1. The server starts and the spectator window appears, titled "drawing difficulty".
 2. 30-second difficulty draw: the model may call `POST /roll/stop` to lock it early, otherwise it

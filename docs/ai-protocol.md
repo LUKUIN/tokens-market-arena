@@ -324,7 +324,7 @@ These validations cannot be bypassed:
 **The one thing that cannot be protected against is your own faulty logic** — the engine is
 deterministic: the same input always produces the same output.
 
-### Outside Mercy (optional, off by default)
+### Outside Mercy (optional, on by default)
 
 ```bash
 POST /assist/ask      {"text": "..."}                     # 3 asks per match; returns a ticket
