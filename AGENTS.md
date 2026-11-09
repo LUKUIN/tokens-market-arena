@@ -4,6 +4,39 @@
 
 一局 45 分钟：初始权益 **1,000,000 Tokens**，目标 **2,000,000**。行情、事件、跳空全部是程序生成的虚构数据，与任何真实市场无关。
 
+## 文件在哪（项目地图，先看这一张表）
+
+```text
+TokensMarket-OpenSource-AI-v97/
+├── AGENTS.md          ← 你正在读的这一页
+├── README.md          人类入口（规则、接口、常见问题）
+├── run.py             ★ 启动服务的唯一入口（Agent 走这个）
+├── bench.py           配对评测
+├── guard.py           源码守卫（run.py 自己调，别手动起）
+├── launchers/         ★ 所有双击入口（内部自动切回仓库根）
+│   ├── 开一局.bat     人类双击（5 秒确认）
+│   ├── AI-Start.bat   无人值守（推荐脚本 / Agent）
+│   ├── 只开观众席.bat 补挂窗口
+│   └── 进程深度清理.bat
+├── tools/deep-clean.ps1  非交互清理（AI 直接调这个）
+├── src/               引擎与 HTTP（对局中会被封存，不要改）
+├── tests/             unittest 用例
+├── docs/              ★ 规则文档
+│   ├── rules.md       完整规则
+│   ├── ai-protocol.md 接入协议
+│   ├── cost-model.md  成本模型
+│   └── 给AI的启动提示词.txt
+└── examples/reports/  样例战报
+```
+
+三条硬规矩：
+
+1. **规则以 `GET /rules` 为准**：`docs/` 只是同一套规则的展开版，两者冲突时信接口。
+2. **启动只认两个位置**：Agent 用仓库根的 `python run.py`；人类双击 `launchers\开一局.bat`。
+   不要 `cd launchers` 之后再跑 `python run.py` —— `launchers\` 下没有 `run.py`。
+3. **`launchers\` 与 `tools\` 里的脚本已自动切回仓库根**，双击或在任意目录调用都能工作；
+   不要把它们复制到别处，否则相对路径会断。
+
 ## 0. 用哪个 Python（硬要求）
 
 **Python 3.14**——观众席的 GUI 控件和 `.pyc` 都按 3.14 编译，其他版本起不来。
@@ -67,8 +100,8 @@ done
 | 入口 | 行为 |
 |---|---|
 | `python run.py` | 标准方式，Agent 首选 |
-| `AI-Start.bat` | 无人值守：设 `TM_NO_CONFIRM=1` 与 `TM_IDLE_ABORT=0` 后 `call 开一局.bat`，启动逻辑只有一份；**脚本 / Agent 用这个最稳** |
-| `开一局.bat` | 人类双击入口。5 秒内不按 `Y` 就清理退出；**在终端里 `cmd /c 开一局.bat` 也会被当成人类**，5 秒后被杀 |
+| `launchers\AI-Start.bat` | 无人值守：设 `TM_NO_CONFIRM=1` 与 `TM_IDLE_ABORT=0` 后 `call launchers\开一局.bat`，启动逻辑只有一份；**脚本 / Agent 用这个最稳** |
+| `launchers\开一局.bat` | 人类双击入口。5 秒内不按 `Y` 就清理退出；**在终端里 `cmd /c launchers\开一局.bat` 也会被当成人类**，5 秒后被杀 |
 
 - 不要自己另起 `python run.py spectator` 补窗口——正常启动就会有
 - 只有确实没有桌面环境（CI、容器、纯 SSH）才加 `--headless`，那是唯一的无窗口模式
@@ -82,7 +115,7 @@ done
 | `TM_SLOT` | `1` 开启【老虎机】：整局 3 次 |
 | `TM_ASSIST` | `1` 开启【外部的怜悯】：整局可向观众席求助 3 次 |
 | `TM_PORT` | 服务端口，默认 `8734` |
-| `TM_IDLE_ABORT` | 定档后连续多少分钟没有任何改变对局状态的动作就自动结算。默认 `0`（关闭）；`开一局.bat` 设 `12`，`AI-Start.bat` 保持 `0` |
+| `TM_IDLE_ABORT` | 定档后连续多少分钟没有任何改变对局状态的动作就自动结算。默认 `0`（关闭）；`launchers\开一局.bat` 设 `12`，`launchers\AI-Start.bat` 保持 `0` |
 
 ## 3. 定档
 

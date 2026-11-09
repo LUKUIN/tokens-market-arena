@@ -39,8 +39,8 @@ python run.py
 Double-click launcher:
 
 ```
-开一局.bat        (double-click entry: 5-second confirm)
-AI-Start.bat      (unattended entry: starts directly; for scripts / agents)
+launchers\开一局.bat        (double-click entry: 5-second confirm)
+launchers\AI-Start.bat      (unattended entry: starts directly; for scripts / agents)
 or  python run.py --interactive   (human demo only; asks model ID and event mode)
 ```
 
@@ -161,12 +161,12 @@ Run this after a match, or when startup misbehaves (port taken, window never app
 
 ```bash
 cd "D:/DeepSeek Harness WorkSpace/TokensMarket-OpenSource-AI-v97"
-powershell -NoProfile -ExecutionPolicy Bypass -File deep-clean.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\deep-clean.ps1
 ```
 
 > **When calling from an AI agent or a script, use the command above.** Do not run
-> `进程深度清理.bat` directly: it contains two `pause` calls (stdin piped in will hang) and prints
-> GBK text (garbled in a UTF-8 terminal). `deep-clean.ps1` is the same logic in non-interactive
+> `launchers\进程深度清理.bat` directly: it contains two `pause` calls (stdin piped in will hang) and prints
+> GBK text (garbled in a UTF-8 terminal). `tools\deep-clean.ps1` is the same logic in non-interactive
 > form and forces UTF-8 output; **exit code 0 means success**.
 > Double-clicking the `.bat` still works for humans (pass `-y` to skip the pauses).
 
@@ -184,22 +184,33 @@ It does two things:
 ```
 TokensMarket-OpenSource-AI-v97/
 ├── run.py                  entry point (ai / --interactive / server / state)
-├── 开一局.bat            Windows double-click launcher (5-second confirm)
-├── AI-Start.bat          unattended launcher (no confirm; scripts / agents)
-├── 进程深度清理.bat        manual double-click cleanup (contains pause)
-├── deep-clean.ps1          cleanup implementation; agents should call this directly
+├── bench.py                paired multi-seed evaluation
+├── guard.py                source-sealing guard (called by run.py, never start it yourself)
+├── requirements.txt        no third-party dependencies (placeholder)
+├── Dockerfile              container image (python:3.14-slim, --headless)
+├── README.md / README.en.md
+├── AGENTS.md               one-page agent entry + project map (agents read this first)
+├── launchers/              every double-click entry (each cds back to the repo root)
+│   ├── launchers\开一局.bat          double-click launcher (5-second confirm)
+│   ├── launchers\AI-Start.bat        unattended launcher (no confirm; scripts / agents)
+│   ├── launchers\只开观众席.bat      re-attach the spectator window
+│   └── launchers\进程深度清理.bat    manual double-click cleanup (contains pause)
+├── tools/
+│   └── tools\deep-clean.ps1      cleanup implementation; agents call this directly (non-interactive)
 ├── src/
 │   ├── tm_engine.py        engine (pure logic)
 │   ├── tm_api.py           HTTP layer
 │   ├── tm_watch_ai.py      read-only spectator
 │   ├── scratchpad.py       scratchpad CLI
 │   ├── app.ico / warn.ico  icons
+│   └── data/               generated at runtime: session.json, reports/, .scratchpad.jsonl
+├── tests/                  unittest suite (python -m unittest discover -s tests)
 ├── docs/
 │   ├── rules.md            full rules (Chinese)      · rules.en.md (English)
 │   ├── cost-model.md       cost model (Chinese)      · cost-model.en.md (English)
-│   └── ai-protocol.md      agent protocol (Chinese)  · ai-protocol.en.md (English)
-├── examples/reports/       6 representative reports
-└── src/data/               generated at runtime: session.json, reports/, .scratchpad.jsonl
+│   ├── ai-protocol.md      agent protocol (Chinese)  · ai-protocol.en.md (English)
+│   └── docs\给AI的启动提示词.txt  paste-ready startup text for an agent
+└── examples/reports/       6 representative reports
 ```
 
 ---

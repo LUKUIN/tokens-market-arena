@@ -4,7 +4,7 @@
 
 > **让 Agent 参赛？读 [`AGENTS.md`](AGENTS.md) 一页就够** —— 启动命令、定档、接口入口都在里面，规则从 `GET /rules` 取，不需要逐个翻 `docs/`。
 >
-> 想换个 AI 参赛：打开 [`给AI的启动提示词.txt`](给AI的启动提示词.txt)，把两条虚线之间的整段复制给它，改一下第一行的路径就行。
+> 想换个 AI 参赛：打开 [`docs\给AI的启动提示词.txt`](docs\给AI的启动提示词.txt)，把两条虚线之间的整段复制给它，改一下第一行的路径就行。
 
 [![CI](https://github.com/LUKUIN/tokens-market-arena/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/LUKUIN/tokens-market-arena/actions/workflows/ci.yml)
 
@@ -52,8 +52,8 @@
 `run.py` 是**前台阻塞**命令，会一直跑到本局结束（最长 45 分钟）：执行器若把它当普通命令等待返回，会触发自己的超时并 kill 进程，服务随之消失，之后所有请求都是 `connection refused`。
 
 **观众席会随服务自动打开，这是强制项。** `run.py`、`run.py server` 都会拉起只读观众席；
-`开一局.bat` 双击时多一步防误点确认（5 秒内按 `Y` 才启动，不按就清理退出）。
-**脚本 / Agent 请用 `AI-Start.bat` 或直接 `python run.py`**——`cmd /c 开一局.bat` 这种终端调用也会被当成人类，5 秒后被杀。
+`launchers\开一局.bat` 双击时多一步防误点确认（5 秒内按 `Y` 才启动，不按就清理退出）。
+**脚本 / Agent 请用 `launchers\AI-Start.bat` 或直接 `python run.py`**——`cmd /c launchers\开一局.bat` 这种终端调用也会被当成人类，5 秒后被杀。
 只有加 `--headless` 才是真正的无窗口模式，仅供没有桌面环境的 CI / 容器使用。
 
 后台启动后轮询就绪：
@@ -87,15 +87,15 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 
 ### 双击启动
 
-`开一局.bat` 是双击入口。**双击时会先问一次**：5 秒内按 `Y` 才启动，不按就清理退出。
-`AI-Start.bat` 是无人值守入口，不做确认，直接启动，专给脚本 / Agent 用——
-AI 版没有操作界面，人类误点本来会空转 45 分钟。**脚本 / Agent 请走 `python run.py` 或 `AI-Start.bat`**；
-在终端里 `cmd /c 开一局.bat` 同样会被当成人类，5 秒后清理退出。
+`launchers\开一局.bat` 是双击入口。**双击时会先问一次**：5 秒内按 `Y` 才启动，不按就清理退出。
+`launchers\AI-Start.bat` 是无人值守入口，不做确认，直接启动，专给脚本 / Agent 用——
+AI 版没有操作界面，人类误点本来会空转 45 分钟。**脚本 / Agent 请走 `python run.py` 或 `launchers\AI-Start.bat`**；
+在终端里 `cmd /c launchers\开一局.bat` 同样会被当成人类，5 秒后清理退出。
 脚本按顺序找 Python 3.14：本机固定路径 → `py -3.14` → PATH 里的 `python`（先校验版本）。三条都不命中时明确报错并停住，不会带病启动。
 
 ### 只开观众席（窗口被误关时用）
 
-`只开观众席.bat` **只**打开只读观众席窗口。正常启动本来就会带窗口，它是补救入口——
+`launchers\只开观众席.bat` **只**打开只读观众席窗口。正常启动本来就会带窗口，它是补救入口——
 用在你手动关掉了观众席窗口、而对局还在跑的时候。
 
 ```
@@ -128,7 +128,7 @@ python run.py --headless          # 等价于 run.py server --headless
 | `TM_ASSIST` | `1` 开启【外部的怜悯】：参赛者可向观众席求助，整局 3 次；开局前开启免费，局内开启扣 500,000 现金；未设置时按 `1` 处理 |
 | `TM_SLOT` | `1` 开启【老虎机】：整局 **3 次**，`1~200000` 且不超当前权益，80% 空 / 15% 5 倍 / 5% 10 倍；未设置时按 `1` 处理 |
 | `TM_PORT` | 服务端口，默认 `8734` |
-| `TM_IDLE_ABORT` | 无活动自动收尾：定档后连续多少分钟没有任何**改变对局状态的动作**就结算。默认 `0`（关闭）；`开一局.bat` 会设成 `12`，`AI-Start.bat` 保持 `0` |
+| `TM_IDLE_ABORT` | 无活动自动收尾：定档后连续多少分钟没有任何**改变对局状态的动作**就结算。默认 `0`（关闭）；`launchers\开一局.bat` 会设成 `12`，`launchers\AI-Start.bat` 保持 `0` |
 | `TM_SIGN_KEY` | 存档 HMAC 密钥，不设则用 dev 占位值 |
 
 要求：**Python 3.14**（安装位置不限，`run.py` 只校验版本号）、Windows（观众席依赖 Win32 图标），无第三方依赖。
@@ -174,7 +174,7 @@ AI 每发一次求助（`POST /assist/ask`），屏幕正中会弹一个**系统
 6. **无活动会自动收尾**（仅人类双击入口默认开启）：定档后连续 `TM_IDLE_ABORT` 分钟没有任何
    **改变对局状态的动作**（开平仓、借贷、快进、草稿纸、定档、求助、改参赛者名称），本局自动结算，
    报告结束原因写「无参赛者活动」。只读观察（`/state`、`/prices`、`/rules`）**不计入**，
-   慢模型观望与推理不会被提前结算。默认 `0`（关闭），`开一局.bat` 设 `12`，`AI-Start.bat` 保持 `0`；
+   慢模型观望与推理不会被提前结算。默认 `0`（关闭），`launchers\开一局.bat` 设 `12`，`launchers\AI-Start.bat` 保持 `0`；
    计时按 tick 推进，与 `bench.py` 的离线基线同语义。
 7. `/quit` 后约 3 秒服务与观众席自动退出。**退出前会自动收尾**：删掉本局临时文件
    （`session.json`、草稿纸、`_agent` 残留），只保留 `reports/` 下的历史战报，
@@ -290,7 +290,7 @@ python guard.py status               # 查看状态（是否封存 / 是否有�
 python guard.py stop                 # 结束守卫并解密还原源码
 ```
 
-守卫由 `run.py` 自己在启动时封存、退出时还原，`开一局.bat` 只是个启动器，不要再额外起一份
+守卫由 `run.py` 自己在启动时封存、退出时还原，`launchers\开一局.bat` 只是个启动器，不要再额外起一份
 `guard.py start`：两个守卫会封两次，第二次封进去的已经是诱饵，真源码就还原不回来了。
 
 封存时具体发生的事：
@@ -300,7 +300,7 @@ python guard.py stop                 # 结束守卫并解密还原源码
 - 密钥单独存成同目录下的 `_k`；`src/*.py` 原位置换成 967 字节、写着 `CHEATING DETECTED` 的诱饵
 - 项目内的 `_guard_vault/` 只留一个 `guard_state.json`（记录封了哪几个文件），**没有任何明文源码**
 - 执行 / `import` 诱饵：落下 `CHEAT_FLAG`，守卫立刻 `POST /shutdown` 终止对局
-- 清理：`deep-clean.ps1` 会把守卫进程一起杀掉，并先解密还原源码
+- 清理：`tools\deep-clean.ps1` 会把守卫进程一起杀掉，并先解密还原源码
 
 `run.py` 启动时先加载观众席模块、再封存源码（顺序反了会 import 到诱饵）；上一次对局异常中断留下的封存，会在下次启动时自动解密还原。
 
@@ -316,13 +316,13 @@ python guard.py stop                 # 结束守卫并解密还原源码
 
 ```bash
 cd <项目目录>
-powershell -NoProfile -ExecutionPolicy Bypass -File deep-clean.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\deep-clean.ps1
 ```
 
-> **由 AI 或脚本调用时请用上面这条命令**，不要直接跑 `进程深度清理.bat`：
+> **由 AI 或脚本调用时请用上面这条命令**，不要直接跑 `launchers\进程深度清理.bat`：
 > 它内部有两个 `pause`（管道或重定向喂 stdin 会卡住），而且用 GBK 输出（UTF-8 终端下是乱码）。
-> `deep-clean.ps1` 是同一套逻辑的非交互版本，已强制 UTF-8 输出；**退出码 0 即成功**。
-> 人工双击 `进程深度清理.bat` 仍然可用（加 `-y` 参数则跳过暂停）。
+> `tools\deep-clean.ps1` 是同一套逻辑的非交互版本，已强制 UTF-8 输出；**退出码 0 即成功**。
+> 人工双击 `launchers\进程深度清理.bat` 仍然可用（加 `-y` 参数则跳过暂停）。
 
 它做两件事：
 
@@ -339,23 +339,32 @@ powershell -NoProfile -ExecutionPolicy Bypass -File deep-clean.ps1
 TokensMarket-OpenSource-AI-v97/
 ├── run.py                  统一入口（ai / --interactive 仅演示 / server / --headless / state）
 ├── bench.py                配对多轮评测：同组 seed 跑多局并输出统计
-├── 开一局.bat            双击入口（5 秒内按 Y 才启动，不按就清理退出）
-├── AI-Start.bat          无人值守入口（不做确认，直接启动；脚本 / Agent 专用）
-├── 只开观众席.bat        窗口被误关时补挂；对局在跑就静默附上，没跑就先起服务
-├── 进程深度清理.bat        人工双击用（含 pause）
-├── deep-clean.ps1          清理本体；AI 请直接调用它（非交互）
+├── guard.py                源码封存守卫（run.py 自己调用，不要手动起）
+├── requirements.txt        无第三方依赖（占位文件）
+├── Dockerfile              容器镜像（python:3.14-slim · --headless）
+├── README.md / README.en.md
+├── AGENTS.md               给 Agent 的单页入口 + 项目地图（AI 先读这个）
+├── launchers/              所有双击入口（内部自动切回仓库根）
+│   ├── launchers\开一局.bat          双击入口（5 秒内按 Y 才启动，不按就清理退出）
+│   ├── launchers\AI-Start.bat        无人值守入口（不做确认；脚本 / Agent 专用）
+│   ├── launchers\只开观众席.bat      窗口被误关时补挂；对局在跑就静默附上
+│   └── launchers\进程深度清理.bat    人工双击用（含 pause）
+├── tools/
+│   └── tools\deep-clean.ps1      清理本体；AI 请直接调用它（非交互，退出码 0 即成功）
 ├── src/
 │   ├── tm_engine.py        引擎（纯逻辑）
 │   ├── tm_api.py           HTTP 接口
 │   ├── tm_watch_ai.py      只读观众席
 │   ├── scratchpad.py       草稿纸终端
 │   ├── app.ico / warn.ico  图标
+│   └── data/               运行时生成：session.json、reports/、.scratchpad.jsonl
+├── tests/                  unittest 用例（python -m unittest discover -s tests）
 ├── docs/
 │   ├── rules.md            完整规则      · rules.en.md 英文版
 │   ├── cost-model.md       成本模型      · cost-model.en.md 英文版
-│   └── ai-protocol.md      接入协议      · ai-protocol.en.md 英文版
-├── examples/reports/       6 份代表性报告 · README.en.md 英文版
-└── src/data/               运行时生成：session.json、reports/、.scratchpad.jsonl
+│   ├── ai-protocol.md      接入协议      · ai-protocol.en.md 英文版
+│   └── docs\给AI的启动提示词.txt  可直接粘贴给 Agent 的启动文本
+└── examples/reports/       6 份代表性报告 · README.en.md 英文版
 ```
 
 ---

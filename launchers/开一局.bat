@@ -1,6 +1,6 @@
 @echo off
 chcp 936 >nul
-cd /d "%~dp0"
+cd /d "%~dp0.."
 if defined TM_NO_CONFIRM (title Tokens 交易市场 · AI 版 · 无人值守) else (title Tokens 交易市场 · AI 版 · 观众席)
 setlocal
 
@@ -68,7 +68,7 @@ echo   参赛模型     %TM_TRADER%
 echo   随机事件     %TM_EVENTS%
 echo   优惠融资 %TM_FR%    老虎机 %TM_SLOT%    外部的怜悯 %TM_ASSIST%
 echo   5 秒内按 Y 才启动对局；不按则清理退出。
-echo   要让 AI 参赛，请在本目录运行：python run.py
+echo   要让 AI 参赛：回到项目根目录运行 python run.py（本窗口已切到根目录）
 echo.
 echo   !! 本版是 AI 参赛版：界面只读，没有下单 / 平仓 / 快进按钮。
 echo   !! 人类要玩请用 TokensMarket-OpenSource-Human。
@@ -103,10 +103,10 @@ goto :eof
 :abort_start
 echo.
 echo   已取消。正在清理残留进程与临时文件……
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0deep-clean.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\tools\deep-clean.ps1"
 echo.
 echo   [已清理]
-echo   - 要让 AI 参赛：在本目录运行  python run.py
+echo   - 要让 AI 参赛：在项目根目录运行  python run.py
 echo   - 人类要玩：请用 TokensMarket-OpenSource-Human
 echo.
 pause

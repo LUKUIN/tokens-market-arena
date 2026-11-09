@@ -13,6 +13,12 @@ try { $OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 
 $ErrorActionPreference = "SilentlyContinue"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Definition
+# v1.2.13：本脚本在 tools/ 下，先向上找一层真正的项目根（含 run.py 的那层）。
+# 这样无论从仓库根还是从 tools/ 直接调用，都能定位 src/、guard.py 与 _guard_vault/。
+if (-not (Test-Path (Join-Path $root "run.py"))) {
+    $parent = Split-Path -Parent $root
+    if (Test-Path (Join-Path $parent "run.py")) { $root = $parent }
+}
 $dataDir = Join-Path $root "src\data"
 if (-not (Test-Path $dataDir)) { $dataDir = Join-Path $root "data" }
 

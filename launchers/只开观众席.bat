@@ -1,6 +1,6 @@
 @echo off
 chcp 936 >nul
-cd /d "%~dp0"
+cd /d "%~dp0.."
 title Tokens 交易市场 - 只开观众席
 setlocal
 

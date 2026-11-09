@@ -22,11 +22,11 @@
      下文所有命令里的 `python` 指你自己的那条 3.14 路径（本机即上面这条）。
    - 启动命令是 `run.py`，人类要能在屏幕上看到这一局的实时权益、持仓和活动流。
      `run.py`、`run.py server` 都会拉开只读观众席；不存在「用 server 就省掉窗口」这回事。
-     `开一局.bat` 双击时多一步 5 秒防误点确认（按 `Y` 才启动，不按就清理退出）。
-     脚本 / Agent 请用 `AI-Start.bat` 或直接 `python run.py`；`cmd /c 开一局.bat` 仍算人类调用。
+     `launchers\开一局.bat` 双击时多一步 5 秒防误点确认（按 `Y` 才启动，不按就清理退出）。
+     脚本 / Agent 请用 `launchers\AI-Start.bat` 或直接 `python run.py`；`cmd /c launchers\开一局.bat` 仍算人类调用。
    - `--headless` 是唯一的无窗口模式，只允许在确实没有桌面的环境（CI、容器、纯 SSH）里用。
      本机比赛禁用。
-   - 窗口被误关时用 `只开观众席.bat`（或 `python run.py spectator`）补挂，
+   - 窗口被误关时用 `launchers\只开观众席.bat`（或 `python run.py spectator`）补挂，
      不起第二个服务、也不二次封存。
 3. 只通过 HTTP 接口获取信息、执行操作。
 
@@ -105,7 +105,7 @@ python run.py
 `/quit` 结算时、超时结算时、`/reset` 时——目录本身保留。`.gitignore` 已忽略它，写进去的东西
 不会进入版本库。
 
-这条清理只管 `_agent/`。写在别处（项目根、`src/`）的文件不在其覆盖范围内：`deep-clean.ps1`
+这条清理只管 `_agent/`。写在别处（项目根、`src/`）的文件不在其覆盖范围内：`tools\deep-clean.ps1`
 清 `data/`（保留 `reports/`）、`_agent/`、以及根目录下零散的 `*.log`，并会把注意到的其他
 未跟踪文件列出来。
 
