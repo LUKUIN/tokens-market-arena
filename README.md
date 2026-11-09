@@ -35,14 +35,15 @@ unset falls back to a default. There is no `input()`, no "press any key", no con
 
 ### For an agent or script (the normal case)
 
-**The only supported runtime** is **Python 3.14.7**:
+**Runtime requirement: Python 3.14.7** — the `.pyc` files and the spectator widgets are built for 3.14. The pinned path on this machine is:
 
 ```
 C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
 ```
 
-> **Every `python` in the rest of this document means that absolute path.** Copy it verbatim; never
-> fall back to whatever `python` happens to resolve to on PATH.
+> **On another machine it does not have to live at that exact path.** Any Python 3.14 install works —
+> swap the path in the commands below for your own, or use `py -3.14`. `run.py` validates the version,
+> not the install location.
 
 `run.py` validates the version as its first action: anything but 3.14 exits with code 2 and prints
 that command. Do not use `where python`, `py -3.12` or `python3` to find another interpreter — the
@@ -91,8 +92,9 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 ### Double-click launcher
 
 `Start Match.bat` is the double-click entry point, with exactly the same behaviour as `python run.py`:
-zero prompts, and it opens the spectator too. The batch file pins the runtime to
-`C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe` instead of going through `where python`.
+zero prompts, and it opens the spectator too. The batch file looks for Python 3.14 in order —
+the pinned path, then `py -3.14`, then `python` on PATH (version-checked) — and stops with a clear
+error if none of the three is found.
 
 ### Spectator only (when the window was closed by accident)
 
@@ -132,7 +134,7 @@ be open so a human can watch equity, holdings and the activity feed live.
 | `TM_PORT` | Service port, default `8734` |
 | `TM_SIGN_KEY` | HMAC key for save files; a dev placeholder is used when unset |
 
-Requirements: **Python 3.14.7** (pinned on this machine at `C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe`), Windows (the spectator uses Win32 window-icon APIs), no third-party dependencies. Do not switch to 3.10-3.13: the `.pyc` magic number and the tkinter widgets are built for 3.14, so another version cannot start. The numbers in `.github/workflows/ci.yml` are the CI test matrix, not a runtime requirement.
+Requirements: **Python 3.14.7** (pinned on this machine at `C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe`; elsewhere any 3.14 install works, whatever the location), Windows (the spectator uses Win32 window-icon APIs), no third-party dependencies. Do not switch to 3.10-3.13: the `.pyc` magic number and the tkinter widgets are built for 3.14, so another version cannot start. The numbers in `.github/workflows/ci.yml` are the CI test matrix, not a runtime requirement.
 
 ---
 
@@ -195,7 +197,7 @@ Base URL defaults to `http://127.0.0.1:8734`.
 |---|---|
 | `/health` | `{ok, tick, equity, finished, protocol, engine_version}`. `protocol` is the API
   contract version (incremented whenever fields change); `engine_version` is the release |
-| `/rules` | Full rule text, parameters and a 20-endpoint list (random events are only announced at runtime through `events` in `/state`; the rule sheet does not pre-list them) |
+| `/rules` | Full rule text, parameters and a 29-endpoint list (random events are only announced at runtime through `events` in `/state`; the rule sheet does not pre-list them) |
 | `/state` | Account, positions, loan, quotes, history, difficulty, fast-forward state, settlement result, and `audit` (empty array = all ledger identities hold) |
 | `/prices` | Quote table |
 | `/roll/state` | Difficulty countdown and the currently locked result |
@@ -246,7 +248,7 @@ Setup
 - POST /roll/stop locks the difficulty early; otherwise it locks when the 30-second draw ends.
 
 Interface
-- GET /rules, /state, /health, /reports
+- GET /rules, /state, /health, /prices
 - POST /open, /close, /close_all, /fastforward, /loan, /repay, /quit
 - Scratchpad: python scratchpad.py "..." — merged into the final HTML report
 

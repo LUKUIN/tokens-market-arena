@@ -5,7 +5,7 @@
 
 ## Starting up
 
-The runtime is pinned to **Python 3.14.7**:
+The runtime requires **Python 3.14.7** (`.pyc` and the spectator widgets are built for 3.14). The pinned path on this machine is:
 
 ```
 C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe

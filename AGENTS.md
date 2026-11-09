@@ -6,7 +6,7 @@ A match lasts 45 minutes: starting equity **1,000,000 Tokens**, target **2,000,0
 
 ## 0. Which Python (hard requirement, do not search)
 
-Use this one interpreter only, **Python 3.14.7**:
+**Python 3.14.7** — the spectator's GUI widgets and the `.pyc` files are built for 3.14. The pinned path on this machine is:
 
 ```
 C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
