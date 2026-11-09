@@ -490,6 +490,17 @@ def _start_guard(port):
     return stop
 
 
+def _env_int(raw, default):
+    """环境变量 / 位置参数转端口或整数：非法值回退默认值并提示，不抛异常。"""
+    if raw is None or str(raw).strip() == "":
+        return default
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        print("  数值 %r 无效，回退为 %d" % (raw, default))
+        return default
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     mode = argv[0].lower() if argv else "auto"
@@ -511,7 +522,7 @@ def main(argv=None):
         # `run.py --headless 127.0.0.1 8737` 两种写法都成立。
         rest = [a for a in argv[1:] if a != "--headless"]
         host = rest[0] if rest else "127.0.0.1"
-        port = int(rest[1]) if len(rest) > 1 else 8734
+        port = _env_int(rest[1] if len(rest) > 1 else os.environ.get("TM_PORT"), 8734)
         if "--headless" not in argv:
             # v1.0.11 起统一：server 不再等于「无头」，行为与 `python run.py` 完全一致，
             # 一样把只读观众席拉起来。人类必须能当场看见这一局，不能等事后补窗口。

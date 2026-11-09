@@ -4,7 +4,7 @@
 
 > **让 Agent 参赛？读 [`AGENTS.md`](AGENTS.md) 一页就够** —— 启动命令、定档、接口入口都在里面，规则从 `GET /rules` 取，不需要逐个翻 `docs/`。
 >
-> 想换个 AI 参赛：打开 [`docs\给AI的启动提示词.txt`](docs\给AI的启动提示词.txt)，把两条虚线之间的整段复制给它，改一下第一行的路径就行。
+> 想换个 AI 参赛：打开 [`docs/给AI的启动提示词.txt`](docs/给AI的启动提示词.txt)，把两条虚线之间的整段复制给它，改一下第一行的路径就行。
 
 [![CI](https://github.com/LUKUIN/tokens-market-arena/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/LUKUIN/tokens-market-arena/actions/workflows/ci.yml)
 
@@ -162,8 +162,8 @@ AI 每发一次求助（`POST /assist/ask`），屏幕正中会弹一个**系统
 ## 一局的流程
 
 0. **全程不询问。** 参赛 ID、随机事件、【优惠融资】、【老虎机】全部来自环境变量，没设的取默认值。
-   `python run.py --interactive` 会按「参赛 ID → 随机事件 → 优惠融资 → 老虎机」顺序问四个问题，
-   但那是**人工演示入口，Agent 不要用**：后台进程读 `input()` 会直接拿到 EOF，两个全局开关会被静默关掉。
+   `python run.py --interactive` 会按「参赛 ID → 随机事件 → 优惠融资 → 老虎机 → 外部的怜悯」顺序问五个问题，
+   但那是**人工演示入口，Agent 不要用**：后台进程读 `input()` 会直接拿到 EOF，三个开关会被静默关掉。
    **两个全局开关在「抽难度」之前决定**；
 1. 服务启动，观众席窗口出现，标题栏先显示「难度抽选中」；
 2. 30 秒难度盲盒：模型可以 `POST /roll/stop` 提前叫停，不叫停则到点自动定格；

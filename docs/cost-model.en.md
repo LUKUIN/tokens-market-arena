@@ -1,7 +1,5 @@
 # Cost Model
 
-> [中文](cost-model.md) · **English**
-
 Every number here comes from actual constants in `tm_engine.py` and real open/close measurements,
 not from estimates.
 
@@ -16,7 +14,7 @@ not from estimates.
 
 ## Measured round-trip cost
 
-At "liquidity: normal" (LIQ = 16,000,000), opening and closing immediately (price unchanged, pure
+At "liquidity: thin" (LIQ = 8,000,000, also the default before difficulty is locked), opening and closing immediately (price unchanged, pure
 cost):
 
 | Notional | Round-trip cost | As share of 1M starting capital |
@@ -34,13 +32,13 @@ cost):
 
 Same 10M notional, different liquidity tiers:
 
-| Tier | LIQ | Round-trip cost |
-|---|---:|---:|
-| Ample | 32,000,000 | ~2.0% |
-| Normal | 16,000,000 | ~4.0% |
-| Thin | 8,000,000 | ~8.0% |
-| Drained | 4,000,000 | ~16% |
-| Black hole | 2,000,000 | ~32% |
+| Tier | LIQ | Round-trip cost | % of 1M principal |
+|---|---:|---:|---:|
+| Ample | 32,000,000 | 17,500 | 1.75% |
+| Normal | 16,000,000 | 25,000 | 2.50% |
+| Thin | 8,000,000 | 40,000 | 4.00% |
+| Drained | 4,000,000 | 70,000 | 7.00% |
+| Black hole | 2,000,000 | 130,000 | 13.0% |
 
 **So "bad liquidity" does not forbid trading — it forces you to size down.**
 
@@ -81,6 +79,28 @@ stop placed at 137   → filled at 139.28 (1.7% slippage)
 
 Closing during drained liquidity also incurs about 2.3% slippage (`80.02 → 78.19`).
 
+## Forced liquidation and settlement
+
+A regular close, a blow-up liquidation and end-of-match settlement share **one** execution path:
+
+```
+fill = mid price minus/plus (half spread + slippage)
+fee  = filled notional x fee rate
+```
+
+- **Blow-up liquidation** (margin level below the stop-out line, or a margin call timing out):
+  spread, slippage and fees all apply, and the fill is written to the trade log with a `forced`
+  flag. The report lists "Forced liquidation" under "Closed positions".
+- **End-of-match settlement**: not blocked by "exchange maintenance" or any other trading halt.
+  Final equity is computed only after positions are cleared:
+  final equity = cash - debt, with **no floating P&L**.
+- **Failed settlement**: `POST /quit` returns `settled=false` plus `warnings`, and the report
+  header reads "Settlement error (N position(s) left open)". It is never treated as a clean result.
+
+> Before v1.0.12 the blow-up path charged fees only (no spread, no slippage), and settlement
+> closes were silently skipped while "exchange maintenance" was active. Historical reports use a
+> different cost basis and are not directly comparable with v1.0.12 and later.
+
 ## How overnight interest accumulates
 
 `LOAN_RATE_PER_TICK = 0.0001` (loan interest), while `swap` is charged on holdings.
@@ -104,22 +124,6 @@ Measured in a real match:
 In the match that lost 32.38%, **commission plus interest accounted for 23.6% of the total loss**.
 
 More than a fifth of the loss was not bad trading — it was the **cost of staying in**.
-
-## Forced liquidation and settlement
-
-A regular close, a blow-up liquidation and end-of-match settlement share **one** execution path:
-
-```
-fill = mid price minus/plus (half spread + slippage)
-fee  = filled notional x fee rate
-```
-
-- **Blow-up liquidation** (margin level below the stop-out line, or a margin call timing out):
-  spread, slippage and fees all apply, and the fill is written to the trade log with a `forced`
-  flag. The report lists "Forced liquidation" under "Closed positions".
-- **End-of-match settlement**: not blocked by "exchange maintenance" or any other trading halt.
-  Every position is closed at the unified cost path, the loan is cleared, and the invariants
-  (no positions, no debt) are verified before the result is written.
 
 ## Conclusion
 

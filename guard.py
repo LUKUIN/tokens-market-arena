@@ -112,6 +112,22 @@ def _post(port, path, timeout=2.0):
         return None
 
 
+def _write_synced(path, data):
+    """写文件并 fsync，再用 os.replace 原子替换。
+
+    崩溃时只会看到「完整的旧文件」或「完整的新文件」，不会留下半截内容。
+    """
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(data)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
+def _write_json_synced(path, obj):
+    _write_synced(path, json.dumps(obj, ensure_ascii=False, indent=1).encode("utf-8"))
+
 def seal(port=None):
     """Encrypt the sources into a vault outside the project, then drop decoys.
 
@@ -141,8 +157,8 @@ def seal(port=None):
     box = os.path.join(GUARD_ROOT, session)
     os.makedirs(box, exist_ok=True)
     key = os.urandom(32)
-    with open(os.path.join(box, "_k"), "wb") as f:
-        f.write(key)
+    _write_synced(os.path.join(box, "_k"), key)
+    # 第一遍：只加密入箱，不动源码。
     sealed, mapping = [], {}
     for rel in SOURCES:
         src = os.path.join(HERE, rel)
@@ -151,16 +167,18 @@ def seal(port=None):
         with open(src, "rb") as f:
             data = f.read()
         name = os.urandom(8).hex() + ".bin"
-        with open(os.path.join(box, name), "wb") as f:
-            f.write(_encrypt(key, data))
+        _write_synced(os.path.join(box, name), _encrypt(key, data))
         mapping[name] = rel
-        with io.open(src, "w", encoding="utf-8", newline="\n") as f:
-            f.write(DECOY)
         sealed.append(rel)
+    # STATE 必须在覆盖源码之前落盘：它记着 box 名与 name→rel 映射。
+    # 旧顺序是「先换诱饵、最后写 STATE」，若在这两步之间断电或被 taskkill，
+    # 真源码还在箱里，但没有任何记录能对上 .bin 与文件名的关系，等于永久丢失。
     state = {"sealed": sealed, "started": time.time(), "box": session, "map": mapping,
              "port": core_port(port)}
-    with io.open(STATE, "w", encoding="utf-8") as f:
-        json.dump(state, f, ensure_ascii=False, indent=1)
+    _write_json_synced(STATE, state)
+    # 第二遍：把源码换成诱饵。此时即使中断，unseal() 也能凭 STATE 全部还原。
+    for rel in sealed:
+        _write_synced(os.path.join(HERE, rel), DECOY.encode("utf-8"))
     return sealed
 
 

@@ -29,6 +29,25 @@ ENGINE = Engine(HOME)
 SERVER = None
 
 
+def _hard_exit():
+    """硬退出前的收尾：先把封存的源码还原，再 os._exit。
+
+    os._exit 跳过 atexit 与 finally；不在这里 unseal，下一次启动 import 到的就是
+    诱饵，会立刻 sys.exit(1) 并打印「CHEATING DETECTED」，看起来像被误判作弊。
+    """
+    try:
+        import sys
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if root not in sys.path:
+            sys.path.insert(0, root)
+        import guard
+        guard.unseal()
+    except Exception:
+        pass
+    os._exit(0)
+
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "TokensMarket/2.0"
 
@@ -132,7 +151,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 pass
             self._send({"ok": True, "msg": "服务已停止（已生成异常退出报告）"})
-            threading.Timer(0.3, lambda: os._exit(0)).start()
+            threading.Timer(0.3, _hard_exit).start()
             return
         if path == "/trader":
             return self._send(ENGINE.set_trader(b.get("name")))

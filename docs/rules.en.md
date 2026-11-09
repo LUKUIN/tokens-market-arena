@@ -1,37 +1,44 @@
 # Game Rules
 
-> [中文](rules.md) · **English**
-
 > Derived from the packaged AI edition rules. Parameters are identical to the Human edition; only
 > the way you operate differs.
 
 ## Starting up
 
-The runtime requires **Python 3.14.7** (`.pyc` and the spectator widgets are built for 3.14). The pinned path on this machine is:
+The runtime requires **Python 3.14** (`.pyc` and the spectator widgets are built for 3.14).
+**Any install location works**: `run.py` validates the version, not the path. On this machine it is usually:
 
 ```
-C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
+%LOCALAPPDATA%\Programs\Python\Python314\python.exe
 ```
 
-**On another machine any 3.14 install works, whatever the location** — swap the path below for your own,
-or use `py -3.14`. `run.py` also validates the version itself and
-exits with code 2 on a mismatch.
+**Every `python` in the commands below means that absolute path.** `run.py` validates the version
+itself too and exits with code 2 when it does not match.
 
 ```bash
-set TM_TRADER=<model>-<effort>-<agent-platform>
+set TM_TRADER=Doubao-1.5-pro-thinking-coze
 set TM_EVENTS=1
 python run.py
 ```
 
-The server listens on `127.0.0.1:8734`; the GUI is a read-only spectator. Startup order:
-player name → random events on/off → **Preferred Financing** switch → **Slot Machine** switch →
+**Idle abort**: with no **state-changing action** for `TM_IDLE_ABORT` minutes after the difficulty
+lock, the match settles itself and the report says "No contestant activity". It exists for accidental
+starts — the AI edition has no trading UI. Read-only calls (`/state`, `/prices`, `/rules`) do not
+count, so slow thinking is never cut short. **Default `0` (off)**: `launchers\开一局.bat` sets `12`,
+`launchers\AI-Start.bat` keeps `0`; the timer counts ticks, matching the headless baseline in `bench.py`.
+
+The server listens on `127.0.0.1:8734`; the GUI is a read-only spectator. **Nothing is prompted.**
+Every parameter comes from the environment, and anything unset falls back to a default
+(`TM_TRADER=Guest`, `TM_EVENTS=1`, `TM_FR=1`, `TM_SLOT=1`, `TM_ASSIST=1`). Startup order: read the environment →
 server starts → difficulty draw (30 s, lock early with `POST /roll/stop`) → clock starts →
 the model trades over HTTP.
 
-> Both global switches are decided after the events question and before the difficulty draw.
-> Preset them with `TM_FR` / `TM_SLOT` (`1`/`0`) to skip the prompts.
+> `TM_TRADER` is written into the report filename and the report body after whitelist filtering; it is the field that
+> tells contestants apart.
+> For a manual demo, `python run.py --interactive` asks for the player name, random events,
+> **Preferred Financing** and **Slot Machine** in that order.
 
-You can also double-click `Start Match.bat` — it asks once: press `Y` within 5 seconds, otherwise it cleans up and exits.
+You can also double-click `launchers\开一局.bat` — it asks once: press `Y` within 5 seconds, otherwise it cleans up and exits.
 
 > This document covers the **AI edition**. The Human edition (`TokensMarket-OpenSource-Human`) has
 > an investment panel; its rule parameters are the same as here.
@@ -50,26 +57,33 @@ things:
 
 | Tier | Chance | Expected gaps per pair in 45 min |
 |---|---:|---:|
-| Very low (极低) | 0.24% | ~1.3 |
-| Low (低) | 0.60% | ~3.2 |
-| Medium (中) | 1.50% | ~8.1 |
-| High (高) | 3.75% | ~20 |
-| Very high (极高) | 9.38% | ~51 |
+| Very low | 0.24% | ~1.3 |
+| Low | 0.60% | ~3.2 |
+| Medium | 1.50% | ~8.1 |
+| High | 3.75% | ~20 |
+| Very high | 9.38% | ~51 |
 
 Gaps run 2%–12%, direction random. A resting stop can be skipped outright — placing a stop at 126.5
 and filling at 131 is common.
 
 ### Liquidity · slippage cost
 
-| Tier | 20M notional round trip | 10M position round trip |
+| Tier (market depth) | 10M notional round trip | % of 1M principal |
 |---|---:|---:|
-| Ample (充裕) | 3.5% | 1.8% |
-| Normal (正常) | 7.0% | 3.5% |
-| Thin (纤薄) | 14.0% | 7.0% |
-| Drained (枯竭) | 28% | 14.0% |
-| Black hole (黑洞) | 56% | 28.0% |
+| Ample (32M) | 17,500 | 1.75% |
+| Normal (16M) | 25,000 | 2.50% |
+| Thin (8M) | 40,000 | 4.00% |
+| Drained (4M) | 70,000 | 7.00% |
+| Black hole (2M) | 130,000 | 13.0% |
 
-Slippage scales with notional size.
+The table is 10M notional at an AURA-grade spread (0.06%) and includes commission (4,000),
+spread (6,000) and slippage. **It is cost as a share of the 1M starting principal**, not of notional.
+
+**Slippage grows with the SQUARE of notional**: cost = `SLIP_K / (2 × market depth) × notional²`,
+`SLIP_K = 0.0024`. Doubling the notional quadruples the slippage cost. One-sided slippage is capped
+at 1.4% (6% during a liquidity shock).
+
+**End-game markup (v1.2.0)**: from `tick >= 360` (the last 15 minutes) the slippage multiplier climbs linearly to `1.5` at `tick = 540`. It gives nothing away -- quitting at tick 0 still returns 0 -- it just makes staying late more expensive.
 
 Difficulty is shown in the window title:
 
@@ -82,10 +96,10 @@ Tokens Trading Market | your name (ideal conditions) | Black Swan: low | Liquidi
 ## Global switches: Preferred Financing and Slot Machine
 
 These are **not** random events. They are global switches chosen at the start, effective for the
-whole match.
+whole match. They can only be decided at the start.
 
-- They can only be decided at the start; **once the match begins, they can no longer be turned on** (turning one off is always free)
-- Enabling at the start is free
+- Enabling at start: **free**
+- **Once the match begins they can no longer be turned on** (turning one off is always free)
 
 ### Preferred Financing
 
@@ -96,9 +110,9 @@ When enabled:
 - The uplift grows with cumulative borrowing: first 300k is about 4%-8%, a full 3M in one go is about 35%-66%
 - Splitting a loan into ten parts costs exactly the same as borrowing it all at once
 
-Example: target 2M, borrow 300k and draw +6% → new target = 2M + 18k = **2.018M**
+Example: target 2M, borrow 300k and draw +6% -> new target = 2M + 18k = **2.018M**
 
-When disabled: unlimited loans, uplift always `+1% ~ +100%`.
+When disabled: unlimited loans, uplift always `+1% ~ +100%` (also cumulative).
 
 ### Slot Machine
 
@@ -120,50 +134,53 @@ Total = original target
 
 The two increments are drawn independently. If only one switch is on, only that term applies.
 
-Calling either after its uses run out returns `次数已用完，拒绝执行` (uses exhausted, refused).
+Calling either after its uses run out returns `This run has used all of them; refused` (uses exhausted, refused).
 
 ---
 
 ## Fast-forward
 
-Each match gets **900 seconds (15 minutes)** of fast-forward budget, in two freely mixed tiers:
+Each match gives **15 minutes (900 seconds)** of fast-forward budget. The two tiers can be mixed freely:
 
-| Tier | Each jump | Cooldown after |
+| Tier | Each step | Cooldown after |
 |---|---:|---:|
 | 5 minutes | 300 s | 120 s |
 | 3 minutes | 180 s | 90 s |
 
-- The 30-second difficulty draw does not count against the 45 minutes — the clock starts at lock.
-- The cooldown follows the tier you used.
-- During cooldown the buttons are greyed out.
+- The 30-second difficulty draw does not count against the 45 minutes — the clock starts when you lock in.
+- The cooldown matches the tier you just used.
+- During cooldown `POST /fastforward` returns `ok: false`; `ff.cool_left` gives the seconds left.
 - If the remaining budget cannot cover a tier, that jump does not execute.
   Example: used `5′+3′+3′+3′ = 840 s`, 60 s left — neither tier is usable.
-- The UI shows remaining budget, the record of jumps, and the cooldown countdown.
+- Budget and cooldown live in the `ff` field of `GET /state`: `used` / `remain` / `cool_left` / `can5` / `can3`.
 - Time advances one way only: fast-forward. 900 s per match, 300 or 180 s per step, 120/90 s cooldown — it cannot be bypassed.
 
-### The three buttons
+### What the spectator window can do
 
-| Button | Effect |
+The AI edition's spectator is **read-only**: no order buttons, no fast-forward button, and no "settle" button. The window offers exactly two actions:
+
+| Action | Effect |
 |---|---|
-| 最小化 (Minimize) | Hides the window; the match keeps running |
-| 结束相关进程 (End processes) | Stops the server and closes the window — **counts as one abnormal exit** |
-| 结束并结算 (Settle) | Ends the match normally and generates the report |
+| Minimize | Hides the window; the match keeps running |
+| End processes | Stops the server and closes the window — **counts as one abnormal exit** |
+
+End a match normally with `POST /quit` (settles and writes the report); do not use "End processes" for that.
 
 ---
 
 ## FAQ
 
 **Q: Double-clicked the bat and it sits at "drawing difficulty"?**
-A: That is the 30-second countdown. Click "lock" to freeze it early.
+A: That is the 30-second countdown; `POST /roll/stop` freezes it early.
 
-**Q: The main window never appears?**
+**Q: The window never appears?**
 A: You are still in the difficulty draw or the rules window — check whether another window covers it.
 
 **Q: Where is the report?**
 A: One `.html` file per match under `src/data/reports/`.
 
 **Q: How do I start over?**
-A: The bottom of the investment panel has "restart match".
+A: `POST /reset` (30-second cooldown). The AI edition has no investment panel and no "restart match" button.
 
 **Q: Windows warned and blocked the file?**
 A: The source edition has no `.pyd`; only the `.bat` may be blocked by SmartScreen.
@@ -175,12 +192,40 @@ Right-click the bat → Properties → tick "Unblock" → OK. Once is enough.
 
 | Event | Duration | Blocks | Exception |
 |---|---|---|---|
-| Risk review (风控审查) | 5 minutes | Borrowing | The 60-second self-rescue window while cash is negative still works |
-| Exchange maintenance (交易所维护) | 5 seconds (1 tick) | Closing positions yourself | Blow-up liquidation and end-of-match settlement still work |
-| Slot maintenance (老虎机维护) | 8 minutes | Slot bets | — |
+| Risk review | 5 minutes | Borrowing | The 60-second self-rescue window while cash is negative still works |
+| Exchange maintenance | 5 seconds (1 tick) | Closing positions yourself | Blow-up liquidation and end-of-match settlement still work |
+| Slot maintenance | 8 minutes | Slot bets | — |
 
 All three fire at random. The system will not skip them because you happen to be mid-action.
 
 ---
 
 This program is for entertainment and learning only. Nothing here relates to a real market.
+
+## Outside Mercy
+
+A two-way channel between the contestant and the spectators. **On by default** (`TM_ASSIST` unset counts as `1`, matching `TM_EVENTS` / `TM_FR` / `TM_SLOT`; set `TM_ASSIST=0` to disable).
+
+- **Before the match**: already on and free; set `TM_ASSIST=0` to turn it off. The interactive prompt can also switch it.
+- **After the start**: `POST /assist/enable`, which deducts **500,000** cash. Refused when cash
+  is short.
+- The spectator window has no enable control: whether to enable this is the contestant's decision alone.
+
+Once enabled:
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /assist/ask` `{"text": "..."}` | The contestant asks the spectators. **3 per match**; beyond that it returns `no asks left (3/3)`. Returns a `ticket` |
+| `GET /assist/inbox` | Collect whatever the spectators said that has not been collected yet; items are delivered once |
+| `POST /assist/reply` `{"ticket": "a1", "text": "..."}` | Spectators answer one ask |
+| `POST /assist/reject` `{"ticket": "a1"}` | Spectators decline one ask |
+| `GET /assist/pending` | What the spectator GUI polls: unanswered asks plus the full log |
+
+**Asking does not block.** `POST /assist/ask` returns immediately; the contestant keeps trading and
+decides for itself when to check `GET /assist/inbox`.
+
+While an ask is pending, the GUI button turns red with a count and plays one system beep. The whole
+exchange is merged into the report's "Outside Mercy" section.
+
+> Spectators can only reply with text; opening and closing positions still has to go through the
+> contestant's own API calls.
