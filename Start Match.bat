@@ -69,18 +69,44 @@ echo   Endpoint        http://127.0.0.1:%TM_PORT%
 echo   Player          %TM_TRADER%
 echo   Random events   %TM_EVENTS%
 echo   Preferred Financing %TM_FR%  Slot Machine %TM_SLOT%  Outside Mercy %TM_ASSIST%
-echo   The read-only spectator opens together with the server.
-echo   These three can only be set before the match starts.
+echo   Press Y within 5 seconds to start; otherwise it cleans up and exits.
+echo   To have an AI contest, run: python run.py
 echo.
 echo   !! AI contestant edition: the GUI is read-only, no order / close / fast-forward buttons.
 echo   !! Humans should use TokensMarket-OpenSource-Human instead.
-echo   !! With no contestant action for %IDLE_WARN% minutes after the difficulty lock,
-echo   !! the match settles itself (TM_IDLE_ABORT, 0 = off).
+echo   !! Started with python run.py, the match settles itself after %IDLE_WARN% idle minutes
+echo   !! (TM_IDLE_ABORT).
 
-rem run.py seals the sources itself and restores them on exit. Do NOT start guard.py
-rem here as well: a second seal encrypts whatever is in src/ at that moment, which is
-rem already the decoy, and the real sources can never be restored from that vault.
+rem ==================================================================
+rem v1.2.12 adds a mis-click guard while keeping the real launcher path.
+rem   - human double-click (console stdin): waits 5 s, then cleans up and exits
+rem   - script / agent call (no console stdin): choice returns 255, starts normally
+rem So an accidental click cannot burn 45 idle minutes, and a real agent is not killed.
+rem ==================================================================
+echo.
+echo   Press Y within 5 seconds to start (only if an agent will connect).
+echo   Otherwise it cleans up and exits.
+choice /c YN /t 5 /d N /n /m " " 2>nul
+if errorlevel 255 goto :direct_start
+if errorlevel 2 goto :abort_start
+
+:direct_start
+
+rem run.py seals the sources itself and restores them on exit. Do NOT start guard.py here.
 "%PY%" %PYARGS% run.py
 echo.
 echo   [EXITED] Server and spectator are closed.
 pause
+goto :eof
+
+:abort_start
+echo.
+echo   Cancelled. Stopping leftover processes and temporary files...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0deep-clean.ps1"
+echo.
+echo   [CLEANED]
+echo   - AI contest: run  python run.py  in this directory
+echo   - Humans: use TokensMarket-OpenSource-Human
+echo.
+pause
+goto :eof

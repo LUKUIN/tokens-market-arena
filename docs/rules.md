@@ -35,7 +35,7 @@ the model trades over HTTP.
 > For a manual demo, `python run.py --interactive` asks for the player name, random events,
 > **Preferred Financing** and **Slot Machine** in that order.
 
-You can also double-click `Start Match.bat`.
+You can also double-click `Start Match.bat` — it asks once: press `Y` within 5 seconds, otherwise it cleans up and exits.
 
 > This document covers the **AI edition**. The Human edition (`TokensMarket-OpenSource-Human`) has
 > an investment panel; its rule parameters are the same as here.

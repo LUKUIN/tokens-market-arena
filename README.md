@@ -55,7 +55,8 @@ executes it as a blocking command reaches its own timeout, kills the process, an
 disappears; every later request then fails with `connection refused`.
 
 **The spectator opens with the server and that is mandatory.** Since v1.0.11 `run.py`,
-`run.py server` and double-clicking `Start Match.bat` behave identically and all open the read-only
+`run.py server` open the read-only spectator. Double-clicking `Start Match.bat` adds a 5-second
+mis-click guard (press `Y` to start); a scripted headless call skips it and starts directly. The read-only
 spectator. Only `--headless` suppresses the window, and it exists solely for environments without a
 desktop (CI, containers).
 
@@ -91,7 +92,9 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 
 ### Double-click launcher
 
-`Start Match.bat` is the double-click entry point, with exactly the same behaviour as `python run.py`:
+`Start Match.bat` is the double-click entry point. **It asks once on purpose**: press `Y` within 5 seconds
+to start, otherwise it cleans up and exits — the AI edition has no trading UI, so an accidental click
+would otherwise burn 45 idle minutes. Scripted calls without a console skip the prompt and start directly:
 zero prompts, and it opens the spectator too. The batch file looks for Python 3.14 in order —
 the pinned path, then `py -3.14`, then `python` on PATH (version-checked) — and stops with a clear
 error if none of the three is found.
