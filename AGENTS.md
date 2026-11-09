@@ -63,9 +63,15 @@ done
 ```
 
 **The spectator is mandatory, not optional.** `run.py` and `run.py server` both open the read-only
-spectator. Double-clicking `Start Match.bat` adds a 5-second mis-click guard (press `Y` to start);
-a console-less call skips the guard and starts directly.
-A human must be able to watch equity, holdings and the activity feed live.
+spectator. A human must be able to watch equity, holdings and the activity feed live.
+
+Three entry points:
+
+| Entry | Behaviour |
+|---|---|
+| `python run.py` | Standard; the agent default |
+| `AI Start.bat` | Unattended; runs `run.py` directly — **safest for scripts / agents** |
+| `Start Match.bat` | Human double-click entry. Cleans up and exits unless `Y` is pressed within 5 seconds; **invoking it from a terminal with `cmd /c` also counts as human**, so it dies after 5 seconds |
 
 - Do not start `run.py spectator` yourself to "add" a window — a normal start already has one
 - Only `--headless` suppresses the window, and only for environments with no desktop (CI, containers)

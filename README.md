@@ -94,8 +94,9 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 
 `Start Match.bat` is the double-click entry point. **It asks once on purpose**: press `Y` within 5 seconds
 to start, otherwise it cleans up and exits — the AI edition has no trading UI, so an accidental click
-would otherwise burn 45 idle minutes. Scripted calls without a console skip the prompt and start directly:
-zero prompts, and it opens the spectator too. The batch file looks for Python 3.14 in order —
+would otherwise burn 45 idle minutes. **Scripts and agents should use `python run.py` or `AI Start.bat`** —
+`AI Start.bat` has no prompt and opens the spectator too. Invoking `cmd /c "Start Match.bat"` from a
+terminal still counts as human and is cleaned up after 5 seconds. The batch file looks for Python 3.14 in order —
 the pinned path, then `py -3.14`, then `python` on PATH (version-checked) — and stops with a clear
 error if none of the three is found.
 
@@ -377,7 +378,8 @@ It does two things:
 TokensMarket-OpenSource-AI-v97/
 ├── run.py                  entry point (ai / --interactive demo / server / --headless / state)
 ├── bench.py                paired multi-round benchmark over a fixed seed set
-├── Start Match.bat          double-click entry (5-second confirm; console-less calls start directly)
+├── Start Match.bat          double-click entry (5-second confirm; cleanup on timeout)
+├── AI Start.bat             unattended launcher (no confirm; scripts / agents)
 ├── Spectator.bat            recovery window when you closed the spectator; attaches, or starts one
 ├── DeepClean Process.bat    interactive cleanup for humans (contains pause)
 ├── deep-clean.ps1          cleanup implementation (non-interactive; callable from a script)
