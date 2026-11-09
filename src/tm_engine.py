@@ -239,7 +239,18 @@ MIN_LEVERAGE = 1
 MARGIN_CALL_RATIO = 1.00      # 保证金水平低于此值触发追加保证金通知
 STOP_OUT_RATIO = 0.50         # 低于此值立即强制平仓
 MARGIN_CALL_GRACE = 30        # 追缴宽限期（tick），约 2.5 分钟；超时未恢复则强平
-NEGATIVE_GRACE = int(os.environ.get("TM_GRACE") or 12)
+def _env_int(raw, default):
+    """环境变量转整数：非法值回退默认值，不让启动崩在 import。"""
+    if raw is None or str(raw).strip() == "":
+        return default
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        print("  环境变量值 %r 无效，回退为 %d" % (raw, default))
+        return default
+
+
+NEGATIVE_GRACE = _env_int(os.environ.get("TM_GRACE"), 12)
 # 资金为负后的自救窗口（tick）：默认 12 个 = 60 秒。
 # AI 版启动脚本设 TM_GRACE=6（30 秒），因为机器反应比人快，不需要那么长。
 FEE_RATE = 0.00020
@@ -253,7 +264,7 @@ SESSION_MINUTES = 45
 # 只有人类双击入口（开一局.bat）显式设 TM_IDLE_ABORT=12。
 # 判定用 tick 数而非墙钟 —— 经 HTTP 参赛的 Agent 与 bench.py 的无头基线
 # 因此是同一语义：同一套规则，同一局有效时长。
-IDLE_ABORT_MINUTES = int(os.environ.get("TM_IDLE_ABORT") or 0)
+IDLE_ABORT_MINUTES = _env_int(os.environ.get("TM_IDLE_ABORT"), 0)
 IDLE_ABORT_TICKS = (IDLE_ABORT_MINUTES * 60) // TICK_SECONDS
 
 # 「活动」的口径：只有改变对局状态的动作才算。只读接口不计入，
@@ -271,7 +282,7 @@ def _idle_rule_text():
             % (IDLE_ABORT_MINUTES, "、".join(IDLE_ACTION_LABELS)))
 
 
-ENGINE_VERSION = "1.2.13"  # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.14"  # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -1077,8 +1088,8 @@ class Engine:
 
     def _advance_prices(self):
         self._expire_mods()
-        self._roll_news()
-        self._gap_pairs = set()
+        self._gap_pairs = set()     # 先清上一 tick 的标记
+        self._roll_news()           # 本 tick 由 gap_burst 记下的标记要留到下面读
         for sym, cfg in PAIRS.items():
             p = self.s["prices"][sym]
             r = random.gauss(0, cfg["vol"] * self._mod("vol_mult"))
@@ -1670,6 +1681,9 @@ class Engine:
                 return {"ok": False, "error": "本局已结束"}
             if self.s.get("paused"):
                 return {"ok": False, "error": "本局尚未开始，请先确认规则"}
+            if not self.s.get("difficulty"):
+                return {"ok": False,
+                        "error": "难度尚未定档，快进要等抽选结束后才能用"}
             if seconds is None:
                 return {"ok": False, "error": "秒数必填：seconds=300（5 分钟）或 180（3 分钟）"}
             try:
@@ -1779,6 +1793,9 @@ class Engine:
         with LOCK:
             if self.s.get("finished"):
                 return {"ok": False, "error": "本局已结束"}
+            if not self.s.get("difficulty"):
+                return {"ok": False,
+                        "error": "难度尚未定档，请先 POST /roll/stop 或等抽选结束再投注"}
             sp = self._special()
             if not sp.get("slot"):
                 return {"ok": False, "error": "本局未开启【老虎机】"}
@@ -1841,6 +1858,9 @@ class Engine:
         with LOCK:
             if self.s.get("finished"):
                 return {"ok": False, "error": "本局已结束"}
+            if not self.s.get("difficulty"):
+                return {"ok": False,
+                        "error": "难度尚未定档，请先 POST /roll/stop 或等抽选结束再借款"}
             # 风控审查：正常状态借不到，但现金为负的自救窗口（60 秒）不受影响
             if (self.s["tick"] < self.s.get("halt_loan_until", 0)
                     and float(self.s.get("balance") or 0) >= 0):
@@ -1958,6 +1978,9 @@ class Engine:
                 return {"ok": False, "error": "本局已结束"}
             pair = (pair or "").upper()
             side = (side or "").upper()
+            if not self.s.get("difficulty"):
+                return {"ok": False,
+                        "error": "难度尚未定档，请先 POST /roll/stop 或等抽选结束再下单"}
             if self.s.get("halt_orders") or self.s["tick"] < self.s.get("halt_until", 0):
                 return {"ok": False, "error": "行情异常，平台暂时拒绝下单，请稍后再试"}
             if pair not in PAIRS:
@@ -1989,7 +2012,8 @@ class Engine:
             slip = self._slip_rate(before, before + gross, pair)
             fill = price * (1 + half + slip) if side == "LONG" else price * (1 - half - slip)
             notional = lots * LOTS_SIZE * fill
-            margin = notional / leverage
+            # 与 _position_margin 口径一致：事件把保证金放大/缩小后，校验必须同乘
+            margin = notional / leverage * self._mod("margin_mult")
             fee = notional * FEE_RATE * self._mod("fee_mult")
             # 可用保证金必须扣掉已占用的部分，否则可以靠反复开仓把杠杆叠到爆
             used = self._total_margin()
@@ -2056,7 +2080,15 @@ class Engine:
             idxs = [i for i, p in enumerate(self.s["positions"]) if p["pair"] == pair]
             if not idxs:
                 return {"ok": False, "error": "没有 %s 的持仓" % pair}
-            remaining = float(lots) if lots else None
+            if lots in (None, "", 0, "0"):
+                remaining = None          # 不传或 0 = 全部平掉
+            else:
+                try:
+                    remaining = float(lots)
+                except (TypeError, ValueError, OverflowError):
+                    return {"ok": False, "error": "手数必须是数字（不传或 0 表示全平）"}
+                if not math.isfinite(remaining) or remaining < 0:
+                    return {"ok": False, "error": "手数不能为负数（不传或 0 表示全平）"}
             closed = []
             # 倒序遍历并在末尾 pop，避免删除元素后索引错位
             for i in sorted(idxs, reverse=True):
@@ -2085,11 +2117,21 @@ class Engine:
             if self.s.get("finished"):
                 return {"ok": False, "error": "本局已结束"}
             closed = []
+            errors = []
             for p in list(self.s["positions"]):
                 r = self.close_position(p["pair"], p["lots"])
                 if r.get("ok"):
                     closed.extend(r["closed"])
-            return {"ok": True, "closed": closed, "state": self._state_light()}
+                elif r.get("error") and r["error"] not in errors:
+                    errors.append(r["error"])
+            if errors and not closed:
+                # 一笔都没平掉时必须如实报错：返回 ok=True 会让调用方以为已经清仓
+                return {"ok": False, "error": "；".join(errors),
+                        "closed": [], "state": self._state_light()}
+            out = {"ok": True, "closed": closed, "state": self._state_light()}
+            if errors:
+                out["warnings"] = errors
+            return out
 
     # ---------------- 赛后报告 ----------------
     def _metrics(self, final_eq=None):
@@ -2962,7 +3004,9 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                          SLIP_K, SLIP_MAX * 100, SLIP_MAX_SHOCK * 100, LATE_SLIP_MAX)
                 ).replace("%%", "%"),
             "流动性枯竭": "某品种发生跳空的 tick，该品种点差放大 %.0f 倍" % GAP_SPREAD_MULT,
-            "黑天鹅": "每 tick %.1f%% 概率出现 %.0f%%-%.0f%% 跳空" % (GAP_CHANCE * 100, GAP_MIN * 100, GAP_MAX * 100),
+            "黑天鹅": "每 tick %.1f%% 概率出现 %.0f%%-%.0f%% 跳空（%.1f%% 是「中」档基准，实际按难度档在 %.2f%%~%.2f%% 之间）" % (
+                GAP_CHANCE * 100, GAP_MIN * 100, GAP_MAX * 100,
+                GAP_CHANCE * 100, GAP_LEVELS[0][1] * 100, GAP_LEVELS[-1][1] * 100),
             "手续费": "名义价值 %.3f%% / 次" % (FEE_RATE * 100),
             "贷款": "贷款池 %.0f Tokens（可能被「信贷紧缩 / 央行放水」临时缩放）；利率 %.2f%%/tick（%s）；每借一笔：总目标 = 原目标 + 该笔金额 × 随机比例（比例随累计借款额上升，首借 30 万约 4%%~8%%，一次借满约 35%%~66%%；按累计额做梯形积分，拆成十笔与一次借满等价；借完才定）" % (
                 LOAN_POOL, LOAN_RATE_PER_TICK * 100, "随借随还，到期强制清算"),

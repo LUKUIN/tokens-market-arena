@@ -192,14 +192,35 @@ def _interactive_setup():
     return name, mode == "1"
 
 
-def _probe(host="127.0.0.1", port=8734, timeout=1.0):
-    """这个端口上是不是已经有一局在跑？"""
+def _probe_state(host="127.0.0.1", port=8734, timeout=1.0):
+    """端口上是谁在监听？
+
+    返回 "ours" / "foreign" / None：
+      "ours"    —— 本游戏的 /health，且协议版本一致
+      "foreign" —— 有程序占着端口，但不是本游戏（或协议版本不兼容）
+      None      —— 端口空闲
+    只判断「有响应」会把 1.2.12 的旧服务当成可复用实例，也会让两个进程抢同一端口。
+    """
     import urllib.request
     try:
-        urllib.request.urlopen("http://%s:%d/health" % (host, port), timeout=timeout).read()
-        return True
+        raw = urllib.request.urlopen("http://%s:%d/health" % (host, port),
+                                     timeout=timeout).read()
     except Exception:
-        return False
+        return None
+    try:
+        d = json.loads(raw.decode("utf-8"))
+    except Exception:
+        return "foreign"
+    # 不能 from tm_engine import PROTOCOL_VERSION：源码可能正被封存成诱饵，
+    # 导入它会触发 sys.exit(1) 并打印「CHEATING DETECTED」。协议号改动时同步这里。
+    if d.get("ok") is True and d.get("protocol") == 1:
+        return "ours"
+    return "foreign"
+
+
+def _probe(host="127.0.0.1", port=8734, timeout=1.0):
+    """这个端口上是不是已经有一局在跑？（兼容旧调用点）"""
+    return _probe_state(host, port, timeout) == "ours"
 
 
 def _run_spectator(host="127.0.0.1", port=8734):
@@ -228,6 +249,18 @@ def _run_spectator(host="127.0.0.1", port=8734):
 
 
 def _start_server(host="127.0.0.1", port=8734):
+    # 探测必须早于任何 tm_api / tm_engine 导入：前一个服务可能已经把源码
+    # 封存成诱饵，导入诱饵会直接 sys.exit 并打印「CHEATING DETECTED」。
+    # 同一目录起第二个服务还会让两个 Engine 交错写 session.json，存档互相覆盖。
+    busy = _probe_state(host, port)
+    if busy == "ours":
+        print("  端口 %d 上已经有一局在跑，不再启动第二个服务。" % port)
+        print("  直接连：http://%s:%d ；要开新局请先关掉那一局。" % (host, port))
+        return None
+    if busy == "foreign":
+        print("  端口 %d 被其他程序占用（或协议版本不兼容），请换端口：TM_PORT=<端口>" % port)
+        return None
+
     import threading
     from tm_api import serve
 
@@ -266,6 +299,24 @@ def _listening_pids(port):
     return pids
 
 
+def _is_our_process(pid):
+    """判断某个 PID 是不是本项目的 python run.py。
+
+    命令行里必须同时出现 python 与 run.py；拿不到命令行时当作陌生进程，一律不杀。
+    """
+    cmd = [
+        "powershell", "-NoProfile", "-Command",
+        "(Get-CimInstance Win32_Process -Filter \"ProcessId=%d\").CommandLine" % pid,
+    ]
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True,
+                             errors="replace", timeout=8).stdout or ""
+    except Exception:
+        return False
+    low = out.lower()
+    return ("python" in low) and ("run.py" in low)
+
+
 def _autoclean(home):
     """结算后的自动收尾：删本局临时文件（保留 reports/），再收掉占着端口的残留进程。"""
     if os.path.isdir(home):
@@ -284,6 +335,9 @@ def _autoclean(home):
     for port in (8734, 8735):
         for pid in _listening_pids(port):
             if pid == me:
+                continue
+            # 只收自己的残留：端口可能被别的程序占着，盲杀会误伤
+            if not _is_our_process(pid):
                 continue
             try:
                 subprocess.run(["taskkill", "/F", "/PID", str(pid)],
@@ -390,6 +444,8 @@ def _run_ai(interactive=False, port=None):
         print("  观众席启动失败：%s（对局服务照常运行）" % exc)
 
     guard_stop = _start_guard(port)
+    if guard_stop is None:
+        return 2
     try:
         server_thread.join()      # /quit 或 /shutdown 让服务退出后，这里才会返回
     except KeyboardInterrupt:
@@ -458,16 +514,21 @@ def _start_guard(port):
     import atexit
     import guard
 
+    # 同步封存，失败就是硬失败：没有封存意味着源码此刻是上一局留下的诱饵，
+    # 继续往下会 import 到诱饵，触发 sys.exit 并打印「CHEATING DETECTED」。
+    try:
+        sealed = guard.seal(port)
+        print("  [守卫] 已封存 %d 个源码文件，原位置换成诱饵。" % len(sealed))
+    except Exception as exc:
+        print("  [守卫] 本局未封存源码：%s" % exc)
+        print("  [守卫] 多半是已经有一局在跑。请先结束那一局，不要同时开两局。")
+        print("  [守卫] 若确认没有对局在跑，执行 python guard.py clean 还原源码后再启动。")
+        return None
+
     stop = threading.Event()
     atexit.register(guard.unseal)
 
     def loop():
-        try:
-            sealed = guard.seal(port)
-            print("  [守卫] 已封存 %d 个源码文件，原位置换成诱饵。" % len(sealed))
-        except Exception as exc:
-            print("  [守卫] 本局未封存源码：%s" % exc)
-            return
         while not stop.is_set():
             try:
                 if guard.cheated():
@@ -516,7 +577,6 @@ def main(argv=None):
         return _run_spectator(host, port)
 
     if mode == "server":
-        from tm_api import serve
         # --headless 是开关，不占位置参数；过滤掉再取 host / port，
         # 这样 `run.py server 127.0.0.1 8737 --headless` 和
         # `run.py --headless 127.0.0.1 8737` 两种写法都成立。
@@ -530,7 +590,22 @@ def main(argv=None):
                   "确实没有桌面环境时才加 --headless。")
             return _run_ai(interactive=False, port=port)
         print("  --headless：只起 HTTP 服务，不打开观众席窗口（仅限无桌面环境）。")
+        # 探测必须在 import 之前：上一局可能已经把源码封存成诱饵，
+        # 这时 import tm_api 会读到诱饵并直接 sys.exit。
+        busy = _probe_state(host, port)
+        if busy == "ours":
+            print("  端口 %d 上已经有一局在跑，不再启动第二个服务。" % port)
+            print("  直接连：http://%s:%d ；要开新局请先关掉那一局。" % (host, port))
+            return 2
+        if busy == "foreign":
+            print("  端口 %d 被其他程序占用（或协议版本不兼容），请换端口：TM_PORT=<端口>" % port)
+            return 2
+        # import 必须在封存之前：封存只换磁盘上的文件，已加载的模块不受影响；
+        # 反过来做就会把诱饵 import 进来。
+        from tm_api import serve
         guard_stop = _start_guard(port)
+        if guard_stop is None:
+            return 2
         _enable_assist_from_env()
 
         _start_autoclean(os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "data"),
