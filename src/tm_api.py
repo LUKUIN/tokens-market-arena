@@ -23,7 +23,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-from tm_engine import Engine, TICK_SECONDS, ENGINE_VERSION, PROTOCOL_VERSION
+from tm_engine import Engine, TICK_SECONDS, ENGINE_VERSION, PROTOCOL_VERSION, TAIL_SPEED
 
 HOME = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 ENGINE = Engine(HOME)
@@ -226,7 +226,15 @@ class Handler(BaseHTTPRequestHandler):
 
 def _auto_tick():
     while True:
-        time.sleep(TICK_SECONDS)
+        # 达标后比赛不结束，但不必干等满墙钟：行情按 tick 生成，加速只压缩等待时间，
+        # 不改变任何随机结果。TM_TAIL_SPEED 可覆盖倍率（评测时可设 1 还原真实节奏）。
+        speed = 1.0
+        try:
+            if getattr(ENGINE.s, "hit_at_tick", None) is not None:
+                speed = max(1.0, float(os.environ.get("TM_TAIL_SPEED") or TAIL_SPEED))
+        except Exception:
+            speed = 1.0
+        time.sleep(TICK_SECONDS / speed)
         try:
             st = ENGINE.tick()
             if isinstance(st, dict) and st.get("finished"):

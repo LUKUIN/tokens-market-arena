@@ -177,7 +177,9 @@ def run_one(seed, policy, outdir, roll_index=None):
         eng.tick()
 
     if not eng.s.get("finished"):
-        eng.quit_session()
+        # 不走 quit_session：达标后它会被拒绝（比赛不提前结束）。
+        # 评测要的是「跑满 540 tick 的最终结果」，直接走结算入口。
+        eng._end_session("评测结束")
 
     reports = os.path.join(home, "reports")
     if not os.path.isdir(reports):

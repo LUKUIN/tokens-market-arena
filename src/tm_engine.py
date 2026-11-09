@@ -258,6 +258,9 @@ MARGIN_CALL_GRACE = 30        # 追缴宽限期（tick），约 2.5 分钟；超
 MAINT_MARGIN_RATE = 0.10
 # 开仓后维持保证金水平的下限：低于它就不许开，避免「开满即追缴」。
 OPEN_MARGIN_RATIO = 1.50
+# 达标后的推进倍率：比赛不提前结束，但不必干等满墙钟。
+# 行情完全由 tick 驱动（random 按 tick 生成），加速只压缩等待时间，不改变任何随机结果。
+TAIL_SPEED = 4.0
 def _env_int(raw, default):
     """环境变量转整数：非法值回退默认值，不让启动崩在 import。"""
     if raw is None or str(raw).strip() == "":
@@ -301,7 +304,7 @@ def _idle_rule_text():
             % (IDLE_ABORT_MINUTES, "、".join(IDLE_ACTION_LABELS)))
 
 
-ENGINE_VERSION = "1.2.18"  # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.19"  # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -437,6 +440,7 @@ def _new_session(seed=None, apply_rng=True, roll_index=None):
         "balance": STARTER_CASH,
         "genesis": STARTER_CASH,
         "target": TARGET_EQUITY,
+        "hit_at_tick": None,      # 首次净值为达到目标的那一 tick；达标后不结束比赛
         "target_bonus": 0.0,
         "trader": trader,
         "unnamed": unnamed,
@@ -561,6 +565,14 @@ class Engine:
             os.remove(self.running_path)
         except Exception:
             pass
+
+    def _hit_clock(self):
+        """首次达标时刻，换算成「第几分第几秒」。报告给玩家看的是时间，不是 tick 编号。"""
+        t = self.s.get("hit_at_tick")
+        if t is None:
+            return (0, 0)
+        sec = int(t) * int(TICK_SECONDS)
+        return (sec // 60, sec % 60)
 
     def _qualified(self):
         """本局是否仍具备达成资格。
@@ -1271,8 +1283,11 @@ class Engine:
         tgt = self.s.get("target", TARGET_EQUITY)
         hit = eq >= tgt and self._qualified()
         borrowed = self.s["loan"]["borrowed"]
+        _hit_at = self.s.get("hit_at_tick")
         verdict = ("达成目标" if hit else
-                   ("达成目标但资格无效" if eq >= tgt else "未达成目标"))
+                   ("达成目标但资格无效" if eq >= tgt else
+                    ("未达成目标（曾于第 %d 分 %d 秒达标，结算前回吐）" % self._hit_clock()
+                     if _hit_at is not None else "未达成目标")))
         self._event("本局结束：最终权益 %.2f Tokens（%s）%s" % (
             eq, verdict,
             "｜累计借款 %.0f" % borrowed if borrowed > 0 else ""), "end")
@@ -1381,6 +1396,9 @@ class Engine:
             if self._check_negative():
                 return self.state()
             eq = self.equity()
+            if self.s.get("hit_at_tick") is None and eq >= self.s.get("target", TARGET_EQUITY):
+                self.s["hit_at_tick"] = self.s["tick"]
+                self._event("净值达到目标 %.0f，比赛继续（想锁定利润请平仓）" % eq, "target")
             ml = self.margin_level()
             self.s["equity_curve"].append({"tick": self.s["tick"], "equity": round(eq, 2),
                                            "margin_level": round(ml, 4) if ml is not None else None})
@@ -1393,7 +1411,8 @@ class Engine:
                 self.s["last_notice_mark"] = mark
                 remain = max(0, int(SESSION_MINUTES * 60 - el))
                 self._event("时间提醒：已运行 %d 分钟，剩余 %d 分钟" % (int(el // 60), int(remain // 60)), "info")
-            if IDLE_ABORT_TICKS > 0 and not getattr(self, "_writing_depth", 0):
+            if (IDLE_ABORT_TICKS > 0 and not getattr(self, "_writing_depth", 0)
+                    and self.s.get("hit_at_tick") is None):
                 _idle = int(self.s.get("tick") or 0) - int(self.s.get("last_action_tick") or 0)
                 if _idle >= IDLE_ABORT_TICKS:
                     self._end_session("无参赛者活动（%d 分钟无操作）" % IDLE_ABORT_MINUTES)
@@ -2454,7 +2473,10 @@ class Engine:
             elif final_eq >= target and not self._qualified():
                 verdict = "达成目标但资格无效"
             else:
-                verdict = "达成目标" if hit else "未达成目标"
+                _hit_at = self.s.get("hit_at_tick")
+                verdict = ("达成目标" if hit else
+                           ("未达成目标（曾于第 %d 分 %d 秒达标，结算前回吐）" % self._hit_clock()
+                            if _hit_at is not None else "未达成目标"))
             pnl = final_eq - self.s.get("genesis", STARTER_CASH)
             pnl_pct = pnl / self.s["genesis"] * 100 if self.s.get("genesis") else 0.0
             # 综合评级：收益分档 + 夏普加成 + 回撤惩罚。
@@ -2865,10 +2887,21 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             return self._write_report(reason, eq, abnormal=True)
 
     def quit_session(self):
+        """提前离场：达标算有效收手，未达标算弃权。
+
+        现实里赚够了收手是本事，没赚够就离场是认输，两者都允许，但必须分开记：
+          · 净值 >= 目标 -> 「达标离场」，本局算达成目标
+          · 净值 <  目标 -> 「主动弃权」，本局不算达成
+        不区分的话，「浮盈锁定」和「认输」在统计里长得一模一样。
+        """
         with LOCK:
             if self.s.get("finished"):
                 return {"ok": False, "error": "本局已结束，请用 /reset 开新局"}
-            return self._end_session("主动结束")
+            eq = self.equity()
+            tgt = self.s.get("target", TARGET_EQUITY)
+            if eq >= tgt:
+                return self._end_session("达标离场")
+            return self._end_session("主动弃权（未达标）")
 
     def reset(self, count=True, seed=None, roll_index=None):
         """开新局。seed=None 时沿用 TM_SEED 或随机生成；显式传 seed / roll_index 用于配对评测。"""
@@ -2963,6 +2996,9 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "pnl_pct": round((eq / self.s["genesis"] - 1) * 100, 2),
                 "target": round(target, 2),
                 "target_pct": round(eq / target * 100, 2),
+                "hit_at_tick": self.s.get("hit_at_tick"),
+                "hit_at_clock": ("%d:%02d" % self._hit_clock()
+                                 if self.s.get("hit_at_tick") is not None else None),
                 "target_bonus": round(self.s.get("target_bonus", 0.0), 2),
                 "base_target": TARGET_EQUITY,
                 "margin_level": round(ml * 100, 2) if ml is not None else None,
