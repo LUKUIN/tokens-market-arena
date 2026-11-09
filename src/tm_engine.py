@@ -2899,6 +2899,20 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             eq = self.equity()
             tgt = self.s.get("target", TARGET_EQUITY)
             if eq >= tgt:
+                # Above the target you must close out yourself: the engine will not settle
+                # your floating profit for you. Time-up still forces liquidation.
+                if self.s["positions"]:
+                    return {"ok": False,
+                            "error": "Still holding %d position(s) above the target: call "
+                                     "POST /close_all before ending the match"
+                                     % len(self.s["positions"]),
+                            "hint": "The engine will not auto-close for you; if you do not close, "
+                                    "the match runs to time-up and gets force-liquidated - and any "
+                                    "give-back means the target no longer counts",
+                            "equity": round(eq, 2), "target": round(tgt, 2),
+                            "positions": [{"pair": p["pair"], "side": p["side"],
+                                           "lots": p["lots"]}
+                                          for p in self.s["positions"]]}
                 return self._end_session("Target reached - early exit")
             return self._end_session("Abandoned below target")
 

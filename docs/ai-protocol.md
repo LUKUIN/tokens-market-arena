@@ -189,7 +189,7 @@ Every endpoint lives at `http://127.0.0.1:8734`.
 | POST | `/special` | `{"name":"fr"|"slot","on":true}`, toggle a switch (**start of match only**; rejected once the match has begun) |
 | POST | `/slot` | `{"amount":10000}`, slot bet (1~200000, ≤ current equity, 3 plays) |
 | POST | `/reset` | Start a new match |
-| POST | `/quit` | Early exit: at or above the target the reason is `Target reached - early exit` (counts as reached); below it the reason is `Abandoned below target` (does not). **About 3 seconds later the service cleans up**: temp files removed, leftover port holders stopped |
+| POST | `/quit` | Early exit: at/above target with nothing open -> `Target reached - early exit` (counts); at/above with positions -> `ok:false`, call `/close_all` first; below target -> `Abandoned below target` (does not count). **About 3 seconds later the service cleans up**: temp files removed, leftover port holders stopped |
 | POST | `/shutdown` | Stop the server (**records one abnormal exit**) |
 
 > `POST /quit` returns two settlement fields: `settled` (boolean, whether settlement was
@@ -298,7 +298,13 @@ receives mojibake.
   made enough is skill in the real world, and this is a valid early exit.
 - **equity < target -> `Abandoned below target`**: does not count.
 
-Both close all positions immediately, clear loans and generate the full report; final equity is
+At or above the target while still holding positions, `/quit` returns `ok:false`: `error` says how
+many positions are open and `positions` lists pair and side, requiring `POST /close_all` first.
+The engine will not turn floating profit into realised profit for you. If you never close, the
+match runs to time-up and gets force-liquidated; a give-back then means the target no longer counts
+and the report says it hit the target at m:ss and gave it back.
+
+Both end reasons close all positions immediately, clear loans and generate the full report; final equity is
 taken at that instant and rating/cost attribution are produced as usual. There is **no penalty,
 no abnormal flag, no effect on starting the next match**. They are distinguished because
 "locked in a gain" and "gave up" would otherwise look identical in the statistics.

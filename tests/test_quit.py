@@ -49,6 +49,34 @@ class QuitSemanticsTest(_Base):
         self.assertEqual(r.get("reason"), "Abandoned below target")
         self.assertFalse(r.get("hit_target"))
 
+    def test_hit_target_with_positions_refuses_quit(self):
+        """Above the target with an open position, /quit is refused: close out first."""
+        self.set_cash(self.tgt * 1.2)
+        self.e.s["prices"]["AURA/CORE"] = 100.0
+        ok = self.e.open_position("AURA/CORE", "LONG", 1, 20).get("ok")
+        self.assertTrue(ok, "precondition: a small position should open")
+
+        r = self.e.quit_session()
+        self.assertFalse(r.get("ok"))
+        self.assertIn("close_all", r.get("error", ""))
+        self.assertFalse(self.e.s.get("finished"), "a refused quit must not end the match")
+        self.assertEqual(len(self.e.s["positions"]), 1)
+
+        self.e.close_all()
+        r2 = self.e.quit_session()
+        self.assertTrue(r2.get("ok"), r2)
+        self.assertEqual(r2.get("reason"), "Target reached - early exit")
+
+    def test_below_target_with_positions_still_allows_quit(self):
+        """Below the target, abandoning does not require closing first."""
+        self.set_cash(self.tgt * 0.8)
+        self.e.s["prices"]["AURA/CORE"] = 100.0
+        self.assertTrue(self.e.open_position("AURA/CORE", "LONG", 1, 20).get("ok"))
+        r = self.e.quit_session()
+        self.assertTrue(r.get("ok"), r)
+        self.assertEqual(r.get("reason"), "Abandoned below target")
+        self.assertEqual(self.e.s["positions"], [])
+
     def test_exactly_at_target_counts_as_hit(self):
         self.set_cash(self.tgt)
         r = self.e.quit_session()

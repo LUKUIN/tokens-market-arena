@@ -191,7 +191,10 @@ Sections, top to bottom:
 5. The match settles on one of: 45 minutes elapsed, a blow-up, or `POST /quit`. Hitting the target
    does **not** end the match by itself: `/quit` at or above the target is a **valid early exit**
    (`Target reached - early exit`) and counts as reached; below the target it is recorded as
-   `Abandoned below target` and does not count. If you are above the target and keep holding,
+   `Abandoned below target` and does not count. At or above the target with positions still open,
+   `/quit` is refused (`ok:false`) - call `POST /close_all` first to bank the profit; if you never
+   close, the match runs to time-up and the engine force-liquidates, and a give-back means the
+   target no longer counts. If you are above the target and keep holding,
    a later slide back below it is reported as "hit the target at m:ss, gave it back".
 6. **Idle abort** (on by default only for the human double-click entry): if no **state-changing
    action** (open/close, loan/repay, fastforward, scratchpad, difficulty lock, assist, trader name)
@@ -238,7 +241,7 @@ Base URL defaults to `http://127.0.0.1:8734`.
 | `/pause` / `/begin` | — | Freeze / resume the clock |
 | `/roll/start` / `/roll/stop` | — | Start / lock the difficulty draw |
 | `/reset` | — | Start over (clears `data/` except `reports/`) |
-| `/quit` | — | Settle normally and exit (response carries `settled` / `warnings`) |
+| `/quit` | — | Early exit: at/above target with nothing open -> `Target reached - early exit` (counts); at/above with positions -> `ok:false`, call `/close_all` first; below target -> `Abandoned below target` (counts as nothing, positions force-closed). Response carries `settled` / `warnings` |
 | `/shutdown` | — | Stop immediately (leaves an abnormal-exit report) |
 
 > **Note**: `/fastforward` is the only way to advance time — 300 or 180 seconds per call.
