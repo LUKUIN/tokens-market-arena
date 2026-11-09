@@ -246,7 +246,10 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.2.11"  # 发布版本号：报告页脚与文档口径以此为准
+# 无活动自动收尾：定档后连续 N 分钟没有任何写操作就结算，避免人类误启后空转 45 分钟。
+# 0 = 关闭。默认 12 分钟——正常 Agent 开局几秒内就会读规则或下单。
+IDLE_ABORT_MINUTES = int(os.environ.get("TM_IDLE_ABORT") or 12)
+ENGINE_VERSION = "1.2.12"  # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -373,6 +376,7 @@ def _new_session(seed=None, apply_rng=True):
         "session_id": os.urandom(8).hex(),
         "seed": seed,
         "tick": 0,
+        "last_action_at": time.time(),
         "balance": STARTER_CASH,
         "genesis": STARTER_CASH,
         "target": TARGET_EQUITY,
@@ -685,6 +689,7 @@ class Engine:
                 st = self.s["liquidity"].setdefault(_sym, {"L": base, "shock_until": 0})
                 st["L"] = base
                 st["shock_until"] = 0
+            self.s["last_action_at"] = time.time()
             self._event("【难度】黑天鹅 %s | 流动性 %s" % (
                 GAP_LEVELS[gap_i][0], LIQ_LEVELS[liq_i][0]), "ok")
             # 定档 = 正式开局：计时基准从此刻起算，盲盒那 30 秒不计入 45 分钟
@@ -1228,6 +1233,14 @@ class Engine:
         self._event("【爆仓】账户资金 %.0f Tokens（本轮亏损 %.0f，%d 笔被强平）" % (
             self.s["balance"], loss, n), "blowup")
 
+    def note_action(self):
+        """记录一次「参赛者有动作」。所有写接口与难度叫停都要调用。
+
+        只用于无活动自动收尾的判定；不改变任何账目或行情。
+        """
+        with LOCK:
+            self.s["last_action_at"] = time.time()
+
     def tick(self, manual=False):
         with LOCK:
             if self.s["finished"]:
@@ -1263,6 +1276,11 @@ class Engine:
                 self.s["last_notice_mark"] = mark
                 remain = max(0, int(SESSION_MINUTES * 60 - el))
                 self._event("时间提醒：已运行 %d 分钟，剩余 %d 分钟" % (int(el // 60), int(remain // 60)), "info")
+            if IDLE_ABORT_MINUTES > 0:
+                _idle = time.time() - float(self.s.get("last_action_at") or 0)
+                if _idle >= IDLE_ABORT_MINUTES * 60:
+                    self._end_session("无参赛者活动（%d 分钟无操作）" % IDLE_ABORT_MINUTES)
+                    return self.state()
             if el > SESSION_MINUTES * 60:
                 # 时间到与 /quit、穿仓走同一条结算入口 _end_session：
                 # 强制清仓改用 _force_close_all（不受交易所维护 halt_close_until 拦截），
@@ -2814,6 +2832,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "events": (self.s["events"][-60:] if include_events else []),
                 "finished": self.s["finished"],
                 "session_minutes": SESSION_MINUTES,
+                "idle_abort_minutes": IDLE_ABORT_MINUTES,
                 "elapsed_seconds": int(self._elapsed()),
                 "unnamed": bool(self.s.get("unnamed")),
                 "events_on": bool(self.s.get("events_on", True)),
@@ -2864,6 +2883,8 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             "贷款": "贷款池 %.0f Tokens（可能被「信贷紧缩 / 央行放水」临时缩放）；利率 %.2f%%/tick（%s）；每借一笔：总目标 = 原目标 + 该笔金额 × 随机比例（比例随累计借款额上升，首借 30 万约 4%%~8%%，一次借满约 35%%~66%%；按累计额做梯形积分，拆成十笔与一次借满等价；借完才定）" % (
                 LOAN_POOL, LOAN_RATE_PER_TICK * 100, "随借随还，到期强制清算"),
             "会话时长": "%d 分钟" % SESSION_MINUTES,
+            "无活动自动收尾": ("定档后连续 %d 分钟没有任何写操作（开平仓、借贷、快进、草稿纸、定档、求助）"
+                        "即自动结算，报告结束原因为「无参赛者活动」；环境变量 TM_IDLE_ABORT 可调，0 = 关闭" % IDLE_ABORT_MINUTES),
             "tick 间隔": "%d 秒" % TICK_SECONDS,
             "接口": {
                 "GET /state": "当前局面：权益、持仓、报价、盘口深度、事件流、快进额度",

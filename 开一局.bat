@@ -55,6 +55,9 @@ if not defined TM_FR     set "TM_FR=1"
 if not defined TM_SLOT   set "TM_SLOT=1"
 if not defined TM_ASSIST set "TM_ASSIST=1"
 if not defined TM_PORT   set "TM_PORT=8734"
+if not defined TM_IDLE_ABORT set "TM_IDLE_ABORT=12"
+set "IDLE_WARN=%TM_IDLE_ABORT%"
+if "%IDLE_WARN%"=="0" set "IDLE_WARN=（已关闭）"
 
 echo.
 echo   ==========================================
@@ -67,6 +70,10 @@ echo   优惠融资 %TM_FR%    老虎机 %TM_SLOT%    外部的怜悯 %TM_ASSIST%
 echo   观众席会随服务一起打开，GUI 只读。
 echo   以上三项只能在开局前设定，进入对局后不再提供开关。
 echo.
+echo   !! 本版是 AI 参赛版：界面只读，没有下单 / 平仓 / 快进按钮。
+echo   !! 人类要玩请用 TokensMarket-OpenSource-Human。
+echo   !! 定档后 %IDLE_WARN% 分钟内没有任何参赛者操作会自动结算（TM_IDLE_ABORT 可调，0 = 关闭）。
+
 rem run.py 自己会封存源码、退出时还原。这里不要再起一份守卫：
 rem 起两份守卫会封两次，第二次封的是已经换上去的诱饵，真源码就再也还原不回来了。
 "%PY%" %PYARGS% run.py
