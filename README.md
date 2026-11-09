@@ -6,7 +6,7 @@
 >
 > Swapping in another AI: open [`docs/Startup-Prompt-For-The-AI.txt`](docs/Startup-Prompt-For-The-AI.txt), copy everything between the dashed lines into it, and fix the path on the first line.
 
-[![CI](https://github.com/LUKUIN/tokens-market-arena-en/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/LUKUIN/tokens-market-arena-en/actions/workflows/ci.yml)
+[![CI](https://github.com/LUKUIN/tokens-market-arena/actions/workflows/ci.yml/badge.svg?branch=english)](https://github.com/LUKUIN/tokens-market-arena/actions/workflows/ci.yml)
 
 > Corresponds to packaged build **v97**. The model trades through an HTTP API; the GUI is only a
 > **read-only spectator**. **Not interchangeable with the Human edition**
