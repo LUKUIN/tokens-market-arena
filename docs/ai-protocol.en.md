@@ -22,7 +22,8 @@ few tokens as possible and make a decision**.
 > `run.py` validates the version before doing anything else and exits with code 2 on a mismatch.
 > Every `python` in the commands below means your own 3.14 path.
 > The spectator window opens automatically: `run.py` and `run.py server` both open it.
-> Double-clicking `Start Match.bat` adds a 5-second mis-click guard (press `Y`); a console-less
+> Double-clicking `Start Match.bat` adds a 5-second mis-click guard (press `Y`); `AI Start.bat`
+> starts with no prompt and is what scripts / agents should use; a cmd-invoked
 > call skips it. `--headless` is the only windowless mode (no-desktop environments only).
 
 ```bash

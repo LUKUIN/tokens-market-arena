@@ -39,7 +39,8 @@ python run.py
 Double-click launcher:
 
 ```
-开一局.bat        (double-click: 5-second confirm; console-less calls start directly)
+开一局.bat        (double-click entry: 5-second confirm)
+AI-Start.bat      (unattended entry: starts directly; for scripts / agents)
 or  python run.py --interactive   (human demo only; asks model ID and event mode)
 ```
 
@@ -183,7 +184,8 @@ It does two things:
 ```
 TokensMarket-OpenSource-AI-v97/
 ├── run.py                  entry point (ai / --interactive / server / state)
-├── 开一局.bat            Windows double-click launcher
+├── 开一局.bat            Windows double-click launcher (5-second confirm)
+├── AI-Start.bat          unattended launcher (no confirm; scripts / agents)
 ├── 进程深度清理.bat        manual double-click cleanup (contains pause)
 ├── deep-clean.ps1          cleanup implementation; agents should call this directly
 ├── src/
