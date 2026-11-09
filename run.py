@@ -583,6 +583,16 @@ def main(argv=None):
             serve(host, port)
         finally:
             guard_stop.set()
+        # The server has exited: on a normal settlement, clean up this match's files.
+        # Relying on _start_autoclean alone is not enough -- it needs two consecutive
+        # confirmations plus 2 seconds, while /quit and a timeout both stop the server
+        # after 3 seconds, so the main thread usually exits first and leaves session.json.
+            try:
+                import tm_api
+                if (tm_api.ENGINE.state() or {}).get("finished"):
+                    _autoclean(os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "data"))
+            except Exception as exc:
+                print("  cleanup failed: %s" % exc)
         return 0
 
     if mode == "state":
