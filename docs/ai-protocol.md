@@ -198,7 +198,8 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 
   "positions": [ {"pair":"AURA/CORE","side":"LONG","lots":10,"leverage":100,
                   "entry":150.2,"price":151.4,"upnl":12000,"margin":15140} ],
-  "margin_level": 680.5,      // < 100% 追加保证金，< 50% 强平
+  "margin_level": 680.5,      // 净值 ÷ (名义敞口 × 10%)；< 100% 追加保证金，< 50% 强平
+                              // 开仓后必须仍 >= 150%
 
   "prices": {"AURA/CORE": {"price":151.4, "spread_pct":0.06}},
 
@@ -233,7 +234,7 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 ### 七个判断点
 
 1. **`equity` vs `target`** —— 还差多少
-2. **`margin_level`** —— 低于 100% 要补保证金，低于 50% 会被强平
+2. **`margin_level`** —— 净值 ÷ (名义敞口 × 10%)；低于 100% 要补保证金，低于 50% 会被强平，开仓后必须仍 >= 150%
 3. **`active_mods`** —— 现在有什么临时规则在改行情
 4. **`loan_bump_range`** —— 现在借钱是什么代价（`[1,100]` 正常，`[0.01,100]` 是优惠融资）
 5. **`special`** —— 两个开关开没开；`slot_left` 是老虎机剩余次数，`fr_left` 自 v1.2.4 取消借款次数上限后恒为 `null`（字段保留兼容）

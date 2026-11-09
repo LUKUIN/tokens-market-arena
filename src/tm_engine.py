@@ -252,6 +252,12 @@ MIN_LEVERAGE = 1
 MARGIN_CALL_RATIO = 1.00      # 保证金水平低于此值触发追加保证金通知
 STOP_OUT_RATIO = 0.50         # 低于此值立即强制平仓
 MARGIN_CALL_GRACE = 30        # 追缴宽限期（tick），约 2.5 分钟；超时未恢复则强平
+# 维持保证金率：按**名义敞口**计，而不是按「名义 ÷ 杠杆」。
+# 后者在 1000 倍杠杆下只有名义的千分之一，等于把追缴线架空。
+# 10% 的含义是「净值至少要覆盖名义敞口的 1/10」，即有效杠杆上限 10 倍。
+MAINT_MARGIN_RATE = 0.10
+# 开仓后维持保证金水平的下限：低于它就不许开，避免「开满即追缴」。
+OPEN_MARGIN_RATIO = 1.50
 def _env_int(raw, default):
     """环境变量转整数：非法值回退默认值，不让启动崩在 import。"""
     if raw is None or str(raw).strip() == "":
@@ -295,7 +301,7 @@ def _idle_rule_text():
             % (IDLE_ABORT_MINUTES, "、".join(IDLE_ACTION_LABELS)))
 
 
-ENGINE_VERSION = "1.2.16"  # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.17"  # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -852,10 +858,21 @@ class Engine:
         return self.s["balance"] + self._total_upnl() - self.s["loan"]["balance"]
 
     def margin_level(self):
-        m = self._total_margin()
-        if m <= 0:
+        """账户维持保证金水平 = 净值 ÷ 维持保证金。
+
+        分母是「名义敞口 × 维持保证金率」，不是「名义 ÷ 杠杆」。
+        后者在 1000 倍杠杆下只有名义的千分之一：34 手 / 501.8 万名义只占
+        5,019 元保证金，净值跌到 42 万时这个比值仍有 8,370%，追缴和强平
+        永远不会触发——高杠杆因此变成「免费的风险豁免」。
+        """
+        maint = self._maint_margin()
+        if maint <= 0:
             return None
-        return self.equity() / m
+        return self.equity() / maint
+
+    def _maint_margin(self):
+        """维持保证金：名义敞口 × 维持保证金率（受「平台提高/下调保证金」事件影响）。"""
+        return self._account_notional() * MAINT_MARGIN_RATE * self._mod("margin_mult")
 
     def _eff_spread(self, pair):
         """当期有效点差。跳空 tick 上流动性枯竭，点差放大。"""
@@ -2044,6 +2061,19 @@ class Engine:
                 return {"ok": False,
                         "error": "保证金不足：本笔需要 %.0f，可用 %.0f（净值 %.0f − 已占用 %.0f）"
                                  % (margin + fee, max(0.0, avail), self.equity(), used)}
+            # 维持保证金校验：按名义敞口算，与 margin_level 同口径。
+            # 缺了它就可以「先开满、等追缴通知」，把风控变成事后告知。
+            if MAINT_MARGIN_RATE > 0:
+                maint_after = (before + gross) * MAINT_MARGIN_RATE * self._mod("margin_mult")
+                eq_after = self.equity() - fee
+                if maint_after > 0 and eq_after < maint_after * OPEN_MARGIN_RATIO:
+                    return {"ok": False,
+                            "error": "维持保证金不足：开这笔后名义敞口 %.0f，"
+                                     "需保留净值 %.0f（维持保证金率 %.0f%%，开仓线 %.0f%%），"
+                                     "实际可用 %.0f"
+                                     % (before + gross, maint_after * OPEN_MARGIN_RATIO,
+                                        MAINT_MARGIN_RATE * 100, OPEN_MARGIN_RATIO * 100,
+                                        max(0.0, eq_after))}
             self.s["balance"] -= fee
             self.s["total_fees"] += fee
             self.s["order_count"] += 1
@@ -2962,6 +2992,8 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                     max(0, MARGIN_CALL_GRACE - (self.s["tick"] - self.s["margin_call_at"]))
                     if self.s.get("margin_call_at") is not None and self.s["positions"] else None),
                 "margin_used": round(self._total_margin(), 2),
+                "maint_margin": round(self._maint_margin(), 2),
+                "maint_rate": round(MAINT_MARGIN_RATE * 100, 2),
                 "tampered": bool(self.s.get("tampered")),
                 "resets": self.s.get("resets", 0),
                 "max_drawdown": round(self._metrics()["mdd"] * 100, 2),
@@ -3034,7 +3066,9 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                         "上面给的是基础值，当前生效的修正见 GET /state 的 active_mods"),
             "点差": {s: "%.3f%%" % (cfg["spread"] * 100) for s, cfg in PAIRS.items()},
             "隔夜利息": {s: "%.4f%%/tick" % (cfg["swap"] * 100) for s, cfg in PAIRS.items()},
-            "保证金水平": "净值 ÷ 已用保证金 × 100%%，< %.0f%% 追加保证金，< %.0f%% 强制平仓" % (
+            "保证金水平": "净值 ÷ 维持保证金 × 100%%（维持保证金 = 名义敞口 × %.0f%%），"
+                          "< %.0f%% 追加保证金，< %.0f%% 强制平仓" % (
+                              MAINT_MARGIN_RATE * 100,
                 MARGIN_CALL_RATIO * 100, STOP_OUT_RATIO * 100),
             "滑点": ("成本 = %.5f / (2 × 市场深度) × 名义²，随名义平方增长"
                      "（1000 万名义在纤薄档往返约 4%%）；单边率上限 %.1f%%，"
