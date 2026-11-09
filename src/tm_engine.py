@@ -2900,6 +2900,18 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             eq = self.equity()
             tgt = self.s.get("target", TARGET_EQUITY)
             if eq >= tgt:
+                # 达标后必须自己平仓才能走：引擎不替你把浮盈「结算」掉。
+                # 时间到时才会自动强制平仓；自己提前离场，得先落袋。
+                if self.s["positions"]:
+                    return {"ok": False,
+                            "error": "达标后仍有 %d 笔持仓：请先用 POST /close_all 平掉全部仓位，"
+                                     "再结束比赛" % len(self.s["positions"]),
+                            "hint": "引擎不会替你自动平仓结算；不 /close_all 就只能等到时间到，"
+                                    "由引擎强制平仓——中途回吐的话，达标也不算数",
+                            "equity": round(eq, 2), "target": round(tgt, 2),
+                            "positions": [{"pair": p["pair"], "side": p["side"],
+                                           "lots": p["lots"]}
+                                          for p in self.s["positions"]]}
                 return self._end_session("达标离场")
             return self._end_session("主动弃权（未达标）")
 

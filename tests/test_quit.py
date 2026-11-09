@@ -49,6 +49,34 @@ class QuitSemanticsTest(_Base):
         self.assertEqual(r.get("reason"), "主动弃权（未达标）")
         self.assertFalse(r.get("hit_target"))
 
+    def test_hit_target_with_positions_refuses_quit(self):
+        """达标后还挂着仓位就 /quit：拒绝结算，要求先 close_all 落袋。"""
+        self.set_cash(self.tgt * 1.2)
+        self.e.s["prices"]["AURA/CORE"] = 100.0
+        ok = self.e.open_position("AURA/CORE", "LONG", 1, 20).get("ok")
+        self.assertTrue(ok, "测试前置：应能开出一笔小仓位")
+
+        r = self.e.quit_session()
+        self.assertFalse(r.get("ok"))
+        self.assertIn("close_all", r.get("error", ""))
+        self.assertFalse(self.e.s.get("finished"), "被拒后本局应仍在进行")
+        self.assertEqual(len(self.e.s["positions"]), 1)
+
+        self.e.close_all()
+        r2 = self.e.quit_session()
+        self.assertTrue(r2.get("ok"), r2)
+        self.assertEqual(r2.get("reason"), "达标离场")
+
+    def test_below_target_with_positions_still_allows_quit(self):
+        """未达标时弃权不要求先平仓：引擎强制清算后结算。"""
+        self.set_cash(self.tgt * 0.8)
+        self.e.s["prices"]["AURA/CORE"] = 100.0
+        self.assertTrue(self.e.open_position("AURA/CORE", "LONG", 1, 20).get("ok"))
+        r = self.e.quit_session()
+        self.assertTrue(r.get("ok"), r)
+        self.assertEqual(r.get("reason"), "主动弃权（未达标）")
+        self.assertEqual(self.e.s["positions"], [])
+
     def test_exactly_at_target_counts_as_hit(self):
         self.set_cash(self.tgt)
         r = self.e.quit_session()
