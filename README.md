@@ -454,16 +454,19 @@ The report lists a separate "Forced liquidation" count.
 
 ### Ledger audit (`audit`)
 
-Before settlement and on every `/state`, four identities are checked:
+Before settlement and on every `/state`, three identities are checked:
 
 | Check | Identity |
 |---|---|
 | Fees | accumulated fees == sum of `fee` over the trade log |
 | Loan | `loan.balance` == `borrowed - repaid + interest` |
 | Positions | side is `LONG` / `SHORT`, lots strictly positive |
-| Equity | `equity` == cash + unrealized P&L - debt |
 
-`audit` is a string array: **empty means all four hold**. Any entry is a human-readable warning.
+> Earlier versions also checked a 4th identity, "equity == cash + unrealized P&L - debt", but it is
+> literally the same formula as `equity()`, so it was always true and never detected anything.
+> Removed in v1.2.10.
+
+`audit` is a string array: **empty means all three hold**. Any entry is a human-readable warning.
 At settlement the audit verdict is merged into `warnings`, so `settled` becomes `false` — a mismatch
 is never reported as a clean settlement.
 

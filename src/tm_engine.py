@@ -9,6 +9,7 @@ Currency unit: Tokens    Lots: 1 lot = 1000 units
 
 import hashlib
 import hmac
+from html import escape as _html_escape
 import math
 import json
 import os
@@ -96,12 +97,26 @@ def _new_seed():
     return random.getrandbits(32)
 
 
-def _env_flag(name, default=False):
-    """Startup switches: TM_FR / TM_SLOT. Unset counts as off."""
+def _env_flag(name, default=True):
+    """Startup switches: TM_FR / TM_SLOT. Unset counts as ON (matches AGENTS.md / README)."""
     if name not in _SPECIAL_CACHE:
         v = (os.environ.get(name) or "").strip().lower()
         _SPECIAL_CACHE[name] = default if not v else v in ("1", "y", "yes", "on", "on", "Yes")
     return _SPECIAL_CACHE[name]
+
+
+def _sanitize_trader(name):
+    """Trader-label allow-list: keep CJK/Latin letters, digits, space and -_.()()·.
+
+    The name from /trader is written verbatim into the report filename and the
+    event stream, so it has to be closed here; report rendering additionally
+    escapes every event text as defence in depth.
+    """
+    import re as _re
+    if not name:
+        return ""
+    s = _re.sub(r"[^\w\s\-_.()（）·]", "", str(name), flags=_re.UNICODE)
+    return s.strip()
 
 
 def _pick_news_rate():
@@ -232,7 +247,7 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.2.9"   # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.10"  # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -1072,7 +1087,9 @@ class Engine:
         1. 累计手续费 == 成交流水里 fee 之和
         2. 贷款未还余额 == 借入 - 已还 + 累计利息
         3. 持仓方向合法、手数为正
-        4. 权益 == 现金 + 浮动盈亏 - 欠款
+
+        The old "4. equity == cash + upnl - debt" identity was removed: it is the
+        very same formula as equity(), always true, so it never detects anything.
 
         审计本身绝不打断对局：任何异常都收敛成一条 issue 返回。
         """
@@ -1105,14 +1122,6 @@ class Engine:
                     issues.append("第 %d 笔持仓手数非法：%r" % (i + 1, p.get("lots")))
         except Exception as exc:
             issues.append("持仓核对异常：%s" % exc)
-        try:
-            eq = self.equity()
-            debt = float((s.get("loan") or {}).get("balance") or 0.0)
-            expect_eq = float(s.get("balance") or 0.0) + self._total_upnl() - debt
-            if abs(eq - expect_eq) > 0.05:
-                issues.append("权益 %.2f 与 现金+浮盈-欠款 %.2f 不一致" % (eq, expect_eq))
-        except Exception as exc:
-            issues.append("权益核对异常：%s" % exc)
         return issues
 
     def _end_session(self, reason):
@@ -1254,22 +1263,13 @@ class Engine:
                 remain = max(0, int(SESSION_MINUTES * 60 - el))
                 self._event("Time check: %d minutes elapsed, %d left" % (int(el // 60), int(remain // 60)), "info")
             if el > SESSION_MINUTES * 60:
-                # Close everything first to lock in equity, then settle the loan
-                for p in list(self.s["positions"]):
-                    self.close_position(p["pair"], p["lots"])
-                self._settle_loan()
-                self.s["finished"] = True
-                eq = self.equity()
-                if eq >= self.s["target"]:
-                    verdict = "Target reached" if self._qualified() else "Target reached but run ineligible"
-                else:
-                    verdict = "Target missed"
-                self._event("Time up: final equity %.2f Tokens (%s: target %.0f)" % (eq, verdict, self.s["target"]), "end")
-                self._save()
-                self._write_report("Time up", eq)
-                self._clear_running()         # time up is a normal settlement too: do not let the next run count it as an abnormal exit
-                # Ended is ended: time up means no auto restart either; wait for an explicit POST /reset
-                purge_agent_dir(self.home)    # keep the original cleanup of this match's _agent leftovers
+                # Time-up now shares the single settlement entry with /quit and
+                # blow-ups: _end_session() force-closes via _force_close_all()
+                # (which is NOT blocked by the exchange-maintenance
+                # halt_close_until) and always records last_settle / settled /
+                # warnings, so "report says settled but positions remain" cannot
+                # happen any more.
+                self._end_session("Time up")
                 return self.state()
             self._save()
             return self.state()
@@ -1308,10 +1308,13 @@ class Engine:
 
     def set_trader(self, name):
         with LOCK:
-            name = (name or "").strip()
-            if not name:
+            raw = (name or "").strip()
+            if not raw:
                 return {"ok": False, "error": "Name cannot be empty"}
-            self.s["trader"] = name[:60]
+            clean = _sanitize_trader(raw)
+            if not clean:
+                return {"ok": False, "error": "Name contains no allowed characters; only letters, digits, spaces and -_.()()· are kept"}
+            self.s["trader"] = clean[:60]
             self._event("Operator set to: %s" % self.s["trader"], "info")
             self._save()
             return {"ok": True, "trader": self.s["trader"]}
@@ -1529,6 +1532,19 @@ class Engine:
         except Exception:
             pass
         return out
+
+    def scratch_clear(self):
+        """Wipe the scratchpad. Always allowed mid-run; costs nothing."""
+        with LOCK:
+            if self.s.get("finished"):
+                return {"ok": False, "error": "Session already finished"}
+            try:
+                os.remove(self._scratch_path())
+            except FileNotFoundError:
+                pass
+            except Exception as exc:
+                return {"ok": False, "error": "clear failed: %s" % exc}
+            return {"ok": True, "cleared": True}
 
     def ff_plan(self):
         """Fast-forward quota state: quota left, available steps, cooldown, history."""
@@ -2296,8 +2312,10 @@ class Engine:
                 _k = e.get("kind") or "info"
                 ev_rows.append('<li class="ev-%s"><span class="tag">%s</span> '
                                '<span class="evt">t%s</span> %s</li>' % (
-                                   _k, _KIND_CN.get(_k, _k),
-                                   e.get("tick", "—"), e.get("text", "")))
+                                   _html_escape(str(_k), quote=False),
+                                   _html_escape(str(_KIND_CN.get(_k, _k)), quote=False),
+                                   _html_escape(str(e.get("tick", "—")), quote=False),
+                                   _html_escape(str(e.get("text", "")), quote=False)))
 
             # ---------- loan ledger breakdown ----------
             _loan = self.s.get("loan") or {}
@@ -2582,7 +2600,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "session_id": self.s.get("session_id", ""),
                 "seed": self.s.get("seed"),
                 "trader": trader,
-                "mode": self.s.get("mode", ""),
+                "mode": "Random events on" if self.s.get("events_on", True) else "Ideal case",
                 "reason": reason,
                 "finished_at": time.time(),
                 "tick": int(self.s.get("tick", 0) or 0),
@@ -2857,6 +2875,15 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "GET /scratchpad": {},
                 "POST /scratchpad": {"text": "one entry", "clear": "true clears it"},
                 "POST /begin": {},
+                "GET /health": "Liveness probe: tick / equity / finished / protocol and engine version",
+                "POST /reset": "Start a fresh run (clears this run and re-rolls difficulty)",
+                "POST /pause": "Pause / resume (no args, toggles each call)",
+                "POST /trader": {"name": "Trader label, <=60 chars; keeps letters, digits, spaces and -_.()()·"},
+                "POST /shutdown": "Stop the server immediately (spectator Kill button); writes an abnormal-exit snapshot first",
+                "POST /assist/enable": "Spend 500,000 cash to enable \"Mercy of the Outside\" mid-run",
+                "GET /assist/pending": "Current help ticket waiting for the spectator",
+                "POST /assist/reply": {"ticket": "ticket id", "text": "reply text (spectator side)"},
+                "POST /assist/reject": {"ticket": "ticket id (spectator side)"},
             },
             "Assist replies": ("Spectator replies never show up in the /state event feed; "
                                "pull them with GET /assist/inbox. Fetching marks them read. "

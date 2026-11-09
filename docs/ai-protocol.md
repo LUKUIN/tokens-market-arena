@@ -215,7 +215,10 @@ Every endpoint lives at `http://127.0.0.1:8734`.
   "loan": {"balance":0, "limit":3000000, "borrowed":0, "interest":0},
   "total_borrowed": 0,
 
-  "active_mods": ["Central bank easing"],  // names of currently active events
+  "active_mods": [                      // active events (object list, at most 6 entries)
+    {"key": "loan_pool_mult", "name": "Central bank easing", "value": 1.35,
+     "label": "loan pool x1.35", "left_ticks": 42}
+  ],
   "loan_bump_range": [1.0, 100.0],      // borrow uplift range (%): [1,100] normally, [0.01,100] with Preferred Financing
   "special": {                          // the two global switches
     "fr": true, "fr_left": null,        // Preferred Financing on; the per-run cap is gone, so this is always null

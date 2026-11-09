@@ -53,6 +53,26 @@ class TestEndSessionSettlement(EngineCase):
         self.assertTrue(out["settled"], "settled must be True")
         self.assertEqual(out["warnings"], [], "no warnings expected")
 
+    def test_time_up_path_settles_even_during_halt(self):
+        """Reaching 45:00 during exchange maintenance must still clear positions.
+
+        Regression for the merged settlement path: the old tick() called
+        close_position() directly, which the maintenance window refuses, and
+        ignored the return value -- leaving positions on a "settled" run.
+        """
+        eng = self.make()
+        eng.open_position("FROST/CORE", "LONG", 5, 20)
+        eng.s["halt_close_until"] = eng.s["tick"] + 999
+        eng.s["created_at"] -= T.SESSION_MINUTES * 60 + 1
+
+        eng.tick()
+
+        self.assertTrue(eng.s["finished"], "tick must finish the run")
+        self.assertEqual(eng.s["positions"], [], "maintenance must not block the final clean-up")
+        settle = eng.s.get("last_settle") or {}
+        self.assertTrue(settle.get("settled"), "settled must be True")
+        self.assertEqual(settle.get("warnings") or [], [])
+
     def test_settlement_not_blocked_by_halt_orders(self):
         """A circuit breaker (halt_until) must not block settlement either."""
         eng = self.make()

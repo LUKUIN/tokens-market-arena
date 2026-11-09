@@ -157,5 +157,38 @@ class TestProtocolVersion(AuditCase):
         self.assertTrue(hasattr(T, "ENGINE_VERSION"))
 
 
+class TestScratchpadAndTrader(AuditCase):
+    def test_scratchpad_clear(self):
+        """POST /scratchpad {"clear": true} must actually wipe the pad."""
+        eng = self.make()
+        eng.scratch_append("first")
+        eng.scratch_append("second")
+        self.assertEqual(len(eng.scratch_read()), 2)
+        out = eng.scratch_clear()
+        self.assertTrue(out["ok"])
+        self.assertEqual(eng.scratch_read(), [])
+
+    def test_trader_name_sanitized(self):
+        """Trader label keeps only allow-listed characters; HTML tags are stripped."""
+        eng = self.make()
+        out = eng.set_trader('<img src=x onerror=alert(1)>En')
+        self.assertTrue(out["ok"])
+        self.assertNotIn("<", out["trader"])
+        self.assertNotIn(">", out["trader"])
+
+    def test_report_escapes_event_text(self):
+        """Event text must be escaped before it reaches the report."""
+        eng = self.make()
+        eng.set_trader("<b>x</b>")
+        eng._event("<script>alert(1)</script>", "info")
+        out = eng._end_session("escape test")
+        hp = out.get("report")
+        self.assertTrue(hp and os.path.isfile(hp), hp)
+        with open(hp, encoding="utf-8") as f:
+            doc = f.read()
+        self.assertNotIn("<script>alert(1)</script>", doc)
+        self.assertIn("&lt;script&gt;", doc)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
