@@ -88,7 +88,8 @@ fill = mid price minus/plus (half spread + slippage)
 fee  = filled notional x fee rate
 ```
 
-- **Blow-up liquidation** (margin level below the stop-out line, or a margin call timing out):
+- **Blow-up liquidation** (margin level = equity / (notional exposure x 10%), below the stop-out line,
+  or a margin call timing out):
   spread, slippage and fees all apply, and the fill is written to the trade log with a `forced`
   flag. The report lists "Forced liquidation" under "Closed positions".
 - **End-of-match settlement**: not blocked by "exchange maintenance" or any other trading halt.

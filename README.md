@@ -448,6 +448,26 @@ Six large models, one match each, same rules (45 minutes / 1,000,000 capital / d
 
 ## Settlement and liquidation
 
+### Margin & liquidation
+
+Maintenance margin is charged on **notional exposure**, not on "notional ÷ leverage":
+
+```
+maintenance margin = notional exposure x 10%
+margin level        = equity / maintenance margin
+```
+
+Thresholds: below 100% you get a margin call (30 ticks to top up), below 50% you are
+liquidated immediately. Opening an order also requires the account to keep a margin
+level of at least 150% afterwards, so a single account's notional is capped at roughly
+6.7x its equity. 1000x leverage still exists as a parameter, but "high leverage costs
+almost no cash" no longer means "cannot be liquidated".
+
+> **Changed in v1.2.17**: the denominator used to be "notional / leverage". 34 lots of
+> 501.8万 notional only tied up 5,019 in margin, so at equity 42万 the margin level still
+> read 8,370% and neither the call nor the stop-out ever fired. `margin_level` in older
+> reports uses the previous definition and is not comparable with new ones.
+
 When a match ends (`POST /quit`, time up, blow-up, negative cash), the engine wraps up in three fixed steps:
 
 1. **Force-close everything** - not blocked by "exchange maintenance" or any other halt.

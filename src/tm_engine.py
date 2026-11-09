@@ -256,6 +256,12 @@ MIN_LEVERAGE = 1
 MARGIN_CALL_RATIO = 1.00      # below this margin level a margin call fires
 STOP_OUT_RATIO = 0.50         # below this level positions are liquidated immediately
 MARGIN_CALL_GRACE = 30        # margin call grace period (ticks), about 2.5 min; liquidation if not restored
+# Maintenance margin is charged on **notional exposure**, not on "notional / leverage".
+# The latter is only 1/1000 of notional at 1000x, which makes the stop-out line unreachable.
+# 10% means equity must cover one tenth of notional, i.e. an effective leverage cap of 10x.
+MAINT_MARGIN_RATE = 0.10
+# Opening orders must leave at least this margin level behind, so "fill up then get called" is not a path.
+OPEN_MARGIN_RATIO = 1.50
 def _env_int(raw, default):
     """Parse an env var into int; fall back to default instead of crashing on import."""
     if raw is None or str(raw).strip() == "":
@@ -301,7 +307,7 @@ def _idle_rule_text():
             "activity'. Read-only calls (/state, /prices, /rules) do not count, so "
             "slow thinking is never cut short. TM_IDLE_ABORT tunes it, 0 disables"
             % ("/".join(IDLE_ACTION_LABELS), IDLE_ABORT_MINUTES))
-ENGINE_VERSION = "1.2.16"  # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.17"  # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -853,10 +859,21 @@ class Engine:
         return self.s["balance"] + self._total_upnl() - self.s["loan"]["balance"]
 
     def margin_level(self):
-        m = self._total_margin()
-        if m <= 0:
+        """Account margin level = equity / maintenance margin.
+
+        The denominator is notional exposure x maintenance rate, NOT notional / leverage.
+        At 1000x the old denominator was 1/1000 of notional: 34 lots / 5.018M notional only
+        tied up 5,019, so at equity 420K the ratio still read 8,370% and neither the call
+        nor the stop-out ever fired. High leverage was a free exemption from risk.
+        """
+        maint = self._maint_margin()
+        if maint <= 0:
             return None
-        return self.equity() / m
+        return self.equity() / maint
+
+    def _maint_margin(self):
+        """Maintenance margin: notional exposure x rate (the margin-multiplier event applies)."""
+        return self._account_notional() * MAINT_MARGIN_RATE * self._mod("margin_mult")
 
     def _eff_spread(self, pair):
         """Effective spread right now. Liquidity drains on a gap tick, so the spread widens."""
@@ -2052,6 +2069,19 @@ class Engine:
                 return {"ok": False,
                         "error": "Insufficient margin: this order needs %.0f, available %.0f (net value %.0f − in use %.0f)"
                                  % (margin + fee, max(0.0, avail), self.equity(), used)}
+            # Maintenance margin check on notional exposure, same denominator as margin_level.
+            # Without it you could fill to the brim and let the margin call be a post-hoc notice.
+            if MAINT_MARGIN_RATE > 0:
+                maint_after = (before + gross) * MAINT_MARGIN_RATE * self._mod("margin_mult")
+                eq_after = self.equity() - fee
+                if maint_after > 0 and eq_after < maint_after * OPEN_MARGIN_RATIO:
+                    return {"ok": False,
+                            "error": "Insufficient maintenance margin: notional exposure after this order %.0f, "
+                                     "need to keep equity %.0f (maintenance rate %.0f%%, open threshold %.0f%%), "
+                                     "available %.0f"
+                                     % (before + gross, maint_after * OPEN_MARGIN_RATIO,
+                                        MAINT_MARGIN_RATE * 100, OPEN_MARGIN_RATIO * 100,
+                                        max(0.0, eq_after))}
             self.s["balance"] -= fee
             self.s["total_fees"] += fee
             self.s["order_count"] += 1
@@ -2963,6 +2993,8 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                     max(0, MARGIN_CALL_GRACE - (self.s["tick"] - self.s["margin_call_at"]))
                     if self.s.get("margin_call_at") is not None and self.s["positions"] else None),
                 "margin_used": round(self._total_margin(), 2),
+                "maint_margin": round(self._maint_margin(), 2),
+                "maint_rate": round(MAINT_MARGIN_RATE * 100, 2),
                 "tampered": bool(self.s.get("tampered")),
                 "resets": self.s.get("resets", 0),
                 "max_drawdown": round(self._metrics()["mdd"] * 100, 2),
@@ -3031,7 +3063,9 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                                   " active_mods in GET /state for what is currently in force"),
             "Spread": {s: "%.3f%%" % (cfg["spread"] * 100) for s, cfg in PAIRS.items()},
             "Overnight interest": {s: "%.4f%%/tick" % (cfg["swap"] * 100) for s, cfg in PAIRS.items()},
-            "Margin level": "net value / used margin x 100%%, < %.0f%% margin call, < %.0f%% forced liquidation" % (
+            "Margin level": "net value / maintenance margin x 100%% (maintenance = notional x %.0f%%), "
+                            "< %.0f%% margin call, < %.0f%% forced liquidation" % (
+                                MAINT_MARGIN_RATE * 100,
                 MARGIN_CALL_RATIO * 100, STOP_OUT_RATIO * 100),
             "Slippage": ("cost = %.5f / (2 x market depth) x notional squared, so it grows with the square of notional"
                          " (a 10M round trip in the thin tier costs about 4%%); one-side cap %.1f%%,"
