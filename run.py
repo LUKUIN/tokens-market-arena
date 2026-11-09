@@ -445,7 +445,7 @@ def _run_ai(interactive=False, port=None):
 
     guard_stop = _start_guard(port)
     if guard_stop is None:
-        return 2
+        return 4
     try:
         server_thread.join()      # /quit 或 /shutdown 让服务退出后，这里才会返回
     except KeyboardInterrupt:
@@ -596,16 +596,16 @@ def main(argv=None):
         if busy == "ours":
             print("  端口 %d 上已经有一局在跑，不再启动第二个服务。" % port)
             print("  直接连：http://%s:%d ；要开新局请先关掉那一局。" % (host, port))
-            return 2
+            return 4
         if busy == "foreign":
             print("  端口 %d 被其他程序占用（或协议版本不兼容），请换端口：TM_PORT=<端口>" % port)
-            return 2
+            return 4
         # import 必须在封存之前：封存只换磁盘上的文件，已加载的模块不受影响；
         # 反过来做就会把诱饵 import 进来。
         from tm_api import serve
         guard_stop = _start_guard(port)
         if guard_stop is None:
-            return 2
+            return 4
         _enable_assist_from_env()
 
         _start_autoclean(os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "data"),

@@ -15,7 +15,7 @@ TokensMarket-OpenSource-AI-v97/
 ├── guard.py           源码守卫（run.py 自己调，别手动起）
 ├── launchers/         ★ 所有双击入口（内部自动切回仓库根）
 │   ├── 开一局.bat     人类双击（5 秒确认）
-│   ├── AI-Start.bat   无人值守（推荐脚本 / Agent）
+│   ├── AI-Start.bat   无人值守（脚本 / Agent 用这个）
 │   ├── 只开观众席.bat 补挂窗口
 │   └── 进程深度清理.bat
 ├── tools/deep-clean.ps1  非交互清理（AI 直接调这个）
@@ -48,6 +48,7 @@ TokensMarket-OpenSource-AI-v97/
 
 **在别的机器上，只要是 3.14，装在哪里都行**：把命令里的路径换成你自己的，或者直接用 `py -3.14`；
 `run.py` 只校验版本号，不校验安装路径。启动第一件事就是校验，不是 3.14 直接中止（退出码 2）并给出提示。
+端口上已有对局时拒绝启动，退出码 4。
 不要用 `py -3.12`、`python3` 去另找一个解释器。找不到命令时直接写全路径，不要报「环境有问题」。
 
 ## 1. 检查上一局残留（有则清，无则直接开始）
@@ -99,8 +100,8 @@ done
 
 | 入口 | 行为 |
 |---|---|
-| `python run.py` | 标准方式，Agent 首选 |
-| `launchers\AI-Start.bat` | 无人值守：设 `TM_NO_CONFIRM=1` 与 `TM_IDLE_ABORT=0` 后 `call launchers\开一局.bat`，启动逻辑只有一份；**脚本 / Agent 用这个最稳** |
+| `python run.py` | 标准方式，Agent 用这个 |
+| `launchers\AI-Start.bat` | 无人值守：设 `TM_NO_CONFIRM=1` 与 `TM_IDLE_ABORT=0` 后 `call launchers\开一局.bat`，启动逻辑只有一份；**脚本 / Agent 走这个** |
 | `launchers\开一局.bat` | 人类双击入口。5 秒内不按 `Y` 就清理退出；**在终端里 `cmd /c launchers\开一局.bat` 也会被当成人类**，5 秒后被杀 |
 
 - 不要自己另起 `python run.py spectator` 补窗口——正常启动就会有
@@ -119,7 +120,8 @@ done
 
 ## 3. 定档
 
-难度是开局抽的，未定档时 `/fastforward` 也会被拒绝（`本局尚未开始，请先确认规则`）。
+难度是开局抽的。**未定档时 `/open`、`/loan`、`/slot`、`/fastforward` 全部被拒绝**，
+返回「难度尚未定档，请先 POST /roll/stop 或等抽选结束」；定档那一秒自动放开，不需要额外调用。
 
 ```bash
 curl -X POST http://127.0.0.1:8734/roll/stop
