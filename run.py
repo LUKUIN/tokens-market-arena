@@ -225,7 +225,7 @@ def _enable_assist_from_env():
     Both launch branches (with spectator / --headless) call this, so it lives in
     one place: editing only one copy would leave one entry point unable to enable it.
     """
-    if (os.environ.get("TM_ASSIST") or "0") != "1":
+    if (os.environ.get("TM_ASSIST") or "1") != "1":
         return
     try:
         import tm_api

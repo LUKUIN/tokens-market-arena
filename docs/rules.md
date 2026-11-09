@@ -26,7 +26,7 @@ Every parameter comes from the environment, and anything unset falls back to a d
 server starts → difficulty draw (30 s, lock early with `POST /roll/stop`) → clock starts →
 the model trades over HTTP.
 
-> `TM_TRADER` is written verbatim into the report filename and the report body; it is the field that
+> `TM_TRADER` is written into the report filename and the report body after whitelist filtering; it is the field that
 > tells contestants apart.
 > For a manual demo, `python run.py --interactive` asks for the player name, random events,
 > **Preferred Financing** and **Slot Machine** in that order.
