@@ -3143,7 +3143,9 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "POST /slot": {"amount": 1000},
                 "POST /special": {"name": "%s or %s" % (SPECIAL_SLOT_NAME, SPECIAL_FR_NAME), "on": True},
                 "POST /roll/stop": {},
-                "POST /quit": {},
+                "POST /quit": {"note": "Early exit: at/above target with nothing open -> Target reached - early exit "
+                                       "(counts); at/above with positions -> ok:false, call POST /close_all first; below "
+                                       "target -> Abandoned below target (does not count, positions force-closed)"},
                 "GET /prices": {},
                 "GET /assist/inbox": {},
                 "POST /assist/ask": {"text": "what you want the spectators to look at"},
@@ -3169,6 +3171,10 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                            "so use GET/POST /scratchpad and never run any .py file from the repo"),
             "Saving tokens": "GET /state?history=0 omits price_history (up to 2000 points per pair); use it when you only need the board",
             "Closing": "lots on POST /close is optional (closes the whole pair); passing more than you hold closes what you hold without an error",
-            "Calling it a day": "POST /quit settles normally - no penalty, no abnormal-exit mark; ending early when you are unhappy with the result is a safe option, not a forfeit",
+            "Calling it a day": ("POST /quit settles normally - no penalty, no abnormal-exit mark. At or above the target with "
+                     "nothing open -> \"Target reached - early exit\" (counts as reached); at or above with positions -> "
+                     "ok:false, call POST /close_all first; below the target -> \"Abandoned below target\" (does not count, "
+                     "positions are force-closed). Keeping positions after hitting the target is allowed: the first hit is in "
+                     "/state as hit_at_tick, and a later give-back leaves the verdict at target missed"),
             "Pair": {s: PAIR_NAMES[s] for s in PAIRS},
         }

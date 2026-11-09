@@ -10,7 +10,7 @@ Endpoints:
     POST /close_all        close all
     POST /loan             take a loan {"amount": 500000} (the uplift ratio is only rolled when you borrow — that is the cost)
     POST /repay            repay {"amount": 500000} (omit amount to repay in full)
-    POST /quit             end this match
+    POST /quit             end this match (refused above the target with positions; close_all first)
     POST /reset            start a new match
     GET  /health           liveness probe
 """

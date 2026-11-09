@@ -51,6 +51,9 @@ Do the following in order. You do not need to read any Markdown file.
 
 [6] Settle at the end
 
+    At or above the target with positions still open, close everything first or /quit is refused:
+
+    POST http://127.0.0.1:8734/close_all
     POST http://127.0.0.1:8734/quit
 
     The HTML report is written to src/data/reports/.
