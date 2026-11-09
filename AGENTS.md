@@ -144,9 +144,14 @@ Once you have these two, you never need to read another Markdown file during the
 ## 5. Settle
 
 ```bash
+# at the target with positions still open: close everything first, or /quit is refused
+curl -X POST http://127.0.0.1:8734/close_all
 curl -X POST http://127.0.0.1:8734/quit
 ```
 
+At or above the target with positions open, `/quit` returns `ok:false` and lists them; call
+`/close_all` to bank the profit before exiting. If you never close, the match runs to the
+45-minute time-up and the engine force-liquidates it (a give-back then voids the target).
 The HTML report is written to `src/data/reports/`.
 
 ## Boundaries

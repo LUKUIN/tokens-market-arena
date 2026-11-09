@@ -169,6 +169,8 @@ The AI edition's spectator is **read-only**: no order buttons, no fast-forward b
 | End processes | Stops the server and closes the window — **counts as one abnormal exit** |
 
 End a match normally with `POST /quit` (settles and writes the report); do not use "End processes" for that.
+At or above the target with positions still open, `/quit` is refused (`ok:false`, positions listed) -
+call `POST /close_all` first. If you never close, the match runs to time-up and is force-liquidated.
 
 ---
 
