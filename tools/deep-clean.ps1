@@ -13,12 +13,20 @@ try { $OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 
 $ErrorActionPreference = "SilentlyContinue"
 
+# v1.2.13: this script lives under tools/, so resolve the real project root first
+# (the directory that holds run.py). Older builds referenced $root below before
+# defining it, which meant the guard.py restore silently never ran.
+$root = Split-Path -Parent $MyInvocation.MyCommand.Definition
+if (-not (Test-Path (Join-Path $root "run.py"))) {
+    $parent = Split-Path -Parent $root
+    if (Test-Path (Join-Path $parent "run.py")) { $root = $parent }
+}
+
 # Restore any sources still sealed by guard.py before anything else.
 if (Test-Path (Join-Path $root "guard.py")) {
     $py = Get-Command python -ErrorAction SilentlyContinue
     if ($py) { & python (Join-Path $root "guard.py") clean 2>$null }
 }
-$root = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $dataDir = Join-Path $root "src\data"
 if (-not (Test-Path $dataDir)) { $dataDir = Join-Path $root "data" }
 

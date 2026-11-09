@@ -24,8 +24,8 @@ python run.py
 **Idle abort**: with no **state-changing action** for `TM_IDLE_ABORT` minutes after the difficulty
 lock, the match settles itself and the report says "No contestant activity". It exists for accidental
 starts — the AI edition has no trading UI. Read-only calls (`/state`, `/prices`, `/rules`) do not
-count, so slow thinking is never cut short. **Default `0` (off)**: `Start Match.bat` sets `12`,
-`AI Start.bat` keeps `0`; the timer counts ticks, matching the headless baseline in `bench.py`.
+count, so slow thinking is never cut short. **Default `0` (off)**: `launchers\Start Match.bat` sets `12`,
+`launchers\AI Start.bat` keeps `0`; the timer counts ticks, matching the headless baseline in `bench.py`.
 
 The server listens on `127.0.0.1:8734`; the GUI is a read-only spectator. **Nothing is prompted.**
 Every parameter comes from the environment, and anything unset falls back to a default
@@ -38,7 +38,7 @@ the model trades over HTTP.
 > For a manual demo, `python run.py --interactive` asks for the player name, random events,
 > **Preferred Financing** and **Slot Machine** in that order.
 
-You can also double-click `Start Match.bat` — it asks once: press `Y` within 5 seconds, otherwise it cleans up and exits.
+You can also double-click `launchers\Start Match.bat` — it asks once: press `Y` within 5 seconds, otherwise it cleans up and exits.
 
 > This document covers the **AI edition**. The Human edition (`TokensMarket-OpenSource-Human`) has
 > an investment panel; its rule parameters are the same as here.

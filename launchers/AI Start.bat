@@ -1,6 +1,6 @@
 @echo off
 chcp 936 >nul
-cd /d "%~dp0"
+cd /d "%~dp0.."
 rem ==================================================================
 rem Unattended entry point (for scripts / agents).
 rem v1.2.13: no duplicate lookup and launch logic any more - it delegates to

@@ -4,7 +4,7 @@
 
 > **Running an agent as the contestant? [`AGENTS.md`](AGENTS.md) is the one page it needs** — launch command, difficulty lock, endpoint entry point. Rules come from `GET /rules`; no need to read through `docs/`.
 >
-> Swapping in another AI: open [`Startup-Prompt-For-The-AI.txt`](Startup-Prompt-For-The-AI.txt), copy everything between the dashed lines into it, and fix the path on the first line.
+> Swapping in another AI: open [`docs/Startup-Prompt-For-The-AI.txt`](docs/Startup-Prompt-For-The-AI.txt), copy everything between the dashed lines into it, and fix the path on the first line.
 
 [![CI](https://github.com/LUKUIN/tokens-market-arena-en/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/LUKUIN/tokens-market-arena-en/actions/workflows/ci.yml)
 
@@ -55,7 +55,7 @@ executes it as a blocking command reaches its own timeout, kills the process, an
 disappears; every later request then fails with `connection refused`.
 
 **The spectator opens with the server and that is mandatory.** Since v1.0.11 `run.py`,
-`run.py server` open the read-only spectator. Double-clicking `Start Match.bat` adds a 5-second
+`run.py server` open the read-only spectator. Double-clicking `launchers\Start Match.bat` adds a 5-second
 mis-click guard (press `Y` to start); a scripted headless call skips it and starts directly. The read-only
 spectator. Only `--headless` suppresses the window, and it exists solely for environments without a
 desktop (CI, containers).
@@ -92,17 +92,17 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 
 ### Double-click launcher
 
-`Start Match.bat` is the double-click entry point. **It asks once on purpose**: press `Y` within 5 seconds
+`launchers\Start Match.bat` is the double-click entry point. **It asks once on purpose**: press `Y` within 5 seconds
 to start, otherwise it cleans up and exits — the AI edition has no trading UI, so an accidental click
-would otherwise burn 45 idle minutes. **Scripts and agents should use `python run.py` or `AI Start.bat`** —
-`AI Start.bat` has no prompt and opens the spectator too. Invoking `cmd /c "Start Match.bat"` from a
+would otherwise burn 45 idle minutes. **Scripts and agents should use `python run.py` or `launchers\AI Start.bat`** —
+`launchers\AI Start.bat` has no prompt and opens the spectator too. Invoking `cmd /c "launchers\Start Match.bat"` from a
 terminal still counts as human and is cleaned up after 5 seconds. The batch file looks for Python 3.14 in order —
 the pinned path, then `py -3.14`, then `python` on PATH (version-checked) — and stops with a clear
 error if none of the three is found.
 
 ### Spectator only (when the window was closed by accident)
 
-`Spectator.bat` opens **only** the read-only window. A normal start already brings a window, so this
+`launchers\Spectator.bat` opens **only** the read-only window. A normal start already brings a window, so this
 is a recovery entry: you closed the spectator by accident and the match is still running.
 
 ```
@@ -136,7 +136,7 @@ be open so a human can watch equity, holdings and the activity feed live.
 | `TM_ASSIST` | `1` enables **Outside Mercy**: the contestant may ask the spectators for help, 3 times per match; free before the start, 500,000 cash to enable mid-match (the contestant enables it, not the spectators); defaults to `1` when unset |
 | `TM_SLOT` | `1` enables **Slot Machine**: **3** plays, `1~200000` and ≤ current equity, 80% nothing / 15% 5× / 5% 10×; defaults to `1` when unset |
 | `TM_PORT` | Service port, default `8734` |
-| `TM_IDLE_ABORT` | Idle abort: settle after N minutes with no **state-changing action**. Default `0` (off); `Start Match.bat` sets `12`, `AI Start.bat` keeps `0` |
+| `TM_IDLE_ABORT` | Idle abort: settle after N minutes with no **state-changing action**. Default `0` (off); `launchers\Start Match.bat` sets `12`, `launchers\AI Start.bat` keeps `0` |
 | `TM_SIGN_KEY` | HMAC key for save files; a dev placeholder is used when unset |
 
 Requirements: **Python 3.14** (any install location: `run.py` validates the version, not the path), Windows (the spectator uses Win32 window-icon APIs), no third-party dependencies. Do not switch to 3.10-3.13: the `.pyc` magic number and the tkinter widgets are built for 3.14, so another version cannot start. The numbers in `.github/workflows/ci.yml` are the CI test matrix, not a runtime requirement.
@@ -193,7 +193,7 @@ Sections, top to bottom:
    happens for `TM_IDLE_ABORT` minutes after the difficulty lock, the match settles itself and the
    report says "No contestant activity". Read-only calls (`/state`, `/prices`, `/rules`) do **not**
    count, so a slow model may observe, reason and wait without being cut short. Default `0` (off):
-   `Start Match.bat` sets `12`, `AI Start.bat` keeps `0`. The timer counts ticks, so a contestant
+   `launchers\Start Match.bat` sets `12`, `launchers\AI Start.bat` keeps `0`. The timer counts ticks, so a contestant
    over HTTP and the headless baseline in `bench.py` share one rule and one effective match length.
 7. About 3 seconds after `/quit` the server and spectator exit on their own.
 
@@ -319,7 +319,7 @@ python guard.py status               # sealed? cheat flag present?
 python guard.py stop                 # stop the guard and decrypt the sources back
 ```
 
-`run.py` seals on start and restores on exit; `Start Match.bat` is only a launcher for it. Do not
+`run.py` seals on start and restores on exit; `launchers\Start Match.bat` is only a launcher for it. Do not
 run `guard.py start` alongside a match — two guards seal twice, and the second seal encrypts whatever
 is in `src/` by then, which is already the decoy.
 
@@ -333,7 +333,7 @@ What sealing actually does:
 - The project's own `_guard_vault/` keeps only a `guard_state.json` naming the sealed files — **no
   plaintext source is left inside the project tree**
 - Executing or importing a decoy drops `CHEAT_FLAG`; the guard then `POST /shutdown` immediately
-- Cleanup: `deep-clean.ps1` kills the guard too, and decrypts the sources first
+- Cleanup: `tools\deep-clean.ps1` kills the guard too, and decrypts the sources first
 
 `run.py` loads the spectator module before sealing (the other order imports a decoy), and any seal
 left behind by a crashed match is decrypted and restored on the next start.
@@ -357,12 +357,12 @@ Run this after a match, or when startup misbehaves (port taken, window never app
 
 ```bash
 cd <project-directory>
-powershell -NoProfile -ExecutionPolicy Bypass -File deep-clean.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\deep-clean.ps1
 ```
 
 > **When calling from an AI agent or a script, use the command above.** Do not run
-> `DeepClean Process.bat` directly: it contains two `pause` calls (stdin piped in will hang) and prints
-> GBK text (garbled in a UTF-8 terminal). `deep-clean.ps1` is the same logic in non-interactive
+> `launchers\DeepClean Process.bat` directly: it contains two `pause` calls (stdin piped in will hang) and prints
+> GBK text (garbled in a UTF-8 terminal). `tools\deep-clean.ps1` is the same logic in non-interactive
 > form and forces UTF-8 output; **exit code 0 means success**.
 > Double-clicking the `.bat` still works for humans (pass `-y` to skip the pauses).
 
@@ -381,23 +381,32 @@ It does two things:
 TokensMarket-OpenSource-AI-v97/
 ├── run.py                  entry point (ai / --interactive demo / server / --headless / state)
 ├── bench.py                paired multi-round benchmark over a fixed seed set
-├── Start Match.bat          double-click entry (5-second confirm; cleanup on timeout)
-├── AI Start.bat             unattended launcher (no confirm; scripts / agents)
-├── Spectator.bat            recovery window when you closed the spectator; attaches, or starts one
-├── DeepClean Process.bat    interactive cleanup for humans (contains pause)
-├── deep-clean.ps1          cleanup implementation (non-interactive; callable from a script)
+├── guard.py                source-sealing guard (called by run.py, never start it yourself)
+├── requirements.txt        no third-party dependencies (placeholder)
+├── Dockerfile              container image (python:3.14-slim, --headless)
+├── README.md
+├── AGENTS.md               one-page agent entry + project map (agents read this first)
+├── launchers/              every double-click entry (each cds back to the repo root)
+│   ├── launchers\Start Match.bat     double-click entry (5-second confirm; cleanup on timeout)
+│   ├── launchers\AI Start.bat        unattended launcher (no confirm; scripts / agents)
+│   ├── launchers\Spectator.bat       recovery window when you closed the spectator
+│   └── launchers\DeepClean Process.bat  interactive cleanup for humans (contains pause)
+├── tools/
+│   └── tools\deep-clean.ps1      cleanup implementation (non-interactive; call from a script)
 ├── src/
 │   ├── tm_engine.py        engine (pure logic)
 │   ├── tm_api.py           HTTP layer
 │   ├── tm_watch_ai.py      read-only spectator
 │   ├── scratchpad.py       scratchpad CLI
 │   ├── app.ico / warn.ico  icons
+│   └── data/               generated at runtime: session.json, reports/, .scratchpad.jsonl
+├── tests/                  unittest suite (python -m unittest discover -s tests)
 ├── docs/
 │   ├── rules.md            full rules
 │   ├── cost-model.md       cost model
-│   └── ai-protocol.md      agent integration protocol
-├── examples/reports/       6 representative reports
-└── src/data/               generated at runtime: session.json, reports/, .scratchpad.jsonl
+│   ├── ai-protocol.md      agent integration protocol
+│   └── docs\Startup-Prompt-For-The-AI.txt  paste-ready startup text for an agent
+└── examples/reports/       6 representative reports
 ```
 
 ---

@@ -4,6 +4,39 @@ One-page startup note. Read this page and you can start a match; the rules come 
 
 A match lasts 45 minutes: starting equity **1,000,000 Tokens**, target **2,000,000**. Every quote, event and gap is procedurally generated fiction and has nothing to do with any real market.
 
+## Where things are (project map — read this table first)
+
+```text
+TokensMarket-OpenSource-AI-v97/
+├── AGENTS.md          ← the page you are reading
+├── README.md          human entry (rules, endpoints, FAQ)
+├── run.py             ★ the only entry point for starting the service (agents use this)
+├── bench.py           paired benchmark
+├── guard.py           source-sealing guard (called by run.py, never start it yourself)
+├── launchers/         ★ every double-click entry (each cds back to the repo root)
+│   ├── Start Match.bat     human double-click (5-second confirm)
+│   ├── AI Start.bat        unattended (recommended for scripts / agents)
+│   ├── Spectator.bat       re-attach the window
+│   └── DeepClean Process.bat
+├── tools/deep-clean.ps1   non-interactive cleanup (agents call this)
+├── src/               engine + HTTP (sealed during a match, do not edit)
+├── tests/             unittest suite
+├── docs/              ★ the rules documents
+│   ├── rules.md       full rules
+│   ├── ai-protocol.md integration protocol
+│   ├── cost-model.md  cost model
+│   └── Startup-Prompt-For-The-AI.txt
+└── examples/reports/  sample reports
+```
+
+Three hard rules:
+
+1. **`GET /rules` is authoritative**; `docs/` expands the same rules. When they disagree, trust the API.
+2. **Only two ways to start**: agents run `python run.py` from the repo root; humans double-click
+   `launchers\Start Match.bat`. Do not `cd launchers` and run `python run.py` — there is no `run.py` there.
+3. **Scripts under `launchers\` and `tools\` cd back to the repo root themselves**, so they work from any
+   directory; do not copy them elsewhere or their relative paths break.
+
 ## 0. Which Python (hard requirement, do not search)
 
 **Python 3.14** — the spectator's GUI widgets and the `.pyc` files are built for 3.14.
@@ -71,8 +104,8 @@ Three entry points:
 | Entry | Behaviour |
 |---|---|
 | `python run.py` | Standard; the agent default |
-| `AI Start.bat` | Unattended: sets `TM_NO_CONFIRM=1` and `TM_IDLE_ABORT=0`, then `call`s `Start Match.bat`, so the launch path has one source of truth — **safest for scripts / agents** |
-| `Start Match.bat` | Human double-click entry. Cleans up and exits unless `Y` is pressed within 5 seconds; **invoking it from a terminal with `cmd /c` also counts as human**, so it dies after 5 seconds |
+| `launchers\AI Start.bat` | Unattended: sets `TM_NO_CONFIRM=1` and `TM_IDLE_ABORT=0`, then `call`s `launchers\Start Match.bat`, so the launch path has one source of truth — **safest for scripts / agents** |
+| `launchers\Start Match.bat` | Human double-click entry. Cleans up and exits unless `Y` is pressed within 5 seconds; **invoking it from a terminal with `cmd /c` also counts as human**, so it dies after 5 seconds |
 
 - Do not start `run.py spectator` yourself to "add" a window — a normal start already has one
 - Only `--headless` suppresses the window, and only for environments with no desktop (CI, containers)
@@ -86,7 +119,7 @@ Three entry points:
 | `TM_SLOT` | `1` enables the **Slot Machine**: 3 plays per match |
 | `TM_ASSIST` | `1` enables **Outside Mercy**: 3 asks to the spectators per match |
 | `TM_PORT` | Service port, default `8734` |
-| `TM_IDLE_ABORT` | Minutes without any state-changing action before the match settles itself. Default `0` (off); `Start Match.bat` sets `12`, `AI Start.bat` keeps `0` |
+| `TM_IDLE_ABORT` | Minutes without any state-changing action before the match settles itself. Default `0` (off); `launchers\Start Match.bat` sets `12`, `launchers\AI Start.bat` keeps `0` |
 
 ## 3. Lock the difficulty
 

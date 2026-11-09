@@ -1,6 +1,6 @@
 @echo off
 chcp 936 >nul
-cd /d "%~dp0"
+cd /d "%~dp0.."
 if defined TM_NO_CONFIRM (title Tokens Trading Market - AI Edition - Unattended) else (title Tokens Trading Market - AI Edition - Spectator)
 setlocal
 
@@ -70,7 +70,7 @@ echo   Player          %TM_TRADER%
 echo   Random events   %TM_EVENTS%
 echo   Preferred Financing %TM_FR%  Slot Machine %TM_SLOT%  Outside Mercy %TM_ASSIST%
 echo   Press Y within 5 seconds to start; otherwise it cleans up and exits.
-echo   To have an AI contest, run: python run.py
+echo   To have an AI contest: run python run.py in the repo root (this window already cds there)
 echo.
 echo   !! AI contestant edition: the GUI is read-only, no order / close / fast-forward buttons.
 echo   !! Humans should use TokensMarket-OpenSource-Human instead.
@@ -106,10 +106,10 @@ goto :eof
 :abort_start
 echo.
 echo   Cancelled. Stopping leftover processes and temporary files...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0deep-clean.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\tools\deep-clean.ps1"
 echo.
 echo   [CLEANED]
-echo   - AI contest: run  python run.py  in this directory
+echo   - AI contest: run  python run.py  in the repo root
 echo   - Humans: use TokensMarket-OpenSource-Human
 echo.
 pause

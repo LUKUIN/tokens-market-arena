@@ -15,7 +15,7 @@ echo.
 if /i "%~1"=="-y" goto SKIPPAUSE1
 pause
 :SKIPPAUSE1
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0deep-clean.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\tools\deep-clean.ps1"
 echo.
 if /i "%~1"=="-y" goto END
 pause

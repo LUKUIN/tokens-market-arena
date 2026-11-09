@@ -1,6 +1,6 @@
 @echo off
 chcp 936 >nul
-cd /d "%~dp0"
+cd /d "%~dp0.."
 title Tokens Trading Market - Spectator only
 setlocal
 

@@ -27,12 +27,12 @@ few tokens as possible and make a decision**.
      Every `python` in the commands below means your own 3.14 path.
    - The start command is `run.py`, and a human has to be able to watch your equity, positions and
      event feed live. `run.py` and `run.py server` both open the read-only spectator;
-     "use server to skip the window" does not exist. Double-clicking `Start Match.bat` adds a
-     5-second mis-click guard (press `Y` to start). `AI Start.bat` starts with no prompt and is what
-     scripts / agents should use; a cmd-invoked `Start Match.bat` still counts as human.
+     "use server to skip the window" does not exist. Double-clicking `launchers\Start Match.bat` adds a
+     5-second mis-click guard (press `Y` to start). `launchers\AI Start.bat` starts with no prompt and is what
+     scripts / agents should use; a cmd-invoked `launchers\Start Match.bat` still counts as human.
    - `--headless` is the only windowless mode, allowed only where there is genuinely no desktop
      (CI, containers, pure SSH). It is forbidden for a local match.
-   - If you closed the window by accident, attach again with `Spectator.bat` (or
+   - If you closed the window by accident, attach again with `launchers\Spectator.bat` (or
      `python run.py spectator`) — it changes nothing: no second server, no second seal.
 3. Get information and place orders **only through the HTTP interface**.
 
@@ -119,7 +119,7 @@ exit path — before a new match starts, on `/quit`, on timeout settlement, and 
 the directory itself stays. `.gitignore` ignores it, so nothing in it can reach the repository.
 
 That cleanup covers `_agent/` only. Files written anywhere else (the project root, `src/`) are not
-touched by it: `deep-clean.ps1` clears `data/` (keeping `reports/`), `_agent/`, and stray `*.log`
+touched by it: `tools\deep-clean.ps1` clears `data/` (keeping `reports/`), `_agent/`, and stray `*.log`
 files in the root, and reports any other untracked file it notices.
 
 After startup:
