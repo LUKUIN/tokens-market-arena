@@ -17,6 +17,7 @@
 
 import json
 import os
+import shutil
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -27,6 +28,23 @@ from tm_engine import Engine, TICK_SECONDS, ENGINE_VERSION, PROTOCOL_VERSION
 HOME = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 ENGINE = Engine(HOME)
 SERVER = None
+
+
+def _purge_home(home):
+    """结算后清掉本局临时文件（保留 reports/）。"""
+    if not os.path.isdir(home):
+        return
+    for name in os.listdir(home):
+        if name == "reports":
+            continue
+        p = os.path.join(home, name)
+        try:
+            if os.path.isdir(p):
+                shutil.rmtree(p, ignore_errors=True)
+            else:
+                os.remove(p)
+        except Exception:
+            pass
 
 
 def _hard_exit():
@@ -42,6 +60,10 @@ def _hard_exit():
             sys.path.insert(0, root)
         import guard
         guard.unseal()
+    except Exception:
+        pass
+    try:
+        _purge_home(HOME)
     except Exception:
         pass
     os._exit(0)

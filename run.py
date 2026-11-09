@@ -614,6 +614,15 @@ def main(argv=None):
             serve(host, port)
         finally:
             guard_stop.set()
+        # 服务已退出：正常结算的话顺手清掉本局临时文件。
+        # 不能只依赖 _start_autoclean 的轮询——它要连续两次确认再等 2 秒，
+        # 而 /quit 与超时结算都是 3 秒就关服务，主进程先走一步，会留下 session.json。
+            try:
+                import tm_api
+                if (tm_api.ENGINE.state() or {}).get("finished"):
+                    _autoclean(os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "data"))
+            except Exception as exc:
+                print("  收尾清理失败: %s" % exc)
         return 0
 
     if mode == "state":
