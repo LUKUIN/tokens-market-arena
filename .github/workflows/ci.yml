@@ -35,11 +35,13 @@ jobs:
           rc=$?
           echo "guard exit code: $rc"
           if [ "${{ matrix.python }}" = "3.14" ]; then
-            if [ "$rc" -eq 2 ]; then
-              echo "::error::the only supported runtime is rejected by its own guard"
+            # Stricter than before: not merely "not rejected" but a clean exit.
+            # The old check only asserted rc != 2, so a crash (rc=1) slipped through.
+            if [ "$rc" -ne 0 ]; then
+              echo "::error::the only supported runtime must run 'run.py state' cleanly; got exit code $rc"
               exit 1
             fi
-            echo "guard allows 3.14 (rc=$rc)"
+            echo "guard allows 3.14 and the command exits cleanly (rc=0)"
           else
             if [ "$rc" -ne 2 ]; then
               echo "::error::version guard broken: expected exit code 2, got $rc"
