@@ -311,7 +311,7 @@ def _enable_assist_from_env():
     两个启动分支（带观众席 / --headless）都要调用，所以收成一个函数，
     避免以后只改一处导致某个入口开不了。
     """
-    if (os.environ.get("TM_ASSIST") or "0") != "1":
+    if (os.environ.get("TM_ASSIST") or "1") != "1":
         return
     try:
         import tm_api

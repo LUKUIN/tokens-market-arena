@@ -246,7 +246,7 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.2.10"  # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.11"  # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -304,7 +304,7 @@ def _env_trader():
     """
     global _TRADER_CACHE
     if _TRADER_CACHE is None:
-        name = (os.environ.get("TM_TRADER") or "").strip()
+        name = _sanitize_trader((os.environ.get("TM_TRADER") or "").strip())
         _TRADER_CACHE = ("访客", True) if not name else (name[:60], False)
     return _TRADER_CACHE
 
@@ -1142,15 +1142,15 @@ class Engine:
         # 结算后跑一次账本自检：任何恒等式不成立都以 warnings 形式冒出来，
         # 不允许 settled=True 把账目问题盖过去。
         warnings.extend(self._audit_ledger())
+        if self.s["loan"]["balance"] > 1e-9:
+            warnings.append("贷款未清偿：%.2f Tokens" % self.s["loan"]["balance"])
+        if self.s["positions"]:
+            warnings.append("清仓后仍检测到 %d 笔持仓" % len(self.s["positions"]))
         self.s["finished"] = True
         self.s["last_settle"] = {
             "at": time.time(), "reason": reason,
             "settled": not warnings, "warnings": list(warnings),
         }
-        if self.s["loan"]["balance"] > 1e-9:
-            warnings.append("贷款未清偿：%.2f Tokens" % self.s["loan"]["balance"])
-        if self.s["positions"]:
-            warnings.append("清仓后仍检测到 %d 笔持仓" % len(self.s["positions"]))
         eq = self.equity()
         tgt = self.s.get("target", TARGET_EQUITY)
         hit = eq >= tgt and self._qualified()
@@ -2313,10 +2313,10 @@ class Engine:
                 _k = e.get("kind") or "info"
                 ev_rows.append('<li class="ev-%s"><span class="tag">%s</span> '
                                '<span class="evt">t%s</span> %s</li>' % (
-                                   _html_escape(str(_k), quote=False),
-                                   _html_escape(str(_KIND_CN.get(_k, _k)), quote=False),
-                                   _html_escape(str(e.get("tick", "—")), quote=False),
-                                   _html_escape(str(e.get("text", "")), quote=False)))
+                                   _html_escape(str(_k), quote=True),
+                                   _html_escape(str(_KIND_CN.get(_k, _k)), quote=True),
+                                   _html_escape(str(e.get("tick", "—")), quote=True),
+                                   _html_escape(str(e.get("text", "")), quote=True)))
 
             # ---------- 借贷账目拆解 ----------
             _loan = self.s.get("loan") or {}

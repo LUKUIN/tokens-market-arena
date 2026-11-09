@@ -24,7 +24,7 @@ python run.py
 用默认值（`TM_TRADER=访客`、`TM_EVENTS=1`、`TM_FR=1`、`TM_SLOT=1`、`TM_ASSIST=1`）。启动顺序：读环境变量 →
 起服务 → 难度盲盒（30 秒，可用 `POST /roll/stop` 叫停）→ 计时开始 → 模型通过 HTTP 操作。
 
-> `TM_TRADER` 原样写进报告文件名和报告正文，是区分参赛者的字段。
+> `TM_TRADER` 经白名单过滤后写进报告文件名和报告正文，是区分参赛者的字段。
 > 人工演示用 `python run.py --interactive`，会在命令行里依次问玩家名、随机事件、【优惠融资】、【老虎机】。
 
 也可以双击 `开一局.bat`。
