@@ -28,7 +28,9 @@ Environment variables:
     TM_SIGN_KEY    save-file signing key (a dev placeholder is used if unset)
 """
 
+import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -190,14 +192,35 @@ def _interactive_setup():
     return name, mode == "1"
 
 
-def _probe(host="127.0.0.1", port=8734, timeout=1.0):
-    """Is a match already answering on this port?"""
+def _probe_state(host="127.0.0.1", port=8734, timeout=1.0):
+    """Who is listening on this port?
+
+    "ours"    -- this game's /health with a matching protocol version
+    "foreign" -- something holds the port, but it is not this game (or the protocol differs)
+    None      -- the port is free
+    Checking only "something answered" would treat a 1.2.12 server as reusable and would
+    let two processes fight over the same port.
+    """
     import urllib.request
     try:
-        urllib.request.urlopen("http://%s:%d/health" % (host, port), timeout=timeout).read()
-        return True
+        raw = urllib.request.urlopen("http://%s:%d/health" % (host, port),
+                                     timeout=timeout).read()
     except Exception:
-        return False
+        return None
+    try:
+        d = json.loads(raw.decode("utf-8"))
+    except Exception:
+        return "foreign"
+    # Do not import tm_engine for PROTOCOL_VERSION: the sources may be sealed as decoys,
+    # and importing them triggers sys.exit(1) with "CHEATING DETECTED". Keep this in sync.
+    if d.get("ok") is True and d.get("protocol") == 1:
+        return "ours"
+    return "foreign"
+
+
+def _probe(host="127.0.0.1", port=8734, timeout=1.0):
+    """Is a match already answering on this port? (compat wrapper)"""
+    return _probe_state(host, port, timeout) == "ours"
 
 
 def _run_spectator(host="127.0.0.1", port=8734):
@@ -226,6 +249,19 @@ def _run_spectator(host="127.0.0.1", port=8734):
 
 
 def _start_server(host="127.0.0.1", port=8734):
+    # The probe must run before any tm_api / tm_engine import: a running match may have
+    # sealed the sources into decoys, and importing a decoy exits with "CHEATING DETECTED".
+    # Two servers in the same folder would also interleave writes to session.json.
+    busy = _probe_state(host, port)
+    if busy == "ours":
+        print("  Port %d already has a running match; not starting a second server." % port)
+        print("  Connect to http://%s:%d ; end that match first to start a new one." % (host, port))
+        return None
+    if busy == "foreign":
+        print("  Port %d is held by another program (or an incompatible protocol); "
+              "use TM_PORT=<port>" % port)
+        return None
+
     import threading
     from tm_api import serve
 
@@ -303,6 +339,8 @@ def _run_ai(interactive=False, port=None):
         print("  Spectator failed to start: %s (the match service keeps running)" % exc)
 
     guard_stop = _start_guard(port)
+    if guard_stop is None:
+        return 2
     try:
         server_thread.join()      # returns once /quit or /shutdown stops the service
     except KeyboardInterrupt:
@@ -327,6 +365,76 @@ def _run_ai(interactive=False, port=None):
     return 0
 
 
+def _listening_pids(port):
+    """PIDs listening on this port (netstat -ano on Windows; best effort elsewhere)."""
+    pids = []
+    try:
+        out = subprocess.run(["netstat", "-ano"], capture_output=True, text=True,
+                             timeout=8).stdout
+    except Exception:
+        return pids
+    for line in out.splitlines():
+        if "LISTENING" not in line.upper():
+            continue
+        parts = line.split()
+        if len(parts) < 5:
+            continue
+        if parts[1].endswith(":%d" % port):
+            try:
+                pids.append(int(parts[-1]))
+            except ValueError:
+                pass
+    return pids
+
+
+def _is_our_process(pid):
+    """Is this PID our own python run.py?
+
+    The command line must contain both python and run.py; when it cannot be read the
+    process is treated as foreign and is never killed.
+    """
+    cmd = [
+        "powershell", "-NoProfile", "-Command",
+        "(Get-CimInstance Win32_Process -Filter \"ProcessId=%d\").CommandLine" % pid,
+    ]
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True,
+                             errors="replace", timeout=8).stdout or ""
+    except Exception:
+        return False
+    low = out.lower()
+    return ("python" in low) and ("run.py" in low)
+
+
+def _autoclean(home):
+    """Post-match tidy-up: drop this match's temp files (keep reports/), then reap leftovers."""
+    if os.path.isdir(home):
+        for name in os.listdir(home):
+            if name == "reports":
+                continue          # past reports must survive
+            p = os.path.join(home, name)
+            try:
+                if os.path.isdir(p):
+                    shutil.rmtree(p, ignore_errors=True)
+                else:
+                    os.remove(p)
+            except Exception:
+                pass
+    me = os.getpid()
+    for port in (8734, 8735):
+        for pid in _listening_pids(port):
+            if pid == me:
+                continue
+            # Only reap our own leftovers: the port may belong to an unrelated program.
+            if not _is_our_process(pid):
+                continue
+            try:
+                subprocess.run(["taskkill", "/F", "/PID", str(pid)],
+                               capture_output=True, timeout=8)
+            except Exception:
+                pass
+
+
 def _start_guard(port):
     """Seal the sources and watch for cheating, in this process.
 
@@ -338,16 +446,23 @@ def _start_guard(port):
     import atexit
     import guard
 
+    # Seal synchronously, and treat failure as fatal: no seal means the sources on disk are
+    # another match's decoys, and importing one triggers sys.exit with "CHEATING DETECTED".
+    try:
+        sealed = guard.seal(port)
+        print("  [GUARD] sealed %d source file(s); decoys are in place." % len(sealed))
+    except Exception as exc:
+        print("  [GUARD] sources not sealed for this match: %s" % exc)
+        print("  [GUARD] this usually means a match is already running. End it first; "
+              "do not run two at once.")
+        print("  [GUARD] if you are sure nothing is running, run python guard.py clean "
+              "to restore the sources, then start again.")
+        return None
+
     stop = threading.Event()
     atexit.register(guard.unseal)
 
     def loop():
-        try:
-            sealed = guard.seal(port)
-            print("  [GUARD] sealed %d source file(s); decoys are in place." % len(sealed))
-        except Exception as exc:
-            print("  [GUARD] sources not sealed for this match: %s" % exc)
-            return
         while not stop.is_set():
             try:
                 if guard.cheated():
@@ -432,7 +547,6 @@ def main(argv=None):
         return _run_spectator(host, port)
 
     if mode == "server":
-        from tm_api import serve
         # --headless is a switch, not a positional argument. Filter it out before reading
         # host / port so both `run.py server 127.0.0.1 8737 --headless` and
         # `run.py --headless 127.0.0.1 8737` work.
@@ -447,7 +561,22 @@ def main(argv=None):
                   "(same as `python run.py`); add --headless only when there is no desktop.")
             return _run_ai(interactive=False, port=port)
         print("  --headless: HTTP service only, no spectator window (no-desktop environments only).")
+        # Probe before importing: a running match may have sealed the sources into decoys.
+        busy = _probe_state(host, port)
+        if busy == "ours":
+            print("  Port %d already has a running match; not starting a second server." % port)
+            print("  Connect to http://%s:%d ; end that match first to start a new one." % (host, port))
+            return 2
+        if busy == "foreign":
+            print("  Port %d is held by another program (or an incompatible protocol); "
+                  "use TM_PORT=<port>" % port)
+            return 2
+        # Import before sealing: sealing only swaps files on disk, loaded modules are fine;
+        # the other order would import a decoy.
+        from tm_api import serve
         guard_stop = _start_guard(port)
+        if guard_stop is None:
+            return 2
         _enable_assist_from_env()
 
         try:

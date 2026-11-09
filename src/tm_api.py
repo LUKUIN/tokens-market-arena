@@ -49,6 +49,13 @@ def _hard_exit():
 
 
 
+MAX_BODY_BYTES = 1 << 20
+
+
+class _BodyTooLarge(Exception):
+    """Request body over the cap: maps to HTTP 413 instead of 500."""
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "TokensMarket/2.0"
 
@@ -70,6 +77,9 @@ class Handler(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length") or 0)
         if n <= 0:
             return {}
+        if n > MAX_BODY_BYTES:
+            self.close_connection = True
+            raise _BodyTooLarge("request body too large: %d bytes (cap %d)" % (n, MAX_BODY_BYTES))
         try:
             obj = json.loads(self.rfile.read(n).decode("utf-8"))
         except Exception:
@@ -119,6 +129,11 @@ class Handler(BaseHTTPRequestHandler):
             path = urlparse(self.path).path.rstrip("/") or "/"
             b = self._body()
             return self._route_post(path, b)
+        except _BodyTooLarge as exc:
+            try:
+                self._send({"ok": False, "error": str(exc)}, 413)
+            except Exception:
+                pass
         except Exception as exc:
             try:
                 self._send({"ok": False, "error": "Request failed: %s" % exc}, 500)

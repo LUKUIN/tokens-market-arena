@@ -30,8 +30,12 @@ count, so slow thinking is never cut short. **Default `0` (off)**: `launchers\St
 The server listens on `127.0.0.1:8734`; the GUI is a read-only spectator. **Nothing is prompted.**
 Every parameter comes from the environment, and anything unset falls back to a default
 (`TM_TRADER=Guest`, `TM_EVENTS=1`, `TM_FR=1`, `TM_SLOT=1`, `TM_ASSIST=1`). Startup order: read the environment →
-server starts → difficulty draw (30 s, lock early with `POST /roll/stop`) → clock starts →
+server starts → difficulty draw (30 s, lock early with `POST /roll/stop`) → **locked in** → clock starts →
 the model trades over HTTP.
+
+> **Nothing works before the lock-in**: opening a position, borrowing, slot bets and fast-forward
+> all return "Difficulty is not locked in yet". Everything unlocks the second the draw ends;
+> no extra call is needed.
 
 > `TM_TRADER` is written into the report filename and the report body after whitelist filtering; it is the field that
 > tells contestants apart.
