@@ -45,8 +45,10 @@ unset falls back to a default. There is no `input()`, no "press any key", no con
 > swap the path in the commands below for your own, or use `py -3.14`. `run.py` validates the version,
 > not the install location.
 
-`run.py` validates the version as its first action: anything but 3.14 exits with code 2 and prints
-that command. Do not use `where python`, `py -3.12` or `python3` to find another interpreter — the
+`run.py` validates the version as its first action: anything but 3.14 exits with **code 2** and prints
+that command. When a match already owns the port (or the sources are still sealed by the previous
+match) it refuses to start with **exit code 4** instead of starting a second server.
+Do not use `where python`, `py -3.12` or `python3` to find another interpreter — the
 spectator's GUI widgets and the `.pyc` files are built for 3.14, and any other version only yields
 `bad magic number`.
 
@@ -84,7 +86,8 @@ start "" /b python run.py      rem a 3.14 on PATH; otherwise your full path
 A fixed `sleep 6 && curl` gives false failures: startup takes 3–8 seconds and a slow machine
 finishes later.
 
-Difficulty locking — `/fastforward` is refused before it is locked:
+Difficulty locking — before it is locked, `/open`, `/loan`, `/slot` and `/fastforward` are all
+refused with "Difficulty is not locked in yet":
 
 ```bash
 curl -X POST http://127.0.0.1:8734/roll/stop
@@ -378,7 +381,7 @@ It does two things:
 ## Repository layout
 
 ```
-TokensMarket-OpenSource-AI-v97/
+TokensMarket-OpenSource-AI-EN-v97/
 ├── run.py                  entry point (ai / --interactive demo / server / --headless / state)
 ├── bench.py                paired multi-round benchmark over a fixed seed set
 ├── guard.py                source-sealing guard (called by run.py, never start it yourself)

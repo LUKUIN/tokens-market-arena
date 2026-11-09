@@ -340,7 +340,7 @@ def _run_ai(interactive=False, port=None):
 
     guard_stop = _start_guard(port)
     if guard_stop is None:
-        return 2
+        return 4
     try:
         server_thread.join()      # returns once /quit or /shutdown stops the service
     except KeyboardInterrupt:
@@ -566,17 +566,17 @@ def main(argv=None):
         if busy == "ours":
             print("  Port %d already has a running match; not starting a second server." % port)
             print("  Connect to http://%s:%d ; end that match first to start a new one." % (host, port))
-            return 2
+            return 4
         if busy == "foreign":
             print("  Port %d is held by another program (or an incompatible protocol); "
                   "use TM_PORT=<port>" % port)
-            return 2
+            return 4
         # Import before sealing: sealing only swaps files on disk, loaded modules are fine;
         # the other order would import a decoy.
         from tm_api import serve
         guard_stop = _start_guard(port)
         if guard_stop is None:
-            return 2
+            return 4
         _enable_assist_from_env()
 
         try:

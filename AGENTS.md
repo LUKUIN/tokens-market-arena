@@ -7,7 +7,7 @@ A match lasts 45 minutes: starting equity **1,000,000 Tokens**, target **2,000,0
 ## Where things are (project map — read this table first)
 
 ```text
-TokensMarket-OpenSource-AI-v97/
+TokensMarket-OpenSource-AI-EN-v97/
 ├── AGENTS.md          ← the page you are reading
 ├── README.md          human entry (rules, endpoints, FAQ)
 ├── run.py             ★ the only entry point for starting the service (agents use this)
@@ -15,7 +15,7 @@ TokensMarket-OpenSource-AI-v97/
 ├── guard.py           source-sealing guard (called by run.py, never start it yourself)
 ├── launchers/         ★ every double-click entry (each cds back to the repo root)
 │   ├── Start Match.bat     human double-click (5-second confirm)
-│   ├── AI Start.bat        unattended (recommended for scripts / agents)
+│   ├── AI Start.bat        unattended (scripts / agents use this)
 │   ├── Spectator.bat       re-attach the window
 │   └── DeepClean Process.bat
 ├── tools/deep-clean.ps1   non-interactive cleanup (agents call this)
@@ -46,8 +46,9 @@ Three hard rules:
 %LOCALAPPDATA%\Programs\Python\Python314\python.exe
 ```
 
-`run.py` validates the version as its very first action: anything but 3.14 aborts with exit code 2
-and prints that exact command. Do not use `where python`, `py -3.12` or `python3` to hunt for another
+`run.py` validates the version as its very first action: anything but 3.14 aborts with **exit code 2**
+and prints that exact command. It refuses to start when a match already owns the port (**exit code 4**)
+instead of starting a second one. Do not use `where python`, `py -3.12` or `python3` to hunt for another
 interpreter — the spectator's GUI widgets and the `.pyc` files are built for 3.14, and any other
 version simply cannot start. If the short name is not found, write the full path; do not report
 "the environment is broken".
@@ -104,7 +105,7 @@ Three entry points:
 | Entry | Behaviour |
 |---|---|
 | `python run.py` | Standard; the agent default |
-| `launchers\AI Start.bat` | Unattended: sets `TM_NO_CONFIRM=1` and `TM_IDLE_ABORT=0`, then `call`s `launchers\Start Match.bat`, so the launch path has one source of truth — **safest for scripts / agents** |
+| `launchers\AI Start.bat` | Unattended: sets `TM_NO_CONFIRM=1` and `TM_IDLE_ABORT=0`, then `call`s `launchers\Start Match.bat`, so the launch path has one source of truth — **scripts / agents use this** |
 | `launchers\Start Match.bat` | Human double-click entry. Cleans up and exits unless `Y` is pressed within 5 seconds; **invoking it from a terminal with `cmd /c` also counts as human**, so it dies after 5 seconds |
 
 - Do not start `run.py spectator` yourself to "add" a window — a normal start already has one
@@ -123,8 +124,9 @@ Three entry points:
 
 ## 3. Lock the difficulty
 
-Difficulty is rolled at the start; before it is locked `/fastforward` is refused too
-(`Session has not started, confirm the rules first`).
+Difficulty is rolled at the start. **Before it is locked, `/open`, `/loan`, `/slot` and
+`/fastforward` are all refused** with "Difficulty is not locked in yet; POST /roll/stop or wait
+for the draw to finish"; everything unlocks the second the draw ends, no extra call needed.
 
 ```bash
 curl -X POST http://127.0.0.1:8734/roll/stop
