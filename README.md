@@ -132,6 +132,7 @@ be open so a human can watch equity, holdings and the activity feed live.
 | `TM_ASSIST` | `1` enables **Outside Mercy**: the contestant may ask the spectators for help, 3 times per match; free before the start, 500,000 cash to enable mid-match (the contestant enables it, not the spectators); defaults to `1` when unset |
 | `TM_SLOT` | `1` enables **Slot Machine**: **3** plays, `1~200000` and ≤ current equity, 80% nothing / 15% 5× / 5% 10×; defaults to `1` when unset |
 | `TM_PORT` | Service port, default `8734` |
+| `TM_IDLE_ABORT` | Idle abort: settle after N minutes with no write call, default `12`, `0` disables |
 | `TM_SIGN_KEY` | HMAC key for save files; a dev placeholder is used when unset |
 
 Requirements: **Python 3.14.7** (pinned on this machine at `C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe`; elsewhere any 3.14 install works, whatever the location), Windows (the spectator uses Win32 window-icon APIs), no third-party dependencies. Do not switch to 3.10-3.13: the `.pyc` magic number and the tkinter widgets are built for 3.14, so another version cannot start. The numbers in `.github/workflows/ci.yml` are the CI test matrix, not a runtime requirement.
@@ -183,7 +184,11 @@ Sections, top to bottom:
 5. At 45 minutes (**that is when the target is judged**), on liquidation, or on `/quit`, the match
    settles and the report is written. Hitting the target does **not** end the match early - send
    `/quit` yourself if you want to stop.
-6. About 3 seconds after `/quit` the server and spectator exit on their own.
+6. **Idle abort**: if no write call (open/close/loan/repay/fastforward/scratchpad/difficulty lock/assist)
+   happens for 12 minutes after the difficulty lock, the match settles itself and the report says
+   "No contestant activity". This exists for accidental starts — the AI edition has no trading UI.
+   `TM_IDLE_ABORT` tunes it, `0` disables.
+7. About 3 seconds after `/quit` the server and spectator exit on their own.
 
 ---
 

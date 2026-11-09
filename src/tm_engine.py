@@ -247,7 +247,11 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.2.11"  # 发布版本号：报告页脚与文档口径以此为准
+# Idle abort: settle when nobody has acted for N minutes after the difficulty
+# lock, so a human who double-clicks the AI launcher does not burn 45 idle mn.
+# 0 disables it. Default 12 - a real agent usually acts within seconds.
+IDLE_ABORT_MINUTES = int(os.environ.get("TM_IDLE_ABORT") or 12)
+ENGINE_VERSION = "1.2.12"  # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -374,6 +378,7 @@ def _new_session(seed=None, apply_rng=True):
         "session_id": os.urandom(8).hex(),
         "seed": seed,
         "tick": 0,
+        "last_action_at": time.time(),
         "balance": STARTER_CASH,
         "genesis": STARTER_CASH,
         "target": TARGET_EQUITY,
@@ -675,6 +680,7 @@ class Engine:
             idx = self._roll_index()
             gap_i = idx % len(GAP_LEVELS)
             liq_i = idx // len(GAP_LEVELS)
+            self.s["last_action_at"] = time.time()
             self.s["difficulty"] = {"gap": gap_i, "liq": liq_i, "at": time.time(),
                                     "gap_pct": GAP_LEVELS[gap_i][1],
                                     "liq_depth": LIQ_LEVELS[liq_i][1]}
@@ -1229,6 +1235,14 @@ class Engine:
         self.s["blowups"] += 1
         self._event("[Blown out] Account capital %.0f Tokens (lost %.0f this run, %d positions force-closed)" % (self.s["balance"], loss, n), "blowup")
 
+    def note_action(self):
+        """Record that the contestant did something.
+
+        Only feeds the idle-abort timer; it changes no ledger or quote.
+        """
+        with LOCK:
+            self.s["last_action_at"] = time.time()
+
     def tick(self, manual=False):
         with LOCK:
             if self.s["finished"]:
@@ -1264,6 +1278,11 @@ class Engine:
                 self.s["last_notice_mark"] = mark
                 remain = max(0, int(SESSION_MINUTES * 60 - el))
                 self._event("Time check: %d minutes elapsed, %d left" % (int(el // 60), int(remain // 60)), "info")
+            if IDLE_ABORT_MINUTES > 0:
+                _idle = time.time() - float(self.s.get("last_action_at") or 0)
+                if _idle >= IDLE_ABORT_MINUTES * 60:
+                    self._end_session("No contestant activity (%d minutes idle)" % IDLE_ABORT_MINUTES)
+                    return self.state()
             if el > SESSION_MINUTES * 60:
                 # Time-up now shares the single settlement entry with /quit and
                 # blow-ups: _end_session() force-closes via _force_close_all()
@@ -2808,6 +2827,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "events": (self.s["events"][-60:] if include_events else []),
                 "finished": self.s["finished"],
                 "session_minutes": SESSION_MINUTES,
+                "idle_abort_minutes": IDLE_ABORT_MINUTES,
                 "elapsed_seconds": int(self._elapsed()),
                 "unnamed": bool(self.s.get("unnamed")),
                 "events_on": bool(self.s.get("events_on", True)),
@@ -2854,6 +2874,9 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             "Loan": "Loan pool %.0f Tokens (may be temporarily scaled by \"Credit crunch / Central bank easing\"); interest %.2f%%/tick (%s); each loan: total target = old target + loan amount × random ratio (the ratio rises with cumulative borrowing: about 4%%~8%% on the first 300k, about 35%%~66%% when borrowing the pool dry; trapezoid integration over the cumulative amount, so ten small loans cost exactly the same as one big one, decided once borrowed)" % (
                 LOAN_POOL, LOAN_RATE_PER_TICK * 100, "Borrow and repay at will; forced clearance at maturity"),
             "Session length": "%d minutes" % SESSION_MINUTES,
+            "Idle abort": ("settles automatically when no write call (open/close/loan/repay/fastforward/"
+                          "scratchpad/difficulty lock/assist) happens for %d minutes after the difficulty lock; "
+                          "the report says 'No contestant activity'. TM_IDLE_ABORT tunes it, 0 disables" % IDLE_ABORT_MINUTES),
             "tick interval": "%d seconds" % TICK_SECONDS,
             "Endpoints": {
                 "GET /state": "current board: equity, positions, quotes, book depth, event feed, fast-forward",

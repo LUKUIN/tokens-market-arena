@@ -29,6 +29,12 @@ ENGINE = Engine(HOME)
 SERVER = None
 
 
+# Idle abort: only these write endpoints count as "the contestant is acting".
+ACTION_PATHS = {"/open", "/close", "/close_all", "/loan", "/repay",
+                "/fastforward", "/slot", "/scratchpad", "/trader",
+                "/roll/stop", "/assist/ask"}
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "TokensMarket/2.0"
 
@@ -106,6 +112,11 @@ class Handler(BaseHTTPRequestHandler):
                 pass
 
     def _route_post(self, path, b):
+        if path in ACTION_PATHS:
+            try:
+                ENGINE.note_action()
+            except Exception:
+                pass
         if path == "/open":
             return self._send(ENGINE.open_position(b.get("pair"), b.get("side"),
                                                    b.get("lots"), b.get("leverage")))

@@ -78,6 +78,7 @@ A human must be able to watch equity, holdings and the activity feed live.
 | `TM_SLOT` | `1` enables the **Slot Machine**: 3 plays per match |
 | `TM_ASSIST` | `1` enables **Outside Mercy**: 3 asks to the spectators per match |
 | `TM_PORT` | Service port, default `8734` |
+| `TM_IDLE_ABORT` | Minutes without a write call before the match settles itself, default `12`, `0` disables |
 
 ## 3. Lock the difficulty
 

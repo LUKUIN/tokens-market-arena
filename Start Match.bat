@@ -57,6 +57,9 @@ if not defined TM_FR     set "TM_FR=1"
 if not defined TM_SLOT   set "TM_SLOT=1"
 if not defined TM_ASSIST set "TM_ASSIST=1"
 if not defined TM_PORT   set "TM_PORT=8734"
+if not defined TM_IDLE_ABORT set "TM_IDLE_ABORT=12"
+set "IDLE_WARN=%TM_IDLE_ABORT%"
+if "%IDLE_WARN%"=="0" set "IDLE_WARN=disabled"
 
 echo.
 echo   ==========================================
@@ -69,6 +72,11 @@ echo   Preferred Financing %TM_FR%  Slot Machine %TM_SLOT%  Outside Mercy %TM_AS
 echo   The read-only spectator opens together with the server.
 echo   These three can only be set before the match starts.
 echo.
+echo   !! AI contestant edition: the GUI is read-only, no order / close / fast-forward buttons.
+echo   !! Humans should use TokensMarket-OpenSource-Human instead.
+echo   !! With no contestant action for %IDLE_WARN% minutes after the difficulty lock,
+echo   !! the match settles itself (TM_IDLE_ABORT, 0 = off).
+
 rem run.py seals the sources itself and restores them on exit. Do NOT start guard.py
 rem here as well: a second seal encrypts whatever is in src/ at that moment, which is
 rem already the decoy, and the real sources can never be restored from that vault.

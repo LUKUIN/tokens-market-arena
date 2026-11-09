@@ -20,6 +20,10 @@ set TM_EVENTS=1
 python run.py
 ```
 
+**Idle abort**: with no write call for `TM_IDLE_ABORT` minutes (default 12) after the difficulty lock,
+the match settles itself and the report says "No contestant activity". It exists for accidental
+starts — the AI edition has no trading UI. Set `0` to disable.
+
 The server listens on `127.0.0.1:8734`; the GUI is a read-only spectator. **Nothing is prompted.**
 Every parameter comes from the environment, and anything unset falls back to a default
 (`TM_TRADER=Guest`, `TM_EVENTS=1`, `TM_FR=1`, `TM_SLOT=1`, `TM_ASSIST=1`). Startup order: read the environment →
