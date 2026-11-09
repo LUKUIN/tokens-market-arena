@@ -7,20 +7,29 @@
 
     python bench.py run --seeds 1,2,3 --policy noop
     python bench.py run --seeds 1-5 --policy probe
+    python bench.py run --seeds 1-5 --policy oracle
+    TM_ORACLE_ACC=0.6 python bench.py run --seeds 1-5 --policy oracle
     python bench.py summary --dir src/data/reports
 
 run     对每个 seed 跑完一整局（引擎内直接推进 tick，不开 HTTP、不等待真实时间），
         把机器可读摘要落进各自 home 的 reports/*.json。
 summary 扫描目录下所有 *.json，输出均值 / 中位数 / 分位数 / 结算异常统计。
 
-注意：这里的 policy 只是「无头基线策略」，用来验证引擎在固定 seed 下的行为一致性，
-不代表任何模型的真实水平。接真 Agent 时用 HTTP 接口，本脚本只负责编排与汇总。
+policy 是「无头基线策略」，不代表任何模型的真实水平：
+  noop    完全不动，结算与账本基线
+  probe   每 24 tick 随机开平一单，制造有持仓、有成本的路径
+  oracle  完美预见（先空跑录路径，再按未来 24 tick 方向下单），是机制上界而非可达目标；
+          TM_ORACLE_ACC 可以给它注入错误率（1.0 完美 / 0.5 纯随机），
+          用来看「方向正确率 -> 达标率」的关系
+
+接真 Agent 时用 HTTP 接口，本脚本只负责编排与汇总。
 """
 
 import argparse
 import json
 import os
 import random
+import shutil
 import statistics
 import sys
 import tempfile
@@ -60,7 +69,68 @@ def _policy_probe(eng, rng, tick):
         eng.open_position(pair, side, 1, 20)
 
 
-POLICIES = {"noop": _policy_noop, "probe": _policy_probe}
+def _record_path(seed, roll_index=None, ticks=None):
+    """跑一遍空仓局，记录每 tick 的收盘价，供 oracle「预知未来」。
+
+    同 seed 下有持仓与否不影响价格路径（已验证 60 tick 逐位一致），
+    所以这次空跑得到的序列就是正式那一遍的真实路径。
+    """
+    ticks = ticks or TICKS_PER_MATCH
+    home = tempfile.mkdtemp(prefix="tm_oracle_")
+    try:
+        eng = T.Engine(home)
+        eng.reset(count=False, seed=seed, roll_index=roll_index)
+        eng.roll_stop()
+        path = []
+        for _ in range(ticks):
+            eng.tick()
+            path.append(dict(eng.s["prices"]))
+        return path
+    finally:
+        shutil.rmtree(home, True)
+
+
+ORACLE_ACC = float(os.environ.get("TM_ORACLE_ACC") or 1.0)
+
+
+def _policy_oracle(eng, rng, tick):
+    """完美预见：照预录的未来价格路径选方向和仓位。
+
+    每 24 tick 重估一次：挑未来 24 tick 涨跌幅绝对值最大的品种，顺那个方向
+    开「3 倍净值名义、20 倍杠杆」的仓。不是严格最优控制（没做逐 tick 最优），
+    但足以回答「这套机制允许的上界大概在哪」，用来判断目标 200 万是否悬空。
+    """
+    path = getattr(eng, "_oracle_path", None)
+    if not path or tick >= len(path):
+        return
+    if tick % 24 != 0:
+        return
+    for p in list(eng.s.get("positions") or []):
+        eng.close_position(p["pair"], p["lots"])
+    i = min(tick, len(path) - 1)
+    j = min(tick + 24, len(path) - 1)
+    if j <= i:
+        return
+    best = None
+    for pair in sorted(T.PAIRS):
+        p0, p1 = path[i][pair], path[j][pair]
+        ret = (p1 - p0) / p0
+        if best is None or abs(ret) > abs(best[1]):
+            best = (pair, ret, p1)
+    if not best or abs(best[1]) < 0.002:
+        return
+    pair, ret, price = best
+    # TM_ORACLE_ACC：方向命中率。1.0 = 完美预见（理论上界）；0.5 = 纯随机。
+    # 用独立 rng 决定「这一次是否看错」，这样能跑出「正确率 -> 达标率」的曲线，
+    # 回答「目标 200 万到底需要多强的判断力」，而不只是一个天文数字的上界。
+    if ORACLE_ACC < 1.0 and rng.random() > ORACLE_ACC:
+        ret = -ret
+    notional = eng.equity() * 3.0
+    lots = max(1, int(notional / (1000.0 * price)))
+    eng.open_position(pair, "LONG" if ret > 0 else "SHORT", lots, 20)
+
+
+POLICIES = {"noop": _policy_noop, "probe": _policy_probe, "oracle": _policy_oracle}
 
 
 def _parse_seeds(text):
@@ -84,6 +154,16 @@ def run_one(seed, policy, outdir, roll_index=None):
     eng = T.Engine(home)
     eng.reset(count=False, seed=seed, roll_index=roll_index)
     eng.roll_stop()                     # 跳过难度盲盒，按 seed 直接定档
+    if policy == "oracle":
+        # 先空跑一遍录路径。注意：_record_path 内部会 random.seed(seed) 并推进
+        # 540 tick，跑完全局随机状态已前移，必须 reset 回起点，否则正式那一遍的
+        # 行情与预录路径对不上（实测错位后完美预见反而亏 22%）。
+        eng._oracle_path = _record_path(seed, roll_index)
+        eng.reset(count=False, seed=seed, roll_index=roll_index)
+        eng.roll_stop()
+    # 离线评测不经过启动器，TM_TRADER 为空会被判 unnamed，导致 hit_target 恒为 False。
+    # 基准脚本要的是引擎行为统计，不是比赛资格，这里显式放行。
+    eng.s["unnamed"] = False
     rng = random.Random((seed * 2654435761) & 0xFFFFFFFF)
     pol = POLICIES[policy]
 
