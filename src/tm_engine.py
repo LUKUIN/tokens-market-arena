@@ -2722,7 +2722,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "session_id": self.s.get("session_id", ""),
                 "abnormal_exits": int(self.s.get("abnormal_exits", 0)),
                 "settlement": self.s.get("last_settle"),
-                # 账本自检：空列表代表现金/持仓/贷款/权益四组恒等式全部成立。
+                # 账本自检：空列表代表现金/持仓/贷款三组恒等式全部成立。
                 # 非空时请把内容当作告警而不是正常数据。
                 "audit": self._audit_ledger(),
                 "paused": bool(self.s.get("paused")),
