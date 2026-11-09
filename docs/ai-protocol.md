@@ -142,6 +142,9 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 ```
 
 Once locked, `rolled` becomes `true` and `difficulty` exposes `gap` / `liq` with their values.
+The slot index is `gap + liq × 5` (0-24) and is printed on the report header; replaying with
+`TM_ROLL_INDEX=<index>` pins the same slot. `TM_SEED` alone cannot reproduce the slot — it
+follows the wall clock at roll_stop (one lap every 2.5 s).
 
 **The match clock starts at the instant of locking** — the 30 seconds of drawing do not count
 against the 45 minutes.
@@ -227,7 +230,7 @@ Every endpoint lives at `http://127.0.0.1:8734`.
     "slot": false, "slot_left": 3,      // Slot Machine off
     "slot_win": 0.0, "fr_lo_pct": 0.01  // total slot winnings / borrow lower bound (%), 0.01 when on, 1.0 when off
   },
-  "seed": 20261105,                     // random seed for this match (written into the report)
+  "seed": null,                         // always null during a match; the seed is returned after settlement, for replay
 
   "gap_level": "low", "liq_level": "normal",
   "ff": {                               // fast-forward budget (an object, not a flat field)

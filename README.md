@@ -514,6 +514,24 @@ Each HTML report is accompanied by a same-named JSON file (`reports/<stamp>_<tra
 version, seed, P&L, drawdown, Sharpe, cost breakdown, settlement result and audit verdict.
 `bench.py` and CI read that JSON instead of parsing HTML.
 
+### Reproducing a run
+
+The report header prints two things: `Random seed` and `difficulty slot #`. They have
+different limits, so do not mix them up:
+
+| You want | Parameter | Notes |
+|---|---|---|
+| The same price path (prices / gaps / news) | `TM_SEED=<seed>` | Before the draw it uses the 1.5% baseline chance; after it uses the slot's chance, so a different slot means a different market |
+| The same difficulty slot | `TM_ROLL_INDEX=<index>` | 0-24, `index = gap + liq × 5`; when set, the roll always lands on this slot regardless of when you stop it |
+| Both | pass both | e.g. `TM_SEED=576407804 TM_ROLL_INDEX=9` |
+
+Seed alone does not reproduce the slot: it follows the wall clock at roll_stop (one lap
+every 2.5 s), so a re-run usually draws a different one. `bench.py run --roll-index N`
+aligns every match in a paired run to the same slot.
+
+`GET /state` reports `seed` as `null` for the whole match and only returns it after
+settlement — a contestant cannot obtain the seed and therefore cannot pre-play the market.
+
 ### Paired benchmark (`bench.py`)
 
 Single-match variance is enormous (+106% to -229% in the historical samples), so one match says

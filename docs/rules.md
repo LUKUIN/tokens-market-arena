@@ -181,7 +181,9 @@ A: That is the 30-second countdown; `POST /roll/stop` freezes it early.
 A: You are still in the difficulty draw or the rules window — check whether another window covers it.
 
 **Q: Where is the report?**
-A: One `.html` file per match under `src/data/reports/`.
+A: One `.html` file per match under `src/data/reports/`. Its header carries the random seed
+and the difficulty slot index; to replay a match exactly, restart with
+`TM_SEED=<seed> TM_ROLL_INDEX=<index>` (the seed alone does not pin the slot).
 
 **Q: How do I start over?**
 A: `POST /reset` (30-second cooldown). The AI edition has no investment panel and no "restart match" button.

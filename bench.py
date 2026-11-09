@@ -79,12 +79,12 @@ def _parse_seeds(text):
     return seeds
 
 
-def run_one(seed, policy, outdir):
+def run_one(seed, policy, outdir, roll_index=None):
     """Play one match and return its summary dict, or None on failure."""
     home = os.path.join(outdir, "seed_%d" % seed)
     os.makedirs(home, exist_ok=True)
     eng = T.Engine(home)
-    eng.reset(count=False, seed=seed)
+    eng.reset(count=False, seed=seed, roll_index=roll_index)
     eng.roll_stop()                     # 跳过难度盲盒，按 seed 直接定档
     rng = random.Random((seed * 2654435761) & 0xFFFFFFFF)
     pol = POLICIES[policy]
@@ -129,8 +129,9 @@ def cmd_run(args):
         return 2
     print("Paired benchmark: %d seed(s), policy %s, output %s" % (len(seeds), args.policy, outdir))
     rows = []
+    roll_index = getattr(args, "roll_index", None)
     for i, seed in enumerate(seeds, 1):
-        row = run_one(seed, args.policy, outdir)
+        row = run_one(seed, args.policy, outdir, roll_index)
         if row is None:
             print("  [%d/%d] seed %-6d produced no summary" % (i, len(seeds), seed))
             continue
@@ -202,6 +203,8 @@ def main(argv=None):
     p_run.add_argument("--seeds", required=True, help="e.g. 1,2,3 or 1-5")
     p_run.add_argument("--idle-abort", type=int, default=0,
                        help="idle-abort minutes; default 0 (off) so evaluation stays comparable")
+    p_run.add_argument("--roll-index", type=int, default=None,
+                       help="pin the difficulty slot, 0-24 (= gap + liq*5); unset means every match draws its own")
     p_run.add_argument("--policy", default="noop", choices=sorted(POLICIES),
                        help="headless baseline policy (default noop)")
     p_run.add_argument("--out", default="", help="output directory (default: temp dir)")
