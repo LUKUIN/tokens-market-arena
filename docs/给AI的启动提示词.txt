@@ -49,6 +49,9 @@
 
 【6】结束时结算
 
+    净值已达标但还挂着仓位时，先把仓位全部平掉再退，否则 /quit 会被拒：
+
+    POST http://127.0.0.1:8734/close_all
     POST http://127.0.0.1:8734/quit
 
     HTML 报告会写到 src/data/reports/。

@@ -3146,7 +3146,8 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "POST /slot": {"amount": 1000},
                 "POST /special": {"name": "%s 或 %s" % (SPECIAL_SLOT_NAME, SPECIAL_FR_NAME), "on": True},
                 "POST /roll/stop": {},
-                "POST /quit": {},
+                "POST /quit": {"说明": "提前离场：达标且无持仓→达标离场（算达成）；达标但有持仓→ok:false，"
+                                       "须先 POST /close_all；未达标→主动弃权（不算达成，引擎先强制清仓）"},
                 "GET /prices": {},
                 "GET /assist/inbox": {},
                 "POST /assist/ask": {"text": "需要观众席帮忙看的内容"},
@@ -3172,6 +3173,9 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                       "请用 GET/POST /scratchpad，不要执行仓库里的 .py 文件"),
             "查询省 token": "GET /state?history=0 不返回 price_history（每品种最多 2000 点）；只要局面时用它，别整包拉",
             "平仓": "POST /close 的 lots 可省略（全平该品种）；给多了按实际持仓全平，不报错",
-            "收工": "POST /quit 是正常结算，不扣分、不计异常退出；对成绩不满意时提前结束是安全选项，不是认输",
+            "收工": ("POST /quit 是正常结算，不扣分、不计异常退出。净值 ≥ 目标且已无持仓 → 记「达标离场」（算达成）；"
+                     "达标但仍有持仓 → 返回 ok:false，须先 POST /close_all 落袋再退；未达标 → 记「主动弃权（未达标）」"
+                     "（不算达成，引擎先强制清仓）。达标后继续持有也允许，首次达标时刻见 /state 的 hit_at_tick；"
+                     "若之后回吐，最终判定仍是未达成"),
             "货币对": {s: PAIR_NAMES[s] for s in PAIRS},
         }

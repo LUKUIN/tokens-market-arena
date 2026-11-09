@@ -10,7 +10,7 @@
     POST /close_all        全平
     POST /loan             借款 {"amount": 500000}（上浮比例借款时才抽定，这是代价）
     POST /repay            还款 {"amount": 500000}（省略 amount 则全额）
-    POST /quit             结束本局
+    POST /quit             结束本局（达标且有持仓会被拒，须先 /close_all）
     POST /reset            重开一局
     GET  /health           存活探测
 """
