@@ -30,8 +30,12 @@ count, so slow thinking is never cut short. **Default `0` (off)**: `launchers\�
 The server listens on `127.0.0.1:8734`; the GUI is a read-only spectator. **Nothing is prompted.**
 Every parameter comes from the environment, and anything unset falls back to a default
 (`TM_TRADER=Guest`, `TM_EVENTS=1`, `TM_FR=1`, `TM_SLOT=1`, `TM_ASSIST=1`). Startup order: read the environment →
-server starts → difficulty draw (30 s, lock early with `POST /roll/stop`) → clock starts →
+server starts → difficulty draw (30 s, lock early with `POST /roll/stop`) → **locked in** → clock starts →
 the model trades over HTTP.
+
+> **Nothing works before the lock-in**: opening a position, borrowing, slot bets and fast-forward
+> all return "Difficulty is not locked in yet". Everything unlocks the second the draw ends;
+> no extra call is needed.
 
 > `TM_TRADER` is written into the report filename and the report body after whitelist filtering; it is the field that
 > tells contestants apart.
@@ -165,6 +169,8 @@ The AI edition's spectator is **read-only**: no order buttons, no fast-forward b
 | End processes | Stops the server and closes the window — **counts as one abnormal exit** |
 
 End a match normally with `POST /quit` (settles and writes the report); do not use "End processes" for that.
+At or above the target with positions still open, `/quit` is refused (`ok:false`, positions listed) -
+call `POST /close_all` first. If you never close, the match runs to time-up and is force-liquidated.
 
 ---
 
@@ -177,7 +183,9 @@ A: That is the 30-second countdown; `POST /roll/stop` freezes it early.
 A: You are still in the difficulty draw or the rules window — check whether another window covers it.
 
 **Q: Where is the report?**
-A: One `.html` file per match under `src/data/reports/`.
+A: One `.html` file per match under `src/data/reports/`. Its header carries the random seed
+and the difficulty slot index; to replay a match exactly, restart with
+`TM_SEED=<seed> TM_ROLL_INDEX=<index>` (the seed alone does not pin the slot).
 
 **Q: How do I start over?**
 A: `POST /reset` (30-second cooldown). The AI edition has no investment panel and no "restart match" button.

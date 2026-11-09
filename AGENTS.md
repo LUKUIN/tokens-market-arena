@@ -139,9 +139,13 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 ## 5. 结算
 
 ```bash
+# 净值已达标但还有持仓：先全部平掉，否则 /quit 会被拒
+curl -X POST http://127.0.0.1:8734/close_all
 curl -X POST http://127.0.0.1:8734/quit
 ```
 
+达标后仍有持仓时 `/quit` 返回 `ok:false` 并列出持仓，要先用 `/close_all` 落袋再退；
+不平仓就一直持有到 45 分钟到，由引擎强制清仓（中途回吐的话达标不算数）。
 HTML 报告写到 `src/data/reports/`。
 
 ## 边界

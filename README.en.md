@@ -45,8 +45,10 @@ unset falls back to a default. There is no `input()`, no "press any key", no con
 > swap the path in the commands below for your own, or use `py -3.14`. `run.py` validates the version,
 > not the install location.
 
-`run.py` validates the version as its first action: anything but 3.14 exits with code 2 and prints
-that command. Do not use `where python`, `py -3.12` or `python3` to find another interpreter — the
+`run.py` validates the version as its first action: anything but 3.14 exits with **code 2** and prints
+that command. When a match already owns the port (or the sources are still sealed by the previous
+match) it refuses to start with **exit code 4** instead of starting a second server.
+Do not use `where python`, `py -3.12` or `python3` to find another interpreter — the
 spectator's GUI widgets and the `.pyc` files are built for 3.14, and any other version only yields
 `bad magic number`.
 
@@ -84,7 +86,8 @@ start "" /b python run.py      rem a 3.14 on PATH; otherwise your full path
 A fixed `sleep 6 && curl` gives false failures: startup takes 3–8 seconds and a slow machine
 finishes later.
 
-Difficulty locking — `/fastforward` is refused before it is locked:
+Difficulty locking — before it is locked, `/open`, `/loan`, `/slot` and `/fastforward` are all
+refused with "Difficulty is not locked in yet":
 
 ```bash
 curl -X POST http://127.0.0.1:8734/roll/stop
@@ -185,9 +188,14 @@ Sections, top to bottom:
 3. The clock starts the moment difficulty is locked — the 30 seconds of drawing do not count
    against the 45 minutes.
 4. Trading begins: `/state` to read the board → `/open` `/close` to trade → `/fastforward` to advance time.
-5. At 45 minutes (**that is when the target is judged**), on liquidation, or on `/quit`, the match
-   settles and the report is written. Hitting the target does **not** end the match early - send
-   `/quit` yourself if you want to stop.
+5. The match settles on one of: 45 minutes elapsed, a blow-up, or `POST /quit`. Hitting the target
+   does **not** end the match by itself: `/quit` at or above the target is a **valid early exit**
+   (`Target reached - early exit`) and counts as reached; below the target it is recorded as
+   `Abandoned below target` and does not count. At or above the target with positions still open,
+   `/quit` is refused (`ok:false`) - call `POST /close_all` first to bank the profit; if you never
+   close, the match runs to time-up and the engine force-liquidates, and a give-back means the
+   target no longer counts. If you are above the target and keep holding,
+   a later slide back below it is reported as "hit the target at m:ss, gave it back".
 6. **Idle abort** (on by default only for the human double-click entry): if no **state-changing
    action** (open/close, loan/repay, fastforward, scratchpad, difficulty lock, assist, trader name)
    happens for `TM_IDLE_ABORT` minutes after the difficulty lock, the match settles itself and the
@@ -233,7 +241,7 @@ Base URL defaults to `http://127.0.0.1:8734`.
 | `/pause` / `/begin` | — | Freeze / resume the clock |
 | `/roll/start` / `/roll/stop` | — | Start / lock the difficulty draw |
 | `/reset` | — | Start over (clears `data/` except `reports/`) |
-| `/quit` | — | Settle normally and exit (response carries `settled` / `warnings`) |
+| `/quit` | — | Early exit: at/above target with nothing open -> `Target reached - early exit` (counts); at/above with positions -> `ok:false`, call `/close_all` first; below target -> `Abandoned below target` (counts as nothing, positions force-closed). Response carries `settled` / `warnings` |
 | `/shutdown` | — | Stop immediately (leaves an abnormal-exit report) |
 
 > **Note**: `/fastforward` is the only way to advance time — 300 or 180 seconds per call.
@@ -445,6 +453,26 @@ Six large models, one match each, same rules (45 minutes / 1,000,000 capital / d
 
 ## Settlement and liquidation
 
+### Margin & liquidation
+
+Maintenance margin is charged on **notional exposure**, not on "notional ÷ leverage":
+
+```
+maintenance margin = notional exposure x 10%
+margin level        = equity / maintenance margin
+```
+
+Thresholds: below 100% you get a margin call (30 ticks to top up), below 50% you are
+liquidated immediately. Opening an order also requires the account to keep a margin
+level of at least 150% afterwards, so a single account's notional is capped at roughly
+6.7x its equity. 1000x leverage still exists as a parameter, but "high leverage costs
+almost no cash" no longer means "cannot be liquidated".
+
+> **Changed in v1.2.17**: the denominator used to be "notional / leverage". 34 lots of
+> 501.8万 notional only tied up 5,019 in margin, so at equity 42万 the margin level still
+> read 8,370% and neither the call nor the stop-out ever fired. `margin_level` in older
+> reports uses the previous definition and is not comparable with new ones.
+
 When a match ends (`POST /quit`, time up, blow-up, negative cash), the engine wraps up in three fixed steps:
 
 1. **Force-close everything** - not blocked by "exchange maintenance" or any other halt.
@@ -511,6 +539,24 @@ Each HTML report is accompanied by a same-named JSON file (`reports/<stamp>_<tra
 version, seed, P&L, drawdown, Sharpe, cost breakdown, settlement result and audit verdict.
 `bench.py` and CI read that JSON instead of parsing HTML.
 
+### Reproducing a run
+
+The report header prints two things: `Random seed` and `difficulty slot #`. They have
+different limits, so do not mix them up:
+
+| You want | Parameter | Notes |
+|---|---|---|
+| The same price path (prices / gaps / news) | `TM_SEED=<seed>` | Before the draw it uses the 1.5% baseline chance; after it uses the slot's chance, so a different slot means a different market |
+| The same difficulty slot | `TM_ROLL_INDEX=<index>` | 0-24, `index = gap + liq × 5`; when set, the roll always lands on this slot regardless of when you stop it |
+| Both | pass both | e.g. `TM_SEED=576407804 TM_ROLL_INDEX=9` |
+
+Seed alone does not reproduce the slot: it follows the wall clock at roll_stop (one lap
+every 2.5 s), so a re-run usually draws a different one. `bench.py run --roll-index N`
+aligns every match in a paired run to the same slot.
+
+`GET /state` reports `seed` as `null` for the whole match and only returns it after
+settlement — a contestant cannot obtain the seed and therefore cannot pre-play the market.
+
 ### Paired benchmark (`bench.py`)
 
 Single-match variance is enormous (+106% to -229% in the historical samples), so one match says
@@ -524,7 +570,34 @@ python bench.py summary --dir src/data/reports        # summarise existing summa
 
 `run` advances ticks in-process (no HTTP, no wall-clock wait) and writes one JSON summary per match.
 `summary` prints mean, median, stdev, P10/P90, worst drawdown, target hits, settlement errors and
-audit-pass counts. The built-in policies (`noop`, `probe`) are headless baselines, not model results.
+audit-pass counts.
+
+- Built-in policies:
+  - `noop` (never trade) — settlement and ledger baseline
+  - `probe` (open/close one random order every 24 ticks) — produces paths with positions and costs
+  - `oracle` (perfect foresight) — replays the match once to record the price path, then trades on
+    the direction of the next 24 ticks. It is a **mechanical upper bound, not an attainable target**:
+    it answers whether the 2,000,000 goal is a model-skill problem or a rule-set limit
+- `TM_ORACLE_ACC=0.6` injects an error rate into `oracle` (1.0 = perfect, 0.5 = pure random), which
+  gives you a "direction accuracy -> goal rate" curve instead of a single astronomical number
+
+Measured with seeds 1-5 (`index = gap + liq x 5`):
+
+| Regime | Accuracy | Goal | Median P&L | Best | Worst |
+|---|---|---|---|---|---|
+| extreme x normal (9) | 50% | 0/5 | -99.8% | -99.2% | -103.6% |
+| extreme x normal (9) | 60% | 0/5 | -100.4% | +64.8% | -113.7% |
+| extreme x normal (9) | 70% | 1/5 | -100.4% | +7604.7% | -318.1% |
+| extreme x normal (9) | 100% | 5/5 | +1,063,078% | +6,834,750% | +585,388% |
+| medium x blackhole (22) | 50% | 0/5 | -72.9% | -53.5% | -111.3% |
+| medium x blackhole (22) | 60% | 1/5 | -53.0% | +161.4% | -119.7% |
+| medium x blackhole (22) | 70% | 2/5 | +33.5% | +334.4% | -119.7% |
+| medium x blackhole (22) | 100% | 5/5 | +4,767% | +7,834% | +1,970% |
+
+How to read it: 50% accuracy (pure random) loses every time, because spread, slippage, fees and
+swap make the game negative-sum; reaching 2,000,000 (+100%) takes roughly 60%-70% direction
+accuracy; perfect foresight produces astronomical numbers, which means the goal is nowhere near
+the mechanical ceiling — the real constraint is judgement, not the rules.
 
 ## Known limits
 

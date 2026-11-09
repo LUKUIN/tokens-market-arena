@@ -142,6 +142,9 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 ```
 
 Once locked, `rolled` becomes `true` and `difficulty` exposes `gap` / `liq` with their values.
+The slot index is `gap + liq × 5` (0-24) and is printed on the report header; replaying with
+`TM_ROLL_INDEX=<index>` pins the same slot. `TM_SEED` alone cannot reproduce the slot — it
+follows the wall clock at roll_stop (one lap every 2.5 s).
 
 **The match clock starts at the instant of locking** — the 30 seconds of drawing do not count
 against the 45 minutes.
@@ -186,7 +189,7 @@ Every endpoint lives at `http://127.0.0.1:8734`.
 | POST | `/special` | `{"name":"fr"|"slot","on":true}`, toggle a switch (**start of match only**; rejected once the match has begun) |
 | POST | `/slot` | `{"amount":10000}`, slot bet (1~200000, ≤ current equity, 3 plays) |
 | POST | `/reset` | Start a new match |
-| POST | `/quit` | Settle voluntarily and generate the report; **about 3 seconds later the service cleans up**: temp files removed, leftover port holders stopped |
+| POST | `/quit` | Early exit: at/above target with nothing open -> `Target reached - early exit` (counts); at/above with positions -> `ok:false`, call `/close_all` first; below target -> `Abandoned below target` (does not count). **About 3 seconds later the service cleans up**: temp files removed, leftover port holders stopped |
 | POST | `/shutdown` | Stop the server (**records one abnormal exit**) |
 
 > `POST /quit` returns two settlement fields: `settled` (boolean, whether settlement was
@@ -210,7 +213,8 @@ Every endpoint lives at `http://127.0.0.1:8734`.
 
   "positions": [ {"pair":"AURA/CORE","side":"LONG","lots":10,"leverage":100,
                   "entry":150.2,"price":151.4,"upnl":12000,"margin":15140} ],
-  "margin_level": 680.5,      // < 100% margin call, < 50% forced liquidation
+  "margin_level": 680.5,      // equity / (notional x 10%); < 100% margin call, < 50% forced liquidation,
+                              // open orders must leave >= 150%
 
   "prices": {"AURA/CORE": {"price":151.4, "spread_pct":0.06}},
 
@@ -227,7 +231,7 @@ Every endpoint lives at `http://127.0.0.1:8734`.
     "slot": false, "slot_left": 3,      // Slot Machine off
     "slot_win": 0.0, "fr_lo_pct": 0.01  // total slot winnings / borrow lower bound (%), 0.01 when on, 1.0 when off
   },
-  "seed": 20261105,                     // random seed for this match (written into the report)
+  "seed": null,                         // always null during a match; the seed is returned after settlement, for replay
 
   "gap_level": "low", "liq_level": "normal",
   "ff": {                               // fast-forward budget (an object, not a flat field)
@@ -245,7 +249,7 @@ Every endpoint lives at `http://127.0.0.1:8734`.
 ### Seven things to check
 
 1. **`equity` vs `target`** — how far you still have to go
-2. **`margin_level`** — below 100% you need more margin, below 50% you get liquidated
+2. **`margin_level`** — equity / (notional exposure x 10%); below 100% you need more margin, below 50% you get liquidated, opening orders must keep >= 150%
 3. **`active_mods`** — which temporary rules are currently moving prices
 4. **`loan_bump_range`** — the current cost of borrowing (`[1,100]` normal, `[0.01,100]` Preferred Financing)
 5. **`special`** — whether the switches are on; `slot_left` is the remaining slot plays, while `fr_left` is always `null` since v1.2.4 removed the loan-count cap (field kept for compatibility)
@@ -288,12 +292,28 @@ receives mojibake.
 
 ## 6.5. Ending early
 
-`POST /quit` is a **normal settlement**, not an abnormal exit:
+`POST /quit` is a **normal settlement**, not an abnormal exit, but the end reason splits in two:
 
-- all positions are closed immediately, loans cleared, the full report generated
-- final equity is taken at that instant; rating, cost attribution and trade list are all produced
-- **no penalty, no abnormal flag, no effect on starting the next match**
-- the only difference from "45 minutes elapsed" is the end reason recorded in the report
+- **equity >= target -> `Target reached - early exit`**: counts as reached. Stopping once you have
+  made enough is skill in the real world, and this is a valid early exit.
+- **equity < target -> `Abandoned below target`**: does not count.
+
+At or above the target while still holding positions, `/quit` returns `ok:false`: `error` says how
+many positions are open and `positions` lists pair and side, requiring `POST /close_all` first.
+The engine will not turn floating profit into realised profit for you. If you never close, the
+match runs to time-up and gets force-liquidated; a give-back then means the target no longer counts
+and the report says it hit the target at m:ss and gave it back.
+
+Both end reasons close all positions immediately, clear loans and generate the full report; final equity is
+taken at that instant and rating/cost attribution are produced as usual. There is **no penalty,
+no abnormal flag, no effect on starting the next match**. They are distinguished because
+"locked in a gain" and "gave up" would otherwise look identical in the statistics.
+
+Hitting the target and choosing to keep holding is also allowed: the first moment it is hit is
+recorded in `/state` as `hit_at_tick`. If equity later slides back below the target, the final
+verdict is still "target missed", and the report says it hit the target at m:ss and gave it back.
+While holding past the target the engine runs at 4x pace (`TM_TAIL_SPEED=1` restores the real
+pace); prices are tick-driven, so nothing about the outcome changes.
 
 There are exactly two abnormal exits: `POST /shutdown` (stop immediately, leaves an "unsettled"
 marker) and killing the process.
