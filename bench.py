@@ -175,7 +175,9 @@ def run_one(seed, policy, outdir, roll_index=None):
         eng.tick()
 
     if not eng.s.get("finished"):
-        eng.quit_session()
+        # Not quit_session: above the target it returns a valid-exit report, but what a
+        # benchmark wants is the result of a full 540-tick match. Go straight to settlement.
+        eng._end_session("benchmark complete")
 
     reports = os.path.join(home, "reports")
     if not os.path.isdir(reports):

@@ -189,7 +189,7 @@ Every endpoint lives at `http://127.0.0.1:8734`.
 | POST | `/special` | `{"name":"fr"|"slot","on":true}`, toggle a switch (**start of match only**; rejected once the match has begun) |
 | POST | `/slot` | `{"amount":10000}`, slot bet (1~200000, ≤ current equity, 3 plays) |
 | POST | `/reset` | Start a new match |
-| POST | `/quit` | Settle voluntarily and generate the report; **about 3 seconds later the service cleans up**: temp files removed, leftover port holders stopped |
+| POST | `/quit` | Early exit: at or above the target the reason is `Target reached - early exit` (counts as reached); below it the reason is `Abandoned below target` (does not). **About 3 seconds later the service cleans up**: temp files removed, leftover port holders stopped |
 | POST | `/shutdown` | Stop the server (**records one abnormal exit**) |
 
 > `POST /quit` returns two settlement fields: `settled` (boolean, whether settlement was
@@ -292,12 +292,22 @@ receives mojibake.
 
 ## 6.5. Ending early
 
-`POST /quit` is a **normal settlement**, not an abnormal exit:
+`POST /quit` is a **normal settlement**, not an abnormal exit, but the end reason splits in two:
 
-- all positions are closed immediately, loans cleared, the full report generated
-- final equity is taken at that instant; rating, cost attribution and trade list are all produced
-- **no penalty, no abnormal flag, no effect on starting the next match**
-- the only difference from "45 minutes elapsed" is the end reason recorded in the report
+- **equity >= target -> `Target reached - early exit`**: counts as reached. Stopping once you have
+  made enough is skill in the real world, and this is a valid early exit.
+- **equity < target -> `Abandoned below target`**: does not count.
+
+Both close all positions immediately, clear loans and generate the full report; final equity is
+taken at that instant and rating/cost attribution are produced as usual. There is **no penalty,
+no abnormal flag, no effect on starting the next match**. They are distinguished because
+"locked in a gain" and "gave up" would otherwise look identical in the statistics.
+
+Hitting the target and choosing to keep holding is also allowed: the first moment it is hit is
+recorded in `/state` as `hit_at_tick`. If equity later slides back below the target, the final
+verdict is still "target missed", and the report says it hit the target at m:ss and gave it back.
+While holding past the target the engine runs at 4x pace (`TM_TAIL_SPEED=1` restores the real
+pace); prices are tick-driven, so nothing about the outcome changes.
 
 There are exactly two abnormal exits: `POST /shutdown` (stop immediately, leaves an "unsettled"
 marker) and killing the process.

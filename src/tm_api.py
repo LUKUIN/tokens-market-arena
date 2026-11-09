@@ -23,7 +23,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-from tm_engine import Engine, TICK_SECONDS, ENGINE_VERSION, PROTOCOL_VERSION
+from tm_engine import Engine, TICK_SECONDS, ENGINE_VERSION, PROTOCOL_VERSION, TAIL_SPEED
 
 HOME = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 ENGINE = Engine(HOME)
@@ -229,7 +229,16 @@ class Handler(BaseHTTPRequestHandler):
 
 def _auto_tick():
     while True:
-        time.sleep(TICK_SECONDS)
+        # After the target is hit the match keeps running, but there is no reason to wait out
+        # the wall clock: prices are tick-driven, so speeding up changes no random outcome.
+        # TM_TAIL_SPEED overrides the multiplier (set 1 for the real pace).
+        speed = 1.0
+        try:
+            if getattr(ENGINE.s, "hit_at_tick", None) is not None:
+                speed = max(1.0, float(os.environ.get("TM_TAIL_SPEED") or TAIL_SPEED))
+        except Exception:
+            speed = 1.0
+        time.sleep(TICK_SECONDS / speed)
         try:
             st = ENGINE.tick()
             if isinstance(st, dict) and st.get("finished"):

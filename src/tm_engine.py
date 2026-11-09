@@ -262,6 +262,10 @@ MARGIN_CALL_GRACE = 30        # margin call grace period (ticks), about 2.5 min;
 MAINT_MARGIN_RATE = 0.10
 # Opening orders must leave at least this margin level behind, so "fill up then get called" is not a path.
 OPEN_MARGIN_RATIO = 1.50
+# After the target is hit the match keeps running, but there is no reason to wait out the
+# wall clock: prices are tick-driven, so speeding up only compresses idle time and changes
+# no random outcome.
+TAIL_SPEED = 4.0
 def _env_int(raw, default):
     """Parse an env var into int; fall back to default instead of crashing on import."""
     if raw is None or str(raw).strip() == "":
@@ -307,7 +311,7 @@ def _idle_rule_text():
             "activity'. Read-only calls (/state, /prices, /rules) do not count, so "
             "slow thinking is never cut short. TM_IDLE_ABORT tunes it, 0 disables"
             % ("/".join(IDLE_ACTION_LABELS), IDLE_ABORT_MINUTES))
-ENGINE_VERSION = "1.2.18"  # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.19"  # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -443,6 +447,7 @@ def _new_session(seed=None, apply_rng=True, roll_index=None):
         "balance": STARTER_CASH,
         "genesis": STARTER_CASH,
         "target": TARGET_EQUITY,
+        "hit_at_tick": None,      # first tick whose equity reached the target; match continues
         "target_bonus": 0.0,
         "trader": trader,
         "unnamed": unnamed,
@@ -570,6 +575,14 @@ class Engine:
             os.remove(self.running_path)
         except Exception:
             pass
+
+    def _hit_clock(self):
+        """First time the target was hit, as (minutes, seconds) - reports show clock time, not ticks."""
+        t = self.s.get("hit_at_tick")
+        if t is None:
+            return (0, 0)
+        sec = int(t) * int(TICK_SECONDS)
+        return (sec // 60, sec % 60)
 
     def _qualified(self):
         """Whether this run is still eligible to reach the target.
@@ -1272,8 +1285,11 @@ class Engine:
         tgt = self.s.get("target", TARGET_EQUITY)
         hit = eq >= tgt and self._qualified()
         borrowed = self.s["loan"]["borrowed"]
+        _hit_at = self.s.get("hit_at_tick")
         verdict = ("Target reached" if hit else
-                   ("Target reached but run ineligible" if eq >= tgt else "Target missed"))
+                   ("Target reached but not qualified" if eq >= tgt else
+                    ("Target missed (hit at %d:%02d, gave it back before settlement)" % self._hit_clock()
+                     if _hit_at is not None else "Target missed")))
         self._event("Run over: final equity %.2f Tokens (%s)%s" % (
             eq, verdict,
             " | total borrowed %.0f" % borrowed if borrowed > 0 else ""), "end")
@@ -1383,6 +1399,9 @@ class Engine:
             if self._check_negative():
                 return self.state()
             eq = self.equity()
+            if self.s.get("hit_at_tick") is None and eq >= self.s.get("target", TARGET_EQUITY):
+                self.s["hit_at_tick"] = self.s["tick"]
+                self._event("Equity reached the target %.0f; the match continues (close positions to lock it in)" % eq, "target")
             ml = self.margin_level()
             self.s["equity_curve"].append({"tick": self.s["tick"], "equity": round(eq, 2),
                                            "margin_level": round(ml, 4) if ml is not None else None})
@@ -1395,7 +1414,8 @@ class Engine:
                 self.s["last_notice_mark"] = mark
                 remain = max(0, int(SESSION_MINUTES * 60 - el))
                 self._event("Time check: %d minutes elapsed, %d left" % (int(el // 60), int(remain // 60)), "info")
-            if IDLE_ABORT_TICKS > 0 and not getattr(self, "_writing_depth", 0):
+            if (IDLE_ABORT_TICKS > 0 and not getattr(self, "_writing_depth", 0)
+                    and self.s.get("hit_at_tick") is None):
                 _idle = int(self.s.get("tick") or 0) - int(self.s.get("last_action_tick") or 0)
                 if _idle >= IDLE_ABORT_TICKS:
                     self._end_session("No contestant activity (%d minutes idle)" % IDLE_ABORT_MINUTES)
@@ -2867,10 +2887,20 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             return self._write_report(reason, eq, abnormal=True)
 
     def quit_session(self):
+        """Early exit: reaching the target makes it a valid stop, otherwise it is abandonment.
+
+        In the real world, stopping once you have made enough is skill; leaving before that
+        is giving up. Both are allowed, but they must be recorded differently - otherwise
+        "locked in a gain" and "gave up" look identical in the statistics.
+        """
         with LOCK:
             if self.s.get("finished"):
                 return {"ok": False, "error": "This run is over; use /reset to start a new one"}
-            return self._end_session("Ended voluntarily")
+            eq = self.equity()
+            tgt = self.s.get("target", TARGET_EQUITY)
+            if eq >= tgt:
+                return self._end_session("Target reached - early exit")
+            return self._end_session("Abandoned below target")
 
     def reset(self, count=True, seed=None, roll_index=None):
         """开新局。seed=None 时沿用 TM_SEED 或随机生成；显式传 seed / roll_index 用于配对评测。"""
@@ -2965,6 +2995,9 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "pnl_pct": round((eq / self.s["genesis"] - 1) * 100, 2),
                 "target": round(target, 2),
                 "target_pct": round(eq / target * 100, 2),
+                "hit_at_tick": self.s.get("hit_at_tick"),
+                "hit_at_clock": ("%d:%02d" % self._hit_clock()
+                                 if self.s.get("hit_at_tick") is not None else None),
                 "target_bonus": round(self.s.get("target_bonus", 0.0), 2),
                 "base_target": TARGET_EQUITY,
                 "margin_level": round(ml * 100, 2) if ml is not None else None,

@@ -188,9 +188,11 @@ Sections, top to bottom:
 3. The clock starts the moment difficulty is locked — the 30 seconds of drawing do not count
    against the 45 minutes.
 4. Trading begins: `/state` to read the board → `/open` `/close` to trade → `/fastforward` to advance time.
-5. At 45 minutes (**that is when the target is judged**), on liquidation, or on `/quit`, the match
-   settles and the report is written. Hitting the target does **not** end the match early - send
-   `/quit` yourself if you want to stop.
+5. The match settles on one of: 45 minutes elapsed, a blow-up, or `POST /quit`. Hitting the target
+   does **not** end the match by itself: `/quit` at or above the target is a **valid early exit**
+   (`Target reached - early exit`) and counts as reached; below the target it is recorded as
+   `Abandoned below target` and does not count. If you are above the target and keep holding,
+   a later slide back below it is reported as "hit the target at m:ss, gave it back".
 6. **Idle abort** (on by default only for the human double-click entry): if no **state-changing
    action** (open/close, loan/repay, fastforward, scratchpad, difficulty lock, assist, trader name)
    happens for `TM_IDLE_ABORT` minutes after the difficulty lock, the match settles itself and the
