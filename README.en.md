@@ -39,7 +39,7 @@ python run.py
 Double-click launcher:
 
 ```
-开一局.bat        (zero prompts, same as `python run.py`, spectator included)
+开一局.bat        (double-click: 5-second confirm; console-less calls start directly)
 or  python run.py --interactive   (human demo only; asks model ID and event mode)
 ```
 
