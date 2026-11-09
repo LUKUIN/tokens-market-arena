@@ -67,16 +67,43 @@ echo   接口地址     http://127.0.0.1:%TM_PORT%
 echo   参赛模型     %TM_TRADER%
 echo   随机事件     %TM_EVENTS%
 echo   优惠融资 %TM_FR%    老虎机 %TM_SLOT%    外部的怜悯 %TM_ASSIST%
-echo   观众席会随服务一起打开，GUI 只读。
-echo   以上三项只能在开局前设定，进入对局后不再提供开关。
+echo   5 秒内按 Y 才启动对局；不按则清理退出。
+echo   要让 AI 参赛，请在本目录运行：python run.py
 echo.
 echo   !! 本版是 AI 参赛版：界面只读，没有下单 / 平仓 / 快进按钮。
 echo   !! 人类要玩请用 TokensMarket-OpenSource-Human。
-echo   !! 定档后 %IDLE_WARN% 分钟内没有任何参赛者操作会自动结算（TM_IDLE_ABORT 可调，0 = 关闭）。
+echo   !! 用 python run.py 启动时，定档后 %IDLE_WARN% 分钟无操作会自动结算（TM_IDLE_ABORT）。
 
-rem run.py 自己会封存源码、退出时还原。这里不要再起一份守卫：
-rem 起两份守卫会封两次，第二次封的是已经换上去的诱饵，真源码就再也还原不回来了。
+rem ==================================================================
+rem v1.2.12：本入口增加「误点保护」，但保留真正的启动能力。
+rem   - 人类双击（有控制台）：5 秒内不按 Y 就清理退出，不会空转 45 分钟。
+rem   - 脚本 / AI 调用（无控制台 stdin）：choice 返回 255，直接启动对局。
+rem 这样既拦住误点，也不会误伤真正要比赛的 Agent。
+rem ==================================================================
+echo.
+echo   5 秒内按 Y 启动对局（仅限已有 Agent 会连上来操作）；
+echo   不按则自动清理并退出。
+choice /c YN /t 5 /d N /n /m " " 2>nul
+if errorlevel 255 goto :direct_start
+if errorlevel 2 goto :abort_start
+
+:direct_start
+
+rem run.py 自己封存源码、退出时还原；这里不要再额外起一份 guard.py。
 "%PY%" %PYARGS% run.py
 echo.
-echo   [已退出] 服务与观众席都已关闭。
+echo   [已退出] 服务与观众席已关闭。
 pause
+goto :eof
+
+:abort_start
+echo.
+echo   已取消。正在清理残留进程与临时文件……
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0deep-clean.ps1"
+echo.
+echo   [已清理]
+echo   - 要让 AI 参赛：在本目录运行  python run.py
+echo   - 人类要玩：请用 TokensMarket-OpenSource-Human
+echo.
+pause
+goto :eof

@@ -21,8 +21,9 @@ few tokens as possible and make a decision**.
 > on another machine any 3.14 install works, whatever the location).
 > `run.py` validates the version before doing anything else and exits with code 2 on a mismatch.
 > Every `python` in the commands below means your own 3.14 path.
-> The spectator window opens automatically: `run.py`, `run.py server` and `开一局.bat` behave
-> identically since v1.0.11. `--headless` is the only windowless mode (no-desktop environments only).
+> The spectator window opens automatically: `run.py` and `run.py server` both open it.
+> Double-clicking `Start Match.bat` adds a 5-second mis-click guard (press `Y`); a console-less
+> call skips it. `--headless` is the only windowless mode (no-desktop environments only).
 
 ```bash
 # 1. Clear leftovers from the previous match (do not do this while a match is running)

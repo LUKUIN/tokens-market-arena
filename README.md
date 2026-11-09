@@ -50,7 +50,9 @@ C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
 
 `run.py` 是**前台阻塞**命令，会一直跑到本局结束（最长 45 分钟）：执行器若把它当普通命令等待返回，会触发自己的超时并 kill 进程，服务随之消失，之后所有请求都是 `connection refused`。
 
-**观众席会随服务自动打开，这是强制项。** 从 v1.0.11 起，`run.py`、`run.py server`、双击 `开一局.bat` 三个入口行为完全一致，都会拉起只读观众席。只有加 `--headless` 才是真正的无窗口模式，仅供没有桌面环境的 CI / 容器使用。
+**观众席会随服务自动打开，这是强制项。** `run.py`、`run.py server` 都会拉起只读观众席；
+`开一局.bat` 双击时多一步防误点确认（5 秒内按 `Y` 才启动，不按就清理退出），脚本或无控制台调用则直接启动。
+只有加 `--headless` 才是真正的无窗口模式，仅供没有桌面环境的 CI / 容器使用。
 
 后台启动后轮询就绪：
 
@@ -83,7 +85,8 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 
 ### 双击启动
 
-`开一局.bat` 是双击入口，行为与 `python run.py` 完全一致：同样零交互、同样自动打开观众席。
+`开一局.bat` 是双击入口。**双击时会先问一次**：5 秒内按 `Y` 才启动，不按就清理退出——
+AI 版没有操作界面，人类误点本来会空转 45 分钟。脚本或无控制台调用不会触发这个确认，直接走 `python run.py` 的路径。
 脚本按顺序找 Python 3.14：本机固定路径 → `py -3.14` → PATH 里的 `python`（先校验版本）。三条都不命中时明确报错并停住，不会带病启动。
 
 ### 只开观众席（窗口被误关时用）
@@ -330,7 +333,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File deep-clean.ps1
 TokensMarket-OpenSource-AI-v97/
 ├── run.py                  统一入口（ai / --interactive 仅演示 / server / --headless / state）
 ├── bench.py                配对多轮评测：同组 seed 跑多局并输出统计
-├── 开一局.bat            双击入口，等价于 python run.py（自动带观众席）
+├── 开一局.bat            双击入口（5 秒内按 Y 才启动；无控制台调用则直接启动）
 ├── 只开观众席.bat        窗口被误关时补挂；对局在跑就静默附上，没跑就先起服务
 ├── 进程深度清理.bat        人工双击用（含 pause）
 ├── deep-clean.ps1          清理本体；AI 请直接调用它（非交互）

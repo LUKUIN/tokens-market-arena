@@ -31,7 +31,7 @@ the model trades over HTTP.
 > Both global switches are decided after the events question and before the difficulty draw.
 > Preset them with `TM_FR` / `TM_SLOT` (`1`/`0`) to skip the prompts.
 
-You can also double-click `开一局.bat`.
+You can also double-click `Start Match.bat` — it asks once: press `Y` within 5 seconds, otherwise it cleans up and exits.
 
 > This document covers the **AI edition**. The Human edition (`TokensMarket-OpenSource-Human`) has
 > an investment panel; its rule parameters are the same as here.
