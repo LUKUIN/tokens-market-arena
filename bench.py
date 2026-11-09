@@ -8,21 +8,29 @@ says nothing about a model. This script turns "same scenarios, same round count"
 
     python bench.py run --seeds 1,2,3 --policy noop
     python bench.py run --seeds 1-5 --policy probe
+    python bench.py run --seeds 1-5 --policy oracle
+    TM_ORACLE_ACC=0.6 python bench.py run --seeds 1-5 --policy oracle
     python bench.py summary --dir src/data/reports
 
 run      play one full match per seed (ticks are advanced in-process: no HTTP, no wall-clock
          waiting) and drop the machine-readable summary into reports/*.json.
 summary  scan every *.json in a directory and print mean / median / quantiles / settlement errors.
 
-Note: these policies are headless baselines that verify the engine behaves consistently under a
-fixed seed. They do not represent any model. Real agents go through HTTP; this script only
-orchestrates and aggregates.
+Policies are headless baselines, not model results:
+  noop    never trade - settlement and ledger baseline
+  probe   open/close one random order every 24 ticks - paths with positions and costs
+  oracle  perfect foresight (replays once to record the path, then trades the next 24 ticks).
+          A mechanical upper bound, not an attainable target; TM_ORACLE_ACC injects an error
+          rate (1.0 perfect / 0.5 pure random) to get an accuracy -> goal-rate curve.
+
+Real agents go through HTTP; this script only orchestrates and aggregates.
 """
 
 import argparse
 import json
 import os
 import random
+import shutil
 import statistics
 import sys
 import tempfile
@@ -62,7 +70,65 @@ def _policy_probe(eng, rng, tick):
         eng.open_position(pair, side, 1, 20)
 
 
-POLICIES = {"noop": _policy_noop, "probe": _policy_probe}
+ORACLE_ACC = float(os.environ.get("TM_ORACLE_ACC") or 1.0)
+
+
+def _record_path(seed, roll_index=None, ticks=None):
+    """Replay an empty match and record per-tick prices, so oracle can "see the future".
+
+    With a fixed seed the price path does not depend on whether we hold positions
+    (verified tick-for-tick), so this empty run is exactly the path of the real one.
+    """
+    ticks = ticks or TICKS_PER_MATCH
+    home = tempfile.mkdtemp(prefix="tm_oracle_")
+    try:
+        eng = T.Engine(home)
+        eng.reset(count=False, seed=seed, roll_index=roll_index)
+        eng.roll_stop()
+        path = []
+        for _ in range(ticks):
+            eng.tick()
+            path.append(dict(eng.s["prices"]))
+        return path
+    finally:
+        shutil.rmtree(home, True)
+
+
+def _policy_oracle(eng, rng, tick):
+    """Perfect foresight: pick direction and size from the recorded path.
+
+    Every 24 ticks: take the pair with the largest absolute move over the next 24 ticks
+    and open 3x equity notional (20x leverage) in that direction. Not strict optimal
+    control, but enough to answer "where is the mechanical ceiling".
+    """
+    path = getattr(eng, "_oracle_path", None)
+    if not path or tick >= len(path):
+        return
+    if tick % 24 != 0:
+        return
+    for p in list(eng.s.get("positions") or []):
+        eng.close_position(p["pair"], p["lots"])
+    i = min(tick, len(path) - 1)
+    j = min(tick + 24, len(path) - 1)
+    if j <= i:
+        return
+    best = None
+    for pair in sorted(T.PAIRS):
+        p0, p1 = path[i][pair], path[j][pair]
+        ret = (p1 - p0) / p0
+        if best is None or abs(ret) > abs(best[1]):
+            best = (pair, ret, p1)
+    if not best or abs(best[1]) < 0.002:
+        return
+    pair, ret, price = best
+    if ORACLE_ACC < 1.0 and rng.random() > ORACLE_ACC:
+        ret = -ret
+    notional = eng.equity() * 3.0
+    lots = max(1, int(notional / (1000.0 * price)))
+    eng.open_position(pair, "LONG" if ret > 0 else "SHORT", lots, 20)
+
+
+POLICIES = {"noop": _policy_noop, "probe": _policy_probe, "oracle": _policy_oracle}
 
 
 def _parse_seeds(text):
@@ -85,7 +151,17 @@ def run_one(seed, policy, outdir, roll_index=None):
     os.makedirs(home, exist_ok=True)
     eng = T.Engine(home)
     eng.reset(count=False, seed=seed, roll_index=roll_index)
-    eng.roll_stop()                     # 跳过难度盲盒，按 seed 直接定档
+    eng.roll_stop()                     # skip the difficulty blind box, lock by seed
+    if policy == "oracle":
+        # The recording run calls random.seed(seed) and advances 540 ticks, so the global
+        # RNG is left ahead of the start; reset again or the live path will not match.
+        eng._oracle_path = _record_path(seed, roll_index)
+        eng.reset(count=False, seed=seed, roll_index=roll_index)
+        eng.roll_stop()
+    # Offline runs never pass through the launcher, so TM_TRADER is empty and the match is
+    # flagged unnamed, which would force hit_target to False. A benchmark wants engine
+    # behaviour, not match eligibility, so clear it explicitly.
+    eng.s["unnamed"] = False
     rng = random.Random((seed * 2654435761) & 0xFFFFFFFF)
     pol = POLICIES[policy]
 

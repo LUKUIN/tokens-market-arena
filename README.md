@@ -565,7 +565,34 @@ python bench.py summary --dir src/data/reports        # summarise existing summa
 
 `run` advances ticks in-process (no HTTP, no wall-clock wait) and writes one JSON summary per match.
 `summary` prints mean, median, stdev, P10/P90, worst drawdown, target hits, settlement errors and
-audit-pass counts. The built-in policies (`noop`, `probe`) are headless baselines, not model results.
+audit-pass counts.
+
+- Built-in policies:
+  - `noop` (never trade) — settlement and ledger baseline
+  - `probe` (open/close one random order every 24 ticks) — produces paths with positions and costs
+  - `oracle` (perfect foresight) — replays the match once to record the price path, then trades on
+    the direction of the next 24 ticks. It is a **mechanical upper bound, not an attainable target**:
+    it answers whether the 2,000,000 goal is a model-skill problem or a rule-set limit
+- `TM_ORACLE_ACC=0.6` injects an error rate into `oracle` (1.0 = perfect, 0.5 = pure random), which
+  gives you a "direction accuracy -> goal rate" curve instead of a single astronomical number
+
+Measured with seeds 1-5 (`index = gap + liq x 5`):
+
+| Regime | Accuracy | Goal | Median P&L | Best | Worst |
+|---|---|---|---|---|---|
+| extreme x normal (9) | 50% | 0/5 | -99.8% | -99.2% | -103.6% |
+| extreme x normal (9) | 60% | 0/5 | -100.4% | +64.8% | -113.7% |
+| extreme x normal (9) | 70% | 1/5 | -100.4% | +7604.7% | -318.1% |
+| extreme x normal (9) | 100% | 5/5 | +1,063,078% | +6,834,750% | +585,388% |
+| medium x blackhole (22) | 50% | 0/5 | -72.9% | -53.5% | -111.3% |
+| medium x blackhole (22) | 60% | 1/5 | -53.0% | +161.4% | -119.7% |
+| medium x blackhole (22) | 70% | 2/5 | +33.5% | +334.4% | -119.7% |
+| medium x blackhole (22) | 100% | 5/5 | +4,767% | +7,834% | +1,970% |
+
+How to read it: 50% accuracy (pure random) loses every time, because spread, slippage, fees and
+swap make the game negative-sum; reaching 2,000,000 (+100%) takes roughly 60%-70% direction
+accuracy; perfect foresight produces astronomical numbers, which means the goal is nowhere near
+the mechanical ceiling — the real constraint is judgement, not the rules.
 
 ## Known limits
 

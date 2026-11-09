@@ -307,7 +307,7 @@ def _idle_rule_text():
             "activity'. Read-only calls (/state, /prices, /rules) do not count, so "
             "slow thinking is never cut short. TM_IDLE_ABORT tunes it, 0 disables"
             % ("/".join(IDLE_ACTION_LABELS), IDLE_ABORT_MINUTES))
-ENGINE_VERSION = "1.2.17"  # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.18"  # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
