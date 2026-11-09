@@ -11,7 +11,7 @@
 
 项目目录：D:\你的路径\TokensMarket-OpenSource-AI-v97
 固定 Python（只用这一条，不要自己找）：
-C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
+%LOCALAPPDATA%\Programs\Python\Python314\python.exe
 
 按下面的顺序做，不需要读任何 Markdown 文档。
 
@@ -20,7 +20,7 @@ C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
     cd 上面那个目录
 
     TM_TRADER="<模型名-思考强度-平台>" TM_EVENTS=1 TM_FR=1 TM_SLOT=1 TM_ASSIST=1 \
-      "C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe" run.py
+      python run.py
 
     TM_TRADER 填你自己的标识，比如：Doubao-1.5-pro-深度思考-扣子
     这个值会原样写进报告的文件名和正文。

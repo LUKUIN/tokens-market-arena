@@ -37,10 +37,11 @@
 
 ### 给 Agent / 脚本（常态）
 
-**运行时要求 Python 3.14.7**——`.pyc` 与观众席控件都按 3.14 编译。本机固定在这条路径：
+**运行时要求 Python 3.14**——`.pyc` 与观众席控件都按 3.14 编译。**安装位置不限**：
+`run.py` 只校验版本号，不校验路径。本机通常在这条路径：
 
 ```
-C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
+%LOCALAPPDATA%\Programs\Python\Python314\python.exe
 ```
 
 > **换一台机器不必放在同样的位置。** 只要是 3.14，把下面命令里的路径换成你自己的，或者直接用 `py -3.14`——`run.py` 只校验版本号，不校验安装路径。
@@ -61,7 +62,7 @@ C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
 cd <项目目录>
 
 TM_TRADER="Doubao-1.5-pro-深度思考-扣子" TM_EVENTS=1 TM_FR=1 TM_SLOT=1 TM_ASSIST=1 \
-  nohup "C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe" run.py > run.log 2>&1 &
+  nohup python run.py > run.log 2>&1 &     # 用 PATH 里的 3.14；没有就换成你的全路径
 
 for i in $(seq 1 30); do
   curl -sf http://127.0.0.1:8734/health >/dev/null 2>&1 && break
@@ -73,7 +74,7 @@ Windows `cmd`：
 
 ```bat
 cd /d <项目目录>
-start "" /b "C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe" run.py
+start "" /b python run.py      rem 用 PATH 里的 3.14；没有就换成你的全路径
 ```
 
 固定的 `sleep 6 && curl` 会假失败：启动需要 3~8 秒，慢机器还要更久。
@@ -127,10 +128,10 @@ python run.py --headless          # 等价于 run.py server --headless
 | `TM_ASSIST` | `1` 开启【外部的怜悯】：参赛者可向观众席求助，整局 3 次；开局前开启免费，局内开启扣 500,000 现金；未设置时按 `1` 处理 |
 | `TM_SLOT` | `1` 开启【老虎机】：整局 **3 次**，`1~200000` 且不超当前权益，80% 空 / 15% 5 倍 / 5% 10 倍；未设置时按 `1` 处理 |
 | `TM_PORT` | 服务端口，默认 `8734` |
-| `TM_IDLE_ABORT` | 无活动自动收尾：定档后连续多少分钟没有任何写操作就结算，默认 `12`，`0` 关闭 |
+| `TM_IDLE_ABORT` | 无活动自动收尾：定档后连续多少分钟没有任何**改变对局状态的动作**就结算。默认 `0`（关闭）；`开一局.bat` 会设成 `12`，`AI-Start.bat` 保持 `0` |
 | `TM_SIGN_KEY` | 存档 HMAC 密钥，不设则用 dev 占位值 |
 
-要求：**Python 3.14.7**（本机固定在 `C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe`；换机器只要是 3.14，装在哪里都行）、Windows（观众席依赖 Win32 图标），无第三方依赖。
+要求：**Python 3.14**（安装位置不限，`run.py` 只校验版本号）、Windows（观众席依赖 Win32 图标），无第三方依赖。
 不要改用 3.10~3.13：`.pyc` 的 magic number 与 tkinter 控件都按 3.14 编译，换版本必然起不来；`.github/workflows/ci.yml` 里的版本号是 CI 测试矩阵，不是运行要求。
 
 ---
@@ -170,9 +171,11 @@ AI 每发一次求助（`POST /assist/ask`），屏幕正中会弹一个**系统
 4. 模型开始交易：`/state` 看局面 → `/open` `/close` 下单 → `/fastforward` 推进时间；
 5. 45 分钟到（**这一刻才判定是否达成目标**）、爆仓、或 `/quit`，结算并生成报告；
    「达成目标」本身**不会**提前结束对局——想提早收工，自己发 `/quit`；
-6. **无活动会自动收尾**：定档后连续 12 分钟没有任何写操作（开平仓、借贷、快进、草稿纸、定档、求助），
-   本局自动结算，报告结束原因写「无参赛者活动」。这条是为误启准备的——AI 版没有操作界面，
-   人类双击启动后如果不接 Agent，本来会白白空转 45 分钟。`TM_IDLE_ABORT` 可调，`0` 关闭。
+6. **无活动会自动收尾**（仅人类双击入口默认开启）：定档后连续 `TM_IDLE_ABORT` 分钟没有任何
+   **改变对局状态的动作**（开平仓、借贷、快进、草稿纸、定档、求助、改参赛者名称），本局自动结算，
+   报告结束原因写「无参赛者活动」。只读观察（`/state`、`/prices`、`/rules`）**不计入**，
+   慢模型观望与推理不会被提前结算。默认 `0`（关闭），`开一局.bat` 设 `12`，`AI-Start.bat` 保持 `0`；
+   计时按 tick 推进，与 `bench.py` 的离线基线同语义。
 7. `/quit` 后约 3 秒服务与观众席自动退出。**退出前会自动收尾**：删掉本局临时文件
    （`session.json`、草稿纸、`_agent` 残留），只保留 `reports/` 下的历史战报，
    并收掉仍占着 8734 / 8735 的残留进程——下一局不需要手动清理。

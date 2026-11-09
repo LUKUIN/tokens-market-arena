@@ -1,7 +1,7 @@
 @echo off
 chcp 936 >nul
 cd /d "%~dp0"
-title Tokens 交易市场 · AI 版 · 观众席
+if defined TM_NO_CONFIRM (title Tokens 交易市场 · AI 版 · 无人值守) else (title Tokens 交易市场 · AI 版 · 观众席)
 setlocal
 
 rem ==================================================================
@@ -14,7 +14,7 @@ set "PYARGS="
 
 rem ---------- 按顺序找 Python 3.14 ----------
 rem 1 本机固定路径（存在就用，最快）
-set "PY_PINNED=C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe"
+set "PY_PINNED=%LOCALAPPDATA%\Programs\Python\Python314\python.exe"
 if exist "%PY_PINNED%" (
     set "PY=%PY_PINNED%"
     goto :py_ready
@@ -80,6 +80,10 @@ rem   - 人类双击（有控制台）：5 秒内不按 Y 就清理退出，不会空转 45 分钟。
 rem   - 脚本 / AI 调用（无控制台 stdin）：choice 返回 255，直接启动对局。
 rem 这样既拦住误点，也不会误伤真正要比赛的 Agent。
 rem ==================================================================
+rem v1.2.13：无人值守入口（AI-Start.bat）设 TM_NO_CONFIRM=1 时跳过确认。
+rem 启动逻辑全项目只有这一份，AI-Start.bat 只负责设变量后 call 本文件。
+if defined TM_NO_CONFIRM goto :direct_start
+
 echo.
 echo   5 秒内按 Y 启动对局（仅限已有 Agent 会连上来操作）；
 echo   不按则自动清理并退出。
@@ -93,7 +97,7 @@ rem run.py 自己封存源码、退出时还原；这里不要再额外起一份 guard.py。
 "%PY%" %PYARGS% run.py
 echo.
 echo   [已退出] 服务与观众席已关闭。
-pause
+if not defined TM_NO_CONFIRM pause
 goto :eof
 
 :abort_start

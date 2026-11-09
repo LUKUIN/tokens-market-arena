@@ -29,12 +29,6 @@ ENGINE = Engine(HOME)
 SERVER = None
 
 
-# 无活动自动收尾：只有这些写接口才算「参赛者在操作」。
-ACTION_PATHS = {"/open", "/close", "/close_all", "/loan", "/repay",
-                "/fastforward", "/slot", "/scratchpad", "/trader",
-                "/roll/stop", "/assist/ask"}
-
-
 class Handler(BaseHTTPRequestHandler):
     server_version = "TokensMarket/2.0"
 
@@ -111,11 +105,8 @@ class Handler(BaseHTTPRequestHandler):
                 pass
 
     def _route_post(self, path, b):
-        if path in ACTION_PATHS:
-            try:
-                ENGINE.note_action()
-            except Exception:
-                pass
+        # 「活动」由引擎方法自己记账（见 tm_engine._writing）：路由层不再维护
+        # 第二份路径清单，也就不存在「新增写接口忘了加进来」这个漏点。
         if path == "/open":
             return self._send(ENGINE.open_position(b.get("pair"), b.get("side"),
                                                    b.get("lots"), b.get("leverage")))

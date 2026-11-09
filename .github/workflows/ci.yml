@@ -13,9 +13,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 测试矩阵，不是运行要求。**运行时固定 Python 3.14.7**，见 AGENTS.md。
-        # 这里刻意选两个非 3.14 的版本，用来验证 run.py 的版本守卫确实会拦下来。
-        python: ["3.11", "3.13"]
+        # 测试矩阵，不是运行要求。**运行时固定 Python 3.14**，见 AGENTS.md。
+        # 3.11 / 3.13 用来验证 run.py 的版本守卫确实会拦下来；
+        # 3.14 是唯一支持版本，必须真正跑通全部测试（v1.2.13 起加入）。
+        python: ["3.11", "3.13", "3.14"]
 
     steps:
       - uses: actions/checkout@v4
@@ -24,18 +25,26 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
-      - name: 版本守卫（非 3.14 必须退出码 2）
+      - name: 版本守卫（非 3.14 拦下，3.14 放行）
         shell: bash
         run: |
           set +e
           python run.py state > /dev/null 2>&1
           rc=$?
           echo "guard exit code: $rc"
-          if [ "$rc" -ne 2 ]; then
-            echo "::error::版本守卫失效：期望退出码 2，实际 $rc"
-            exit 1
+          if [ "${{ matrix.python }}" = "3.14" ]; then
+            if [ "$rc" -eq 2 ]; then
+              echo "::error::唯一支持的运行时被自己的版本守卫拦下了"
+              exit 1
+            fi
+            echo "版本守卫放行 3.14（rc=$rc）"
+          else
+            if [ "$rc" -ne 2 ]; then
+              echo "::error::版本守卫失效：期望退出码 2，实际 $rc"
+              exit 1
+            fi
+            echo "版本守卫 OK：非 3.14 被拦下（退出码 2）"
           fi
-          echo "版本守卫 OK（退出码 2）"
 
       - name: 语法检查
         run: python -m py_compile run.py bench.py src/tm_engine.py src/tm_api.py src/tm_watch_ai.py src/scratchpad.py

@@ -12,7 +12,7 @@ set "PYARGS="
 
 rem ---------- 按顺序找 Python 3.14 ----------
 rem 1 本机固定路径（存在就用，最快）
-set "PY_PINNED=C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe"
+set "PY_PINNED=%LOCALAPPDATA%\Programs\Python\Python314\python.exe"
 if exist "%PY_PINNED%" (
     set "PY=%PY_PINNED%"
     goto :py_ready

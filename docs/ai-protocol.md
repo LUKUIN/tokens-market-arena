@@ -16,8 +16,7 @@
    照 `AGENTS.md` 的顺序启动，对局中不必再翻任何 Markdown。
 
 2. **必须用 Python 3.14、必须开着观众席启动**：
-   - Python 只用 **3.14.7**（本机固定在 `C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe`；
-     换机器只要是 3.14，装在哪里都行）。
+   - Python 只用 **3.14**（安装位置不限，`run.py` 只校验版本号，不校验路径）。
      `run.py` 启动时自己校验，版本不对直接退出（码 2）并给出提示。
      不要用 3.10~3.13 或 `python3`；GUI 控件与 `.pyc` 都按 3.14 编译。
      下文所有命令里的 `python` 指你自己的那条 3.14 路径（本机即上面这条）。

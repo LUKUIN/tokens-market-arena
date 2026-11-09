@@ -7,6 +7,7 @@
 资金单位：Tokens    手数：1 手 = 1000 单位
 """
 
+import functools
 import hashlib
 import hmac
 from html import escape as _html_escape
@@ -246,10 +247,31 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-# 无活动自动收尾：定档后连续 N 分钟没有任何写操作就结算，避免人类误启后空转 45 分钟。
-# 0 = 关闭。默认 12 分钟——正常 Agent 开局几秒内就会读规则或下单。
-IDLE_ABORT_MINUTES = int(os.environ.get("TM_IDLE_ABORT") or 12)
-ENGINE_VERSION = "1.2.12"  # 发布版本号：报告页脚与文档口径以此为准
+# 无活动自动收尾：定档后连续 N 分钟没有任何「改变对局状态的动作」就结算，
+# 避免人类误启后空转 45 分钟。
+# 默认 0 = 关闭：评测与开发路径不该被无活动计时影响可比性；
+# 只有人类双击入口（开一局.bat）显式设 TM_IDLE_ABORT=12。
+# 判定用 tick 数而非墙钟 —— 经 HTTP 参赛的 Agent 与 bench.py 的无头基线
+# 因此是同一语义：同一套规则，同一局有效时长。
+IDLE_ABORT_MINUTES = int(os.environ.get("TM_IDLE_ABORT") or 0)
+IDLE_ABORT_TICKS = (IDLE_ABORT_MINUTES * 60) // TICK_SECONDS
+
+# 「活动」的口径：只有改变对局状态的动作才算。只读接口不计入，
+# 慢模型观察、推理、等待都不会被提前结算。
+IDLE_ACTION_LABELS = ("开平仓", "借贷", "快进", "草稿纸", "定档", "求助", "参赛者名称")
+
+
+def _idle_rule_text():
+    """/rules 里的「无活动自动收尾」条目 —— 与判定逻辑同源，不另维护一份清单。"""
+    if IDLE_ABORT_TICKS <= 0:
+        return "已关闭（TM_IDLE_ABORT=0）：不会因无操作提前结算"
+    return ("定档后连续 %d 分钟没有任何改变对局状态的动作（%s）即自动结算，"
+            "报告结束原因为「无参赛者活动」；只读观察（/state、/prices、/rules）不计入，"
+            "慢思考等待不会被提前结算；TM_IDLE_ABORT 可调，0 = 关闭"
+            % (IDLE_ABORT_MINUTES, "、".join(IDLE_ACTION_LABELS)))
+
+
+ENGINE_VERSION = "1.2.13"  # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -377,6 +399,7 @@ def _new_session(seed=None, apply_rng=True):
         "seed": seed,
         "tick": 0,
         "last_action_at": time.time(),
+        "last_action_tick": 0,
         "balance": STARTER_CASH,
         "genesis": STARTER_CASH,
         "target": TARGET_EQUITY,
@@ -460,6 +483,32 @@ def _mod_label(key, val):
            "swap_mult": "利息×%.1f", "loan_pool_mult": "贷款池×%.2f",
            "gap_mult": "跳空×%.1f"}.get(key)
     return (tpl % val) if tpl else key
+
+
+def _writing(fn):
+    """把「改变对局状态的动作」记为一次活动，供无活动自动收尾判定。
+
+    只在方法没有返回 ok=False 时记账 —— 参数错误的失败请求不会续命。
+    过去埋点在 HTTP 路由层（ACTION_PATHS + note_action），后果是：
+    直调引擎的离线基线不受约束、漏加路由就会误杀参赛者、文档与代码
+    各维护一份清单。现在判定跟着方法走，路由层不再有第二份真相。
+    """
+    @functools.wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        # 标记「正在写」：写方法内部可能推进多个 tick（/fastforward 一次能
+        # 快进整局额度），这些中间 tick 不能被无活动判定误杀。
+        self._writing_depth = getattr(self, "_writing_depth", 0) + 1
+        try:
+            r = fn(self, *args, **kwargs)
+        finally:
+            self._writing_depth = getattr(self, "_writing_depth", 1) - 1
+        try:
+            if not (isinstance(r, dict) and r.get("ok") is False):
+                self._mark_action()
+        except Exception:
+            pass
+        return r
+    return wrapper
 
 
 class Engine:
@@ -642,6 +691,7 @@ class Engine:
         phase = float(self.s.get("roll_phase") or 0.0)
         return int(t / ROLL_STEP + phase) % ROLL_COMBOS
 
+    @_writing
     def start_roll(self):
         """只启动盲盒倒计时，不解除暂停、不重置会话计时。
 
@@ -666,6 +716,7 @@ class Engine:
         left = ROLL_SECONDS - (time.time() - start)
         return {"roll_left": max(0.0, round(left, 1)), "rolled": False}
 
+    @_writing
     def roll_stop(self):
         """定格难度。已定格时返回现有结果。超时也会自动走到这里。"""
         with LOCK:
@@ -689,7 +740,7 @@ class Engine:
                 st = self.s["liquidity"].setdefault(_sym, {"L": base, "shock_until": 0})
                 st["L"] = base
                 st["shock_until"] = 0
-            self.s["last_action_at"] = time.time()
+            self._mark_action()
             self._event("【难度】黑天鹅 %s | 流动性 %s" % (
                 GAP_LEVELS[gap_i][0], LIQ_LEVELS[liq_i][0]), "ok")
             # 定档 = 正式开局：计时基准从此刻起算，盲盒那 30 秒不计入 45 分钟
@@ -723,7 +774,16 @@ class Engine:
             json.dump(self.s, fh, ensure_ascii=False)
             fh.flush()
             os.fsync(fh.fileno())
-        os.replace(tmp, self.path)
+        # Windows 上存档可能被索引器/杀软短暂占用，replace 偶发 WinError 5。
+        # 账本写入不能因为一次瞬时占用就中断，重试几次即可。
+        for _attempt in range(5):
+            try:
+                os.replace(tmp, self.path)
+                break
+            except PermissionError:
+                if _attempt == 4:
+                    raise
+                time.sleep(0.05)
         self._seal_touch()
 
     def _event(self, text, kind="info"):
@@ -1233,13 +1293,19 @@ class Engine:
         self._event("【爆仓】账户资金 %.0f Tokens（本轮亏损 %.0f，%d 笔被强平）" % (
             self.s["balance"], loss, n), "blowup")
 
-    def note_action(self):
-        """记录一次「参赛者有动作」。所有写接口与难度叫停都要调用。
+    def _mark_action(self):
+        """记录一次「改变对局状态的动作」，只用于无活动自动收尾判定。
 
-        只用于无活动自动收尾的判定；不改变任何账目或行情。
+        tick 与墙钟都记：判定只认 tick（与 bench.py 的离线推进同语义），
+        墙钟保留在 /state 里供人查看。不改变任何账目或行情。
         """
+        self.s["last_action_at"] = time.time()
+        self.s["last_action_tick"] = int(self.s.get("tick") or 0)
+
+    def note_action(self):
+        """对外兼容入口：手动标记一次动作（HTTP 路由层已不再调用）。"""
         with LOCK:
-            self.s["last_action_at"] = time.time()
+            self._mark_action()
 
     def tick(self, manual=False):
         with LOCK:
@@ -1276,9 +1342,9 @@ class Engine:
                 self.s["last_notice_mark"] = mark
                 remain = max(0, int(SESSION_MINUTES * 60 - el))
                 self._event("时间提醒：已运行 %d 分钟，剩余 %d 分钟" % (int(el // 60), int(remain // 60)), "info")
-            if IDLE_ABORT_MINUTES > 0:
-                _idle = time.time() - float(self.s.get("last_action_at") or 0)
-                if _idle >= IDLE_ABORT_MINUTES * 60:
+            if IDLE_ABORT_TICKS > 0 and not getattr(self, "_writing_depth", 0):
+                _idle = int(self.s.get("tick") or 0) - int(self.s.get("last_action_tick") or 0)
+                if _idle >= IDLE_ABORT_TICKS:
                     self._end_session("无参赛者活动（%d 分钟无操作）" % IDLE_ABORT_MINUTES)
                     return self.state()
             if el > SESSION_MINUTES * 60:
@@ -1323,6 +1389,7 @@ class Engine:
             if self.s["trader"] == "访客":
                 self._save()
 
+    @_writing
     def set_trader(self, name):
         with LOCK:
             raw = (name or "").strip()
@@ -1337,6 +1404,7 @@ class Engine:
             return {"ok": True, "trader": self.s["trader"]}
 
     # ---------------- 贷款 ----------------
+    @_writing
     def pause(self):
         """暂停本局：只在本局正式开始之前有效。
 
@@ -1355,6 +1423,7 @@ class Engine:
             self._save()
             return {"ok": True, "state": self._state_light()}
 
+    @_writing
     def begin(self):
         """正式开始：解除暂停，并把计时基准设成此刻（45 分钟从这一刻算）。
 
@@ -1411,6 +1480,7 @@ class Engine:
                     "price": self.ASSIST_PRICE,
                     "balance": round(self.s["balance"], 2)}
 
+    @_writing
     def assist_enable(self):
         """开局后再开通，代价 500,000 现金。"""
         with LOCK:
@@ -1437,6 +1507,7 @@ class Engine:
             self._assist_push("system", "场外援助已开启（%s）" % why)
             return {"ok": True, "already": False}
 
+    @_writing
     def assist_ask(self, text):
         """参赛者向观众席求助，整局 3 次。"""
         with LOCK:
@@ -1481,6 +1552,7 @@ class Engine:
                 return x
         return None
 
+    @_writing
     def assist_reply(self, ticket, text):
         """观众席回复某次求助。"""
         with LOCK:
@@ -1494,6 +1566,7 @@ class Engine:
             self._assist_push("human", t[:2000], ticket=ticket, kind="reply")
             return {"ok": True, "ticket": ticket}
 
+    @_writing
     def assist_reject(self, ticket):
         """观众席驳回某次求助。"""
         with LOCK:
@@ -1504,6 +1577,7 @@ class Engine:
             self._assist_push("human", "（驳回）", ticket=ticket, kind="reject")
             return {"ok": True, "ticket": ticket}
 
+    @_writing
     def scratch_append(self, text):
         """草稿纸：记录决策思路与对策。可选，用不用由玩家决定。"""
         with LOCK:
@@ -1548,6 +1622,7 @@ class Engine:
             pass
         return out
 
+    @_writing
     def scratch_clear(self):
         """清空草稿纸。对局中随时可用，不消耗任何资源、不影响成绩。"""
         with LOCK:
@@ -1582,6 +1657,7 @@ class Engine:
             "left3": int(remain // 180),
         }
 
+    @_writing
     def fast_forward(self, seconds=None):
         """快进一个档位：300 秒（5 分钟）或 180 秒（3 分钟）。
 
@@ -1651,6 +1727,7 @@ class Engine:
             "slot_win_range": [SLOT_WIN_LO * 100, SLOT_WIN_HI * 100],
         }
 
+    @_writing
     def set_special(self, name, on):
         """开局全局开关：优惠融资 / 老虎机。
 
@@ -1690,6 +1767,7 @@ class Engine:
             return {"ok": True, "changed": True, "fee": 0.0,
                     "special": self.special_state(), "state": self._state_light()}
 
+    @_writing
     def slot(self, amount):
         """老虎机：投入 1~200000 Tokens，最多 3 次。
 
@@ -1757,6 +1835,7 @@ class Engine:
                     "new_target": self.s["target"], "special": self.special_state(),
                     "state": self._state_light()}
 
+    @_writing
     def borrow(self, amount):
         with LOCK:
             if self.s.get("finished"):
@@ -1828,6 +1907,7 @@ class Engine:
                                    pct * 100, (FR_LO_BOUND if _fr else LOAN_BUMP_LO_DEFAULT) * 100),
                     "state": self._state_light()}
 
+    @_writing
     def repay(self, amount=None):
         with LOCK:
             if self.s.get("finished"):
@@ -1870,6 +1950,7 @@ class Engine:
         self._event("【贷款到期】强制清算：归还 %.0f Tokens，账户资金 %.0f" % (debt, self.s["balance"]), "loan")
 
     # ---------------- 交易 ----------------
+    @_writing
     def open_position(self, pair, side, lots, leverage):
         with LOCK:
             if self.s.get("finished"):
@@ -1955,6 +2036,7 @@ class Engine:
             self._save()
             return {"ok": True, "position": pos, "state": self._state_light()}
 
+    @_writing
     def close_position(self, pair, lots=None):
         with LOCK:
             if self.s.get("finished"):
@@ -1996,6 +2078,7 @@ class Engine:
             self._save()
             return {"ok": True, "closed": closed, "state": self._state_light()}
 
+    @_writing
     def close_all(self):
         with LOCK:
             if self.s.get("finished"):
@@ -2883,8 +2966,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             "贷款": "贷款池 %.0f Tokens（可能被「信贷紧缩 / 央行放水」临时缩放）；利率 %.2f%%/tick（%s）；每借一笔：总目标 = 原目标 + 该笔金额 × 随机比例（比例随累计借款额上升，首借 30 万约 4%%~8%%，一次借满约 35%%~66%%；按累计额做梯形积分，拆成十笔与一次借满等价；借完才定）" % (
                 LOAN_POOL, LOAN_RATE_PER_TICK * 100, "随借随还，到期强制清算"),
             "会话时长": "%d 分钟" % SESSION_MINUTES,
-            "无活动自动收尾": ("定档后连续 %d 分钟没有任何写操作（开平仓、借贷、快进、草稿纸、定档、求助）"
-                        "即自动结算，报告结束原因为「无参赛者活动」；环境变量 TM_IDLE_ABORT 可调，0 = 关闭" % IDLE_ABORT_MINUTES),
+            "无活动自动收尾": _idle_rule_text(),
             "tick 间隔": "%d 秒" % TICK_SECONDS,
             "接口": {
                 "GET /state": "当前局面：权益、持仓、报价、盘口深度、事件流、快进额度",

@@ -10,7 +10,7 @@
 人类版有完整交互 GUI，AI 版没有。
 
 运行时（唯一）：
-    C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe run.py
+    python run.py            # 用 PATH 里的 3.14；或写你的解释器全路径
 
 用法：
     python run.py                 开局 + 自动打开只读观众席（常态，Agent 就用这个）
@@ -51,10 +51,31 @@ except Exception:
 # 与其让参赛者去猜，不如在这里拦下并给出唯一正确的命令。
 # ---------------------------------------------------------------------------
 PY_REQUIRED = (3, 14)
-PY_PINNED = r"C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe"
+
+
+def _python_hint():
+    """给出「用哪个解释器重试」的完整命令，不写死用户名。
+
+    先看当前用户的常规安装位置，再退回 py 启动器。这台机器上没有
+    安装路径也不影响别处的 3.14 —— run.py 只校验版本号，不校验路径。
+    """
+    candidates = []
+    local = os.environ.get("LOCALAPPDATA") or ""
+    if local:
+        candidates.append(os.path.join(local, "Programs", "Python", "Python314", "python.exe"))
+    pf = os.environ.get("ProgramFiles") or ("C:" + os.sep + "Program Files")
+    candidates.append(os.path.join(pf, "Python314", "python.exe"))
+    for path in candidates:
+        try:
+            if os.path.exists(path):
+                return '"%s" run.py' % path
+        except OSError:
+            pass
+    return "py -3.14 run.py"
+
 
 if sys.version_info[:2] != PY_REQUIRED:
-    _hint = PY_PINNED if os.path.exists(PY_PINNED) else "py -3.14"
+    _hint = _python_hint()
     print()
     print("  " + "=" * 62)
     print("  启动中止：Python 版本不对。")
@@ -63,7 +84,7 @@ if sys.version_info[:2] != PY_REQUIRED:
     print("  GUI 控件与 .pyc 都按 3.14 编译，换版本会直接报错。")
     print("  改成这条命令重试：")
     print()
-    print('    "%s" run.py' % _hint)
+    print('    %s' % _hint)
     print()
     print("  " + "=" * 62)
     print()

@@ -6,10 +6,11 @@
 
 ## 0. 用哪个 Python（硬要求）
 
-**Python 3.14.7**——观众席的 GUI 控件和 `.pyc` 都按 3.14 编译，其他版本起不来。本机的固定路径是：
+**Python 3.14**——观众席的 GUI 控件和 `.pyc` 都按 3.14 编译，其他版本起不来。
+**安装位置不限**：`run.py` 只校验版本号，不校验路径。本机通常在这条路径：
 
 ```
-C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe
+%LOCALAPPDATA%\Programs\Python\Python314\python.exe
 ```
 
 **在别的机器上，只要是 3.14，装在哪里都行**：把命令里的路径换成你自己的，或者直接用 `py -3.14`；
@@ -49,7 +50,7 @@ cd <项目目录>
 
 TM_TRADER="<模型名-思考强度-平台>" \
 TM_EVENTS=1 TM_FR=1 TM_SLOT=1 TM_ASSIST=1 \
-  nohup "C:/Users/User/AppData/Local/Programs/Python/Python314/python.exe" run.py > run.log 2>&1 &
+  nohup python run.py > run.log 2>&1 &     # 用 PATH 里的 3.14；没有就换成你的全路径
 
 # 就绪检测：启动需要 3~8 秒，固定 sleep 会假失败
 for i in $(seq 1 30); do
@@ -66,7 +67,7 @@ done
 | 入口 | 行为 |
 |---|---|
 | `python run.py` | 标准方式，Agent 首选 |
-| `AI-Start.bat` | 无人值守，直接跑 `run.py`；**脚本 / Agent 用这个最稳** |
+| `AI-Start.bat` | 无人值守：设 `TM_NO_CONFIRM=1` 与 `TM_IDLE_ABORT=0` 后 `call 开一局.bat`，启动逻辑只有一份；**脚本 / Agent 用这个最稳** |
 | `开一局.bat` | 人类双击入口。5 秒内不按 `Y` 就清理退出；**在终端里 `cmd /c 开一局.bat` 也会被当成人类**，5 秒后被杀 |
 
 - 不要自己另起 `python run.py spectator` 补窗口——正常启动就会有
@@ -81,7 +82,7 @@ done
 | `TM_SLOT` | `1` 开启【老虎机】：整局 3 次 |
 | `TM_ASSIST` | `1` 开启【外部的怜悯】：整局可向观众席求助 3 次 |
 | `TM_PORT` | 服务端口，默认 `8734` |
-| `TM_IDLE_ABORT` | 定档后连续多少分钟没有写操作就自动结算，默认 `12`，`0` 关闭 |
+| `TM_IDLE_ABORT` | 定档后连续多少分钟没有任何改变对局状态的动作就自动结算。默认 `0`（关闭）；`开一局.bat` 设 `12`，`AI-Start.bat` 保持 `0` |
 
 ## 3. 定档
 

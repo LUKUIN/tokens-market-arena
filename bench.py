@@ -113,6 +113,11 @@ def run_one(seed, policy, outdir):
 
 
 def cmd_run(args):
+    # 离线评测默认不做「无活动自动收尾」：这里的 tick 在几百毫秒内推完一整局，
+    # 若按 tick 计数执行 idle 判定，基线会被截断在 12 分钟处，与真实 HTTP 对局
+    # 不可比。需要验证 idle 时显式 --idle-abort N。
+    T.IDLE_ABORT_MINUTES = max(0, int(args.idle_abort))
+    T.IDLE_ABORT_TICKS = (T.IDLE_ABORT_MINUTES * 60) // T.TICK_SECONDS
     outdir = args.out or tempfile.mkdtemp(prefix="tmbench_")
     os.makedirs(outdir, exist_ok=True)
     seeds = _parse_seeds(args.seeds)
@@ -192,6 +197,8 @@ def main(argv=None):
 
     p_run = sub.add_parser("run", help="按 seed 列表跑若干局")
     p_run.add_argument("--seeds", required=True, help="如 1,2,3 或 1-5")
+    p_run.add_argument("--idle-abort", type=int, default=0,
+                       help="无活动自动收尾分钟数；默认 0 关闭，评测时保持关闭以保证可比性")
     p_run.add_argument("--policy", default="noop", choices=sorted(POLICIES),
                        help="无头基线策略（默认 noop）")
     p_run.add_argument("--out", default="", help="输出目录，默认临时目录")

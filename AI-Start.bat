@@ -1,92 +1,17 @@
 @echo off
 chcp 936 >nul
 cd /d "%~dp0"
-title Tokens 交易市场 · AI 版 · 无人值守启动
+rem ==================================================================
+rem 无人值守入口（供脚本 / Agent 调用）。
+rem v1.2.13：不再复制一份查找与启动逻辑，直接委托给 开一局.bat ——
+rem   · TM_NO_CONFIRM=1  跳过 5 秒误点确认
+rem   · TM_IDLE_ABORT=0  不启用无活动自动收尾
+rem     （Agent 可能长时间观察/推理，那不是「没人操作」）
+rem 这样「启动方式」全项目只有一份真相。
+rem ==================================================================
 setlocal
+set "TM_NO_CONFIRM=1"
+if not defined TM_IDLE_ABORT set "TM_IDLE_ABORT=0"
 
-rem ==================================================================
-rem 运行时只接受 Python 3.14：GUI 控件与 .pyc 都按 3.14 编译。
-rem 下面按顺序查找，任一命中即可：
-rem   1) 本机固定安装路径   2) py 启动器的 -3.14   3) PATH 里的 python（先校验版本）
-rem ==================================================================
-set "PY="
-set "PYARGS="
-
-rem ---------- 按顺序找 Python 3.14 ----------
-rem 1 本机固定路径（存在就用，最快）
-set "PY_PINNED=C:\Users\User\AppData\Local\Programs\Python\Python314\python.exe"
-if exist "%PY_PINNED%" (
-    set "PY=%PY_PINNED%"
-    goto :py_ready
-)
-rem 2 py 启动器：-3.14 已经把版本限定住
-py -3.14 -c "import sys" >nul 2>&1
-if not errorlevel 1 (
-    set "PY=py"
-    set "PYARGS=-3.14"
-    goto :py_ready
-)
-rem 3 PATH 里的 python，且必须是 3.14
-python -c "import sys; sys.exit(0 if sys.version_info[:2]==(3,14) else 1)" >nul 2>&1
-if not errorlevel 1 (
-    set "PY=python"
-    goto :py_ready
-)
-
-echo.
-echo   [错误] 没找到 Python 3.14。
-echo     已依次查找：
-echo       %PY_PINNED%
-echo       py -3.14
-echo       PATH 里的 python
-echo   请先安装 Python 3.14.7；其他版本会因 .pyc 与界面控件不兼容而起不来。
-echo.
-pause
-exit /b 1
-
-:py_ready
-
-rem ------------------------------------------------------------------
-rem 本版不等待任何键盘输入。所有参数走环境变量，未设置的用下面默认值。
-rem ------------------------------------------------------------------
-if not defined TM_TRADER set "TM_TRADER=访客"
-if not defined TM_EVENTS set "TM_EVENTS=1"
-if not defined TM_FR     set "TM_FR=1"
-if not defined TM_SLOT   set "TM_SLOT=1"
-if not defined TM_ASSIST set "TM_ASSIST=1"
-if not defined TM_PORT   set "TM_PORT=8734"
-if not defined TM_IDLE_ABORT set "TM_IDLE_ABORT=12"
-set "IDLE_WARN=%TM_IDLE_ABORT%"
-if "%IDLE_WARN%"=="0" set "IDLE_WARN=（已关闭）"
-
-echo.
-echo   ==========================================
-echo      Tokens 交易市场 · AI 版（无人值守启动）
-echo   ==========================================
-echo   接口地址     http://127.0.0.1:%TM_PORT%
-echo   参赛模型     %TM_TRADER%
-echo   随机事件     %TM_EVENTS%
-echo   优惠融资 %TM_FR%    老虎机 %TM_SLOT%    外部的怜悯 %TM_ASSIST%
-echo   本入口直接启动，不做误点确认（供脚本 / Agent 调用）。
-echo   要让 AI 参赛，请在本目录运行：python run.py
-echo.
-echo   !! 本版是 AI 参赛版：界面只读，没有下单 / 平仓 / 快进按钮。
-echo   !! 人类要玩请用 TokensMarket-OpenSource-Human。
-echo   !! 用 python run.py 启动时，定档后 %IDLE_WARN% 分钟无操作会自动结算（TM_IDLE_ABORT）。
-
-rem ==================================================================
-rem v1.2.12：本入口增加「误点保护」，但保留真正的启动能力。
-rem   人类请用 开一局.bat —— 只有那个入口有误点保护。
-rem 这样既拦住误点，也不会误伤真正要比赛的 Agent。
-rem ==================================================================
-echo.
-
-:direct_start
-
-rem run.py 自己封存源码、退出时还原；这里不要再额外起一份 guard.py。
-"%PY%" %PYARGS% run.py
-echo.
-echo   [已退出] 服务与观众席已关闭。
-pause
+call "%~dp0开一局.bat" %*
 goto :eof
-
