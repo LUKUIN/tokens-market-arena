@@ -62,8 +62,9 @@ for i in $(seq 1 30); do
 done
 ```
 
-**The spectator is mandatory, not optional.** Since v1.0.11, `run.py`, `run.py server` and
-double-clicking `Start Match.bat` behave identically: all three open the read-only spectator.
+**The spectator is mandatory, not optional.** `run.py` and `run.py server` both open the read-only
+spectator. Double-clicking `Start Match.bat` adds a 5-second mis-click guard (press `Y` to start);
+a console-less call skips the guard and starts directly.
 A human must be able to watch equity, holdings and the activity feed live.
 
 - Do not start `run.py spectator` yourself to "add" a window — a normal start already has one
