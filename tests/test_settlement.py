@@ -51,6 +51,27 @@ class TestEndSessionSettlement(EngineCase):
         self.assertTrue(out["settled"], "settled 必须为 True")
         self.assertEqual(out["warnings"], [], "不应产生告警")
 
+    def test_time_up_path_settles_even_during_halt(self):
+        """跑满 45 分钟且交易所维护期未过时，tick() 也必须把持仓清干净。
+
+        这是双结算路径合并后的回归用例：旧实现在 tick() 里直接调
+        close_position()，维护期会被拒绝、返回值被丢弃，导致
+        「报告说结算完成、账上还挂着持仓」的伪成功。
+        """
+        eng = self.make()
+        eng.open_position("FROST/CORE", "LONG", 5, 20)
+        eng.s["halt_close_until"] = eng.s["tick"] + 999
+        # 把开局时间往前拨，让下一次 tick 判定为「时间到」
+        eng.s["created_at"] -= T.SESSION_MINUTES * 60 + 1
+
+        eng.tick()
+
+        self.assertTrue(eng.s["finished"], "tick 必须把本局结束掉")
+        self.assertEqual(eng.s["positions"], [], "维护期不能阻止收尾清仓")
+        settle = eng.s.get("last_settle") or {}
+        self.assertTrue(settle.get("settled"), "settled 必须为 True")
+        self.assertEqual(settle.get("warnings") or [], [])
+
     def test_settlement_not_blocked_by_halt_orders(self):
         """熔断停市（halt_until）期间结束本局，同样必须清算。"""
         eng = self.make()

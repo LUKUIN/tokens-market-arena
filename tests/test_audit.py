@@ -156,5 +156,39 @@ class TestProtocolVersion(AuditCase):
         self.assertTrue(hasattr(T, "ENGINE_VERSION"))
 
 
+class TestScratchpadAndTrader(AuditCase):
+    def test_scratchpad_clear(self):
+        """POST /scratchpad {"clear": true} 必须真的清空。"""
+        eng = self.make()
+        eng.scratch_append("第一条")
+        eng.scratch_append("第二条")
+        self.assertEqual(len(eng.scratch_read()), 2)
+        out = eng.scratch_clear()
+        self.assertTrue(out["ok"])
+        self.assertEqual(eng.scratch_read(), [])
+
+    def test_trader_name_sanitized(self):
+        """参赛标识只保留白名单字符，HTML 标签会被剔除。"""
+        eng = self.make()
+        out = eng.set_trader('<img src=x onerror=alert(1)>测')
+        self.assertTrue(out["ok"])
+        self.assertNotIn("<", out["trader"])
+        self.assertNotIn(">", out["trader"])
+        self.assertIn("测", out["trader"])
+
+    def test_report_escapes_event_text(self):
+        """事件文本进报告前必须被转义，不能把 <script> 当标签渲染。"""
+        eng = self.make()
+        eng.set_trader("<b>x</b>")
+        eng._event("<script>alert(1)</script>", "info")
+        out = eng._end_session("测试转义")
+        hp = out.get("report")
+        self.assertTrue(hp and os.path.isfile(hp), hp)
+        with open(hp, encoding="utf-8") as f:
+            doc = f.read()
+        self.assertNotIn("<script>alert(1)</script>", doc)
+        self.assertIn("&lt;script&gt;", doc)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

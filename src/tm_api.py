@@ -67,7 +67,12 @@ class Handler(BaseHTTPRequestHandler):
                                "protocol": PROTOCOL_VERSION,
                                "engine_version": ENGINE_VERSION})
         if path == "/scratchpad":
-            return self._send({"ok": True, "items": ENGINE.scratch_read()})
+            q = parse_qs(urlparse(self.path).query or "")
+            count_only = (q.get("count", ["0"])[0] or "0").strip().lower() in ("1", "true", "yes", "on")
+            items = ENGINE.scratch_read()
+            if count_only:
+                return self._send({"ok": True, "count": len(items)})
+            return self._send({"ok": True, "items": items})
         if path == "/assist/pending":
             return self._send(ENGINE.assist_pending())
         if path == "/assist/inbox":
@@ -130,6 +135,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/trader":
             return self._send(ENGINE.set_trader(b.get("name")))
         if path == "/scratchpad":
+            if b.get("clear") is True or str(b.get("clear", "")).strip().lower() in ("1", "true", "yes", "on"):
+                return self._send(ENGINE.scratch_clear())
             return self._send(ENGINE.scratch_append(b.get("text")))
         if path == "/assist/enable":
             return self._send(ENGINE.assist_enable())

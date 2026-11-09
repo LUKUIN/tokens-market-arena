@@ -201,7 +201,10 @@ curl -X POST http://127.0.0.1:8734/roll/stop
   "loan": {"balance":0, "limit":3000000, "borrowed":0, "interest":0},
   "total_borrowed": 0,
 
-  "active_mods": ["央行放水"],          // 当前生效的事件名
+  "active_mods": [                      // 当前生效的事件（对象列表，最多 6 条）
+    {"key": "loan_pool_mult", "name": "央行放水", "value": 1.35,
+     "label": "贷款池 ×1.35", "left_ticks": 42}
+  ],
   "loan_bump_range": [1.0, 100.0],      // 借款上浮区间（%）：未开优惠融资 [1,100]，已开 [0.01,100]；实际值还取决于累计借款额
   "special": {                          // 两个全局开关
     "fr": true, "fr_left": null,        // 优惠融资已开；次数上限已取消，该字段恒为 null
@@ -218,7 +221,7 @@ curl -X POST http://127.0.0.1:8734/roll/stop
   },
   "finished": false,
   "settlement": null,                   // 结算结果：{settled, warnings, reason}；未结算为 null
-  "audit": [],                          // 账本自检：空数组=现金/持仓/贷款/权益恒等式全部成立
+  "audit": [],                          // 账本自检：空数组=手续费/贷款/持仓三条恒等式全部成立
   "events": [ ... ]                     // 最近事件，含完整文案
 }
 ```

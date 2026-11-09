@@ -9,6 +9,7 @@
 
 import hashlib
 import hmac
+from html import escape as _html_escape
 import math
 import json
 import os
@@ -96,12 +97,25 @@ def _new_seed():
     return random.getrandbits(32)
 
 
-def _env_flag(name, default=False):
-    """开局开关：TM_FR / TM_SLOT。未设置视为关闭。"""
+def _env_flag(name, default=True):
+    """开局开关：TM_FR / TM_SLOT。未设置视为开启，与 AGENTS.md / README 一致。"""
     if name not in _SPECIAL_CACHE:
         v = (os.environ.get(name) or "").strip().lower()
         _SPECIAL_CACHE[name] = default if not v else v in ("1", "y", "yes", "on", "开", "是")
     return _SPECIAL_CACHE[name]
+
+
+def _sanitize_trader(name):
+    """参赛标识白名单：只保留中英文、数字、空格与 -_.()（）· 等安全字符。
+
+    /trader 的名字会原样写进报告文件名与事件流，必须在这里收口，
+    否则模型可以塞进 HTML 标签污染战报（报告渲染另有 html.escape 兜底）。
+    """
+    import re as _re
+    if not name:
+        return ""
+    s = _re.sub(r"[^\w\s\-_.()（）·]", "", str(name), flags=_re.UNICODE)
+    return s.strip()
 
 
 def _pick_news_rate():
@@ -232,7 +246,7 @@ GAP_CHANCE = 0.015
 GAP_MIN, GAP_MAX = 0.020, 0.120
 TICK_SECONDS = 5
 SESSION_MINUTES = 45
-ENGINE_VERSION = "1.2.9"   # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.10"  # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -1075,7 +1089,9 @@ class Engine:
         1. 累计手续费 == 成交流水里 fee 之和
         2. 贷款未还余额 == 借入 - 已还 + 累计利息
         3. 持仓方向合法、手数为正
-        4. 权益 == 现金 + 浮动盈亏 - 欠款
+
+        曾经的「4. 权益 == 现金 + 浮动盈亏 - 欠款」已移除：它与 equity()
+        用的是同一个公式，恒真，不构成独立校验。
 
         审计本身绝不打断对局：任何异常都收敛成一条 issue 返回。
         """
@@ -1108,14 +1124,6 @@ class Engine:
                     issues.append("第 %d 笔持仓手数非法：%r" % (i + 1, p.get("lots")))
         except Exception as exc:
             issues.append("持仓核对异常：%s" % exc)
-        try:
-            eq = self.equity()
-            debt = float((s.get("loan") or {}).get("balance") or 0.0)
-            expect_eq = float(s.get("balance") or 0.0) + self._total_upnl() - debt
-            if abs(eq - expect_eq) > 0.05:
-                issues.append("权益 %.2f 与 现金+浮盈-欠款 %.2f 不一致" % (eq, expect_eq))
-        except Exception as exc:
-            issues.append("权益核对异常：%s" % exc)
         return issues
 
     def _end_session(self, reason):
@@ -1256,22 +1264,11 @@ class Engine:
                 remain = max(0, int(SESSION_MINUTES * 60 - el))
                 self._event("时间提醒：已运行 %d 分钟，剩余 %d 分钟" % (int(el // 60), int(remain // 60)), "info")
             if el > SESSION_MINUTES * 60:
-                # 先全部平仓锁定权益，再结算贷款
-                for p in list(self.s["positions"]):
-                    self.close_position(p["pair"], p["lots"])
-                self._settle_loan()
-                self.s["finished"] = True
-                eq = self.equity()
-                if eq >= self.s["target"]:
-                    verdict = "达成目标" if self._qualified() else "达成目标但资格无效"
-                else:
-                    verdict = "未达成目标"
-                self._event("时间到：最终权益 %.2f Tokens（%s：目标 %.0f）" % (eq, verdict, self.s["target"]), "end")
-                self._save()
-                self._write_report("时间到", eq)
-                self._clear_running()         # 时间到同样是正常结算，别让下一局记成异常退出
-                # 结束即结束：时间到后同样不自动开新局，等玩家显式 POST /reset
-                purge_agent_dir(self.home)    # 保留原有清理：清掉本局 _agent 残留
+                # 时间到与 /quit、穿仓走同一条结算入口 _end_session：
+                # 强制清仓改用 _force_close_all（不受交易所维护 halt_close_until 拦截），
+                # 并统一写 last_settle / settled / warnings——
+                # 不再出现「报告说结算完成、账上还挂着持仓」的伪成功。
+                self._end_session("时间到")
                 return self.state()
             self._save()
             return self.state()
@@ -1310,10 +1307,13 @@ class Engine:
 
     def set_trader(self, name):
         with LOCK:
-            name = (name or "").strip()
-            if not name:
+            raw = (name or "").strip()
+            if not raw:
                 return {"ok": False, "error": "名字不能为空"}
-            self.s["trader"] = name[:60]
+            clean = _sanitize_trader(raw)
+            if not clean:
+                return {"ok": False, "error": "名字含非法字符；只允许中英文、数字、空格与 -_.()（）·"}
+            self.s["trader"] = clean[:60]
             self._event("操作者设置为：%s" % self.s["trader"], "info")
             self._save()
             return {"ok": True, "trader": self.s["trader"]}
@@ -1529,6 +1529,19 @@ class Engine:
         except Exception:
             pass
         return out
+
+    def scratch_clear(self):
+        """清空草稿纸。对局中随时可用，不消耗任何资源、不影响成绩。"""
+        with LOCK:
+            if self.s.get("finished"):
+                return {"ok": False, "error": "本局已结束"}
+            try:
+                os.remove(self._scratch_path())
+            except FileNotFoundError:
+                pass
+            except Exception as exc:
+                return {"ok": False, "error": "清空失败：%s" % exc}
+            return {"ok": True, "cleared": True}
 
     def ff_plan(self):
         """快进额度状态：剩余额度、可用档位、冷却、历史记录。"""
@@ -2300,8 +2313,10 @@ class Engine:
                 _k = e.get("kind") or "info"
                 ev_rows.append('<li class="ev-%s"><span class="tag">%s</span> '
                                '<span class="evt">t%s</span> %s</li>' % (
-                                   _k, _KIND_CN.get(_k, _k),
-                                   e.get("tick", "—"), e.get("text", "")))
+                                   _html_escape(str(_k), quote=False),
+                                   _html_escape(str(_KIND_CN.get(_k, _k)), quote=False),
+                                   _html_escape(str(e.get("tick", "—")), quote=False),
+                                   _html_escape(str(e.get("text", "")), quote=False)))
 
             # ---------- 借贷账目拆解 ----------
             _loan = self.s.get("loan") or {}
@@ -2463,7 +2478,7 @@ class Engine:
             }
             # 账本自检结论直接进报告正文：只在 /state 里有的告警没人看得到。
             _audit = self._audit_ledger()
-            body["auditline"] = ("账本自检：通过（手续费 / 贷款 / 持仓 / 权益四条恒等式全部成立）"
+            body["auditline"] = ("账本自检：通过（手续费 / 贷款 / 持仓三条恒等式全部成立）"
                                  if not _audit else
                                  "账本自检未通过：" + "；".join(_audit))
             body["auditcolor"] = "var(--up)" if not _audit else "var(--down)"
@@ -2592,7 +2607,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "session_id": self.s.get("session_id", ""),
                 "seed": self.s.get("seed"),
                 "trader": trader,
-                "mode": self.s.get("mode", ""),
+                "mode": "已开启随机事件" if self.s.get("events_on", True) else "理想情况",
                 "reason": reason,
                 "finished_at": time.time(),
                 "tick": int(self.s.get("tick", 0) or 0),
@@ -2872,6 +2887,15 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "GET /scratchpad": {},
                 "POST /scratchpad": {"text": "记一条", "clear": "传 true 则清空"},
                 "POST /begin": {},
+                "GET /health": "存活探针：tick / equity / finished / 协议与引擎版本",
+                "POST /reset": "开新的一局（清空本局存档并重新抽难度）",
+                "POST /pause": "暂停 / 继续（无参数，每调一次切换一次）",
+                "POST /trader": {"name": "参赛标识，≤60 字符；只保留中英文、数字、空格与 -_.()（）·"},
+                "POST /shutdown": "立即停止服务（观众席「结束相关进程」用），会先留一份异常退出快照",
+                "POST /assist/enable": "花 500,000 现金开通「外部的怜悯」（局内开通入口）",
+                "GET /assist/pending": "看当前待观众席回复的求助工单",
+                "POST /assist/reply": {"ticket": "工单号", "text": "回复内容（观众席侧调用）"},
+                "POST /assist/reject": {"ticket": "工单号（观众席侧调用）"},
             },
             "求助回执": ("观众席的回复不会出现在 /state 的事件流里，"
                         "必须 GET /assist/inbox 主动取，取走即标记已读；"
