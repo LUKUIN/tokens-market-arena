@@ -81,11 +81,24 @@ def _env_events():
 
 _SPECIAL_CACHE = {}
 _SEED_ENV = (os.environ.get("TM_SEED") or "").strip()
+# 评测/回放专用：显式锁定难度档位索引（0-24）。人类与正常参赛者都不该设。
+_ROLL_INDEX_ENV = (os.environ.get("TM_ROLL_INDEX") or "").strip()
 if _SEED_ENV:
     try:
         random.seed(int(_SEED_ENV))
     except Exception:
         pass
+
+
+def _roll_index_from_env():
+    """读 TM_ROLL_INDEX；非法或越界一律当作未设置，不要让评测参数把服务打挂。"""
+    if not _ROLL_INDEX_ENV:
+        return None
+    try:
+        v = int(_ROLL_INDEX_ENV)
+    except ValueError:
+        return None
+    return v if 0 <= v < ROLL_COMBOS else None
 
 
 def _new_seed():
@@ -282,7 +295,7 @@ def _idle_rule_text():
             % (IDLE_ABORT_MINUTES, "、".join(IDLE_ACTION_LABELS)))
 
 
-ENGINE_VERSION = "1.2.15"  # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.16"  # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -390,7 +403,7 @@ def purge_agent_dir(home):
     return removed
 
 
-def _new_session(seed=None, apply_rng=True):
+def _new_session(seed=None, apply_rng=True, roll_index=None):
     """构造一局新会话。
 
     seed 的来源优先级：显式参数 > TM_SEED > 随机生成。
@@ -403,6 +416,10 @@ def _new_session(seed=None, apply_rng=True):
     seed = _new_seed() if seed is None else int(seed)
     if apply_rng:
         random.seed(seed)
+    # 显式锁档优先于环境变量。这里不得调用 random ——
+    # 任何新增的随机调用都会让历史 seed 的行情整体错位。
+    if roll_index is None:
+        roll_index = _roll_index_from_env()
     return {
         "version": 2,
         "created_at": time.time(),
@@ -456,6 +473,8 @@ def _new_session(seed=None, apply_rng=True):
         "last_settle": None,   # 最近一次结算的结果（settled / warnings）
         "difficulty": None,          # {"gap": i, "liq": j} 定档后写入
         "roll_started_at": 0.0,      # 盲盒开始时刻（time.time()）
+        "roll_index": (int(roll_index) % ROLL_COMBOS
+                       if roll_index is not None else None),  # 显式锁档，见 TM_ROLL_INDEX
         "roll_phase": random.uniform(0, ROLL_COMBOS),   # 打散取模相位（见 _roll_index）
         "loan": {"balance": 0.0, "borrowed": 0.0, "repaid": 0.0, "interest": 0.0,
                  "loans": 0, "goal_bumps": []},
@@ -738,7 +757,10 @@ class Engine:
             if start <= 0:
                 self.s["roll_started_at"] = time.time()
                 start = self.s["roll_started_at"]
-            idx = self._roll_index()
+            # 锁档优先：报告里印出的档位索引可以原样喂回 TM_ROLL_INDEX。
+            # 否则档位由叫停时刻的墙钟决定（2.5 秒转一圈），同 seed 也复现不出来。
+            idx = self.s.get("roll_index")
+            idx = self._roll_index() if idx is None else int(idx) % ROLL_COMBOS
             gap_i = idx % len(GAP_LEVELS)
             liq_i = idx // len(GAP_LEVELS)
             self.s["difficulty"] = {"gap": gap_i, "liq": liq_i, "at": time.time(),
@@ -2599,10 +2621,13 @@ class Engine:
                 "settle_pos": ("已全部清算" if not _residual
                                else "残留 %d 笔（异常）" % _residual),
                 "verline": "Tokens 交易市场 · %s · 本报告由系统自动生成" % self._manifest_version(),
-                "seedline": "随机种子 %s · 复现方式：TM_SEED=%s 重开一局%s" % (
-                    self.s.get("seed") or "—", self.s.get("seed") or "—",
-                    "（注意：本局服务曾中途重启，seed 只能复现重启前的行情）"
-                    if self.s.get("rng_resumed") else ""),
+                "seedline": (lambda _r: (
+                    "随机种子 %s · 难度档位 索引 %s（%s × %s）· "
+                    "复现：TM_SEED=%s TM_ROLL_INDEX=%s 重开一局%s" % (
+                        self.s.get("seed") or "—", _r[0], _r[1], _r[2],
+                        self.s.get("seed") or "—", _r[0],
+                        "（注意：本局服务曾中途重启，seed 只能复现重启前的行情）"
+                        if self.s.get("rng_resumed") else "")))(self._roll_index_text()),
                 "winrate": "%.1f" % (m["win_rate"] * 100),
                 "best": fmt(m["best"]) if m["best"] is not None else "—",
                 "worst": fmt(m["worst"]) if m["worst"] is not None else "—",
@@ -2750,6 +2775,8 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "protocol_version": PROTOCOL_VERSION,
                 "session_id": self.s.get("session_id", ""),
                 "seed": self.s.get("seed"),
+                "roll_index": self._roll_index_text()[0],
+                "roll_index_locked": self.s.get("roll_index"),
                 "trader": trader,
                 "mode": "已开启随机事件" if self.s.get("events_on", True) else "理想情况",
                 "reason": reason,
@@ -2813,8 +2840,8 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 return {"ok": False, "error": "本局已结束，请用 /reset 开新局"}
             return self._end_session("主动结束")
 
-    def reset(self, count=True, seed=None):
-        """开新局。seed=None 时沿用 TM_SEED 或随机生成；显式传 seed 用于配对评测。"""
+    def reset(self, count=True, seed=None, roll_index=None):
+        """开新局。seed=None 时沿用 TM_SEED 或随机生成；显式传 seed / roll_index 用于配对评测。"""
         with LOCK:
             now = time.time()
             if count:
@@ -2825,7 +2852,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                             "state": self._state_light()}
             trader = self.s.get("trader", "访客")
             n = self.s.get("resets", 0) + (1 if count else 0)
-            self.s = _new_session(seed=seed)
+            self.s = _new_session(seed=seed, roll_index=roll_index)
             self.s["trader"] = trader
             self.s["resets"] = n
             self.s["last_reset_at"] = now
@@ -2844,6 +2871,17 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
         每次下单都回传一遍纯属浪费模型上下文。
         """
         return self.state(include_history=False, include_events=False, include_curve=False)
+
+    def _roll_index_text(self):
+        """报告用：本局实际落到的档位索引与两个维度名。未定档时返回占位。"""
+        d = self.s.get("difficulty") or {}
+        try:
+            gi, li = int(d["gap"]), int(d["liq"])
+        except (KeyError, TypeError, ValueError):
+            return "—", "—", "—"
+        if not (0 <= gi < len(GAP_LEVELS) and 0 <= li < len(LIQ_LEVELS)):
+            return "—", "—", "—"
+        return str(gi + li * len(GAP_LEVELS)), GAP_LEVELS[gi][0], LIQ_LEVELS[li][0]
 
     def state(self, include_history=True, include_events=True, include_curve=True):
         with LOCK:

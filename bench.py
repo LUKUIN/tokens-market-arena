@@ -77,12 +77,12 @@ def _parse_seeds(text):
     return seeds
 
 
-def run_one(seed, policy, outdir):
+def run_one(seed, policy, outdir, roll_index=None):
     """跑完一局并返回摘要 dict；失败返回 None。"""
     home = os.path.join(outdir, "seed_%d" % seed)
     os.makedirs(home, exist_ok=True)
     eng = T.Engine(home)
-    eng.reset(count=False, seed=seed)
+    eng.reset(count=False, seed=seed, roll_index=roll_index)
     eng.roll_stop()                     # 跳过难度盲盒，按 seed 直接定档
     rng = random.Random((seed * 2654435761) & 0xFFFFFFFF)
     pol = POLICIES[policy]
@@ -126,8 +126,9 @@ def cmd_run(args):
         return 2
     print("配对评测：%d 个 seed · 策略 %s · 输出 %s" % (len(seeds), args.policy, outdir))
     rows = []
+    roll_index = getattr(args, "roll_index", None)
     for i, seed in enumerate(seeds, 1):
-        row = run_one(seed, args.policy, outdir)
+        row = run_one(seed, args.policy, outdir, roll_index)
         if row is None:
             print("  [%d/%d] seed %-6d 未产出摘要" % (i, len(seeds), seed))
             continue
@@ -199,6 +200,8 @@ def main(argv=None):
     p_run.add_argument("--seeds", required=True, help="如 1,2,3 或 1-5")
     p_run.add_argument("--idle-abort", type=int, default=0,
                        help="无活动自动收尾分钟数；默认 0 关闭，评测时保持关闭以保证可比性")
+    p_run.add_argument("--roll-index", type=int, default=None,
+                       help="锁定难度档位索引 0-24（= gap + liq*5）；不设则每局自行抽档")
     p_run.add_argument("--policy", default="noop", choices=sorted(POLICIES),
                        help="无头基线策略（默认 noop）")
     p_run.add_argument("--out", default="", help="输出目录，默认临时目录")
