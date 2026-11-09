@@ -33,11 +33,13 @@ jobs:
           rc=$?
           echo "guard exit code: $rc"
           if [ "${{ matrix.python }}" = "3.14" ]; then
-            if [ "$rc" -eq 2 ]; then
-              echo "::error::唯一支持的运行时被自己的版本守卫拦下了"
+            # 收紧：不只是「没被拦下」，必须真的正常退出。
+            # 原先只断言 rc != 2，进程以 rc=1 崩溃（import 失败、语法错误）也能放行。
+            if [ "$rc" -ne 0 ]; then
+              echo "::error::唯一支持的运行时应能正常执行 run.py state，实际退出码 $rc"
               exit 1
             fi
-            echo "版本守卫放行 3.14（rc=$rc）"
+            echo "版本守卫放行 3.14，命令正常退出（rc=0）"
           else
             if [ "$rc" -ne 2 ]; then
               echo "::error::版本守卫失效：期望退出码 2，实际 $rc"
