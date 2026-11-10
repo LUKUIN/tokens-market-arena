@@ -247,6 +247,9 @@ def _print_stats(rows):
     hits = sum(1 for r in rows if r.get("hit_target"))
     blown = sum(1 for r in rows if not r.get("settled", True))
     audited = sum(1 for r in rows if not (r.get("audit") or []))
+    # Bankrupt: equity at or below zero (blown through the account). Distinct from
+    # "settlement errors", which means the books did not balance.
+    bankrupt = sum(1 for r in rows if float(r.get("final_equity") or 0.0) <= 0.0)
     print("\n%d match(es)" % n)
     print("  pnl%%     mean %8.2f   median %8.2f   stdev %8.2f" % (
         statistics.fmean(pnl), statistics.median(pnl),
@@ -255,8 +258,9 @@ def _print_stats(rows):
         _quantile(pnl, 0.10), _quantile(pnl, 0.90), max(pnl), min(pnl)))
     print("  mdd%%     median %8.2f   worst %8.2f" % (
         statistics.median(mdd), max(mdd)))
-    print("  hit target %d/%d   settlement errors %d/%d   ledger audit clean %d/%d" % (
-        hits, n, blown, n, audited, n))
+    print("  hit target %d/%d   bankrupt(equity<=0) %d/%d   settlement errors %d/%d   "
+          "ledger audit clean %d/%d" % (
+              hits, n, bankrupt, n, blown, n, audited, n))
 
 
 def cmd_summary(args):

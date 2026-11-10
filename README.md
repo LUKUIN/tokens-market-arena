@@ -539,6 +539,12 @@ Each HTML report is accompanied by a same-named JSON file (`reports/<stamp>_<tra
 version, seed, P&L, drawdown, Sharpe, cost breakdown, settlement result and audit verdict.
 `bench.py` and CI read that JSON instead of parsing HTML.
 
+> **v1.2.20 basis fix**: `pnl` and `pnl_pct` are now measured from the starting principal
+> (the new `genesis` field), matching the HTML report and `/state` exactly. The old basis was
+> the first equity-curve point, which already carried the opening spread/slippage/fee whenever
+> a player opened before the first tick, so the JSON under-counted one opening cost.
+> `start_equity` keeps its old meaning (first curve point); read `genesis` for the principal.
+
 ### Reproducing a run
 
 The report header prints two things: `Random seed` and `difficulty slot #`. They have

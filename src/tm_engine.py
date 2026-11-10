@@ -311,7 +311,7 @@ def _idle_rule_text():
             "activity'. Read-only calls (/state, /prices, /rules) do not count, so "
             "slow thinking is never cut short. TM_IDLE_ABORT tunes it, 0 disables"
             % ("/".join(IDLE_ACTION_LABELS), IDLE_ABORT_MINUTES))
-ENGINE_VERSION = "1.2.19"  # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.20"  # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -1282,6 +1282,18 @@ class Engine:
             "settled": not warnings, "warnings": list(warnings),
         }
         eq = self.equity()
+        # Settlement (force-close + loan clearance) happens after the last tick, so the
+        # equity jump must land in the curve. _write_report patches a local copy only,
+        # which left /state and the persisted save showing the pre-crash point forever:
+        # consumers saw "equity = -2.09M, last curve point = 0.92M" in the same payload.
+        # The patch is idempotent: re-settling or an already-aligned tail appends nothing.
+        _curve = self.s.get("equity_curve")
+        if _curve and abs(float(_curve[-1].get("equity", 0.0)) - float(eq)) > 0.05:
+            _curve.append({"tick": int(self.s.get("tick", 0) or 0),
+                           "equity": round(float(eq), 2),
+                           "margin_level": None})
+            if len(_curve) > HISTORY_LEN:
+                del _curve[:-HISTORY_LEN]
         tgt = self.s.get("target", TARGET_EQUITY)
         hit = eq >= tgt and self._qualified()
         borrowed = self.s["loan"]["borrowed"]
@@ -2821,6 +2833,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             # 字段只增不改，历史存档不会因为新字段失效。
             jp = os.path.join(outdir, base + ".json")
             _start = float(m["start"])
+            _genesis = float(self.s.get("genesis", STARTER_CASH))
             _target = float(self.s.get("target", TARGET_EQUITY))
             summary = {
                 "engine_version": ENGINE_VERSION,
@@ -2836,10 +2849,16 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "tick": int(self.s.get("tick", 0) or 0),
                 "final_equity": round(float(final_eq), 2),
                 "start_equity": round(_start, 2),
+                "genesis": round(_genesis, 2),
                 "peak_equity": round(float(m["peak"]), 2),
                 "low_equity": round(float(m["low"]), 2),
-                "pnl": round(float(final_eq) - _start, 2),
-                "pnl_pct": (round((float(final_eq) / _start - 1) * 100, 4) if _start else 0.0),
+                # PnL must be measured against the starting principal (genesis), not the
+                # first curve point: a player who opens before the first tick has already
+                # paid spread/slippage/fee, so that point is below genesis. Using it made
+                # the JSON disagree with the HTML report and /state by one opening cost.
+                # All three outputs must share one basis.
+                "pnl": round(float(final_eq) - _genesis, 2),
+                "pnl_pct": (round((float(final_eq) / _genesis - 1) * 100, 4) if _genesis else 0.0),
                 "target": round(_target, 2),
                 "hit_target": bool(float(final_eq) >= _target and self._qualified()),
                 "max_drawdown_pct": round(float(m["mdd"]) * 100, 4),
