@@ -304,7 +304,7 @@ def _idle_rule_text():
             % (IDLE_ABORT_MINUTES, "、".join(IDLE_ACTION_LABELS)))
 
 
-ENGINE_VERSION = "1.2.19"  # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.20"  # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -1280,6 +1280,17 @@ class Engine:
             "settled": not warnings, "warnings": list(warnings),
         }
         eq = self.equity()
+        # 结算（强制清仓 + 结清贷款）发生在最后一次 tick 之后，权益跳变必须落进曲线。
+        # _write_report 内部补的是局部副本，/state 与持久化数据读到的仍是崩盘前那一点，
+        # 外部消费者会看到「equity = -209 万、曲线末点 = 91 万」这种自相矛盾的输出。
+        # 补点必须幂等：重复结算或末点已经对齐时不追加。
+        _curve = self.s.get("equity_curve")
+        if _curve and abs(float(_curve[-1].get("equity", 0.0)) - float(eq)) > 0.05:
+            _curve.append({"tick": int(self.s.get("tick", 0) or 0),
+                           "equity": round(float(eq), 2),
+                           "margin_level": None})
+            if len(_curve) > HISTORY_LEN:
+                del _curve[:-HISTORY_LEN]
         tgt = self.s.get("target", TARGET_EQUITY)
         hit = eq >= tgt and self._qualified()
         borrowed = self.s["loan"]["borrowed"]
@@ -2821,6 +2832,7 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             # 字段只增不改，历史存档不会因为新字段失效。
             jp = os.path.join(outdir, base + ".json")
             _start = float(m["start"])
+            _genesis = float(self.s.get("genesis", STARTER_CASH))
             _target = float(self.s.get("target", TARGET_EQUITY))
             summary = {
                 "engine_version": ENGINE_VERSION,
@@ -2836,10 +2848,14 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "tick": int(self.s.get("tick", 0) or 0),
                 "final_equity": round(float(final_eq), 2),
                 "start_equity": round(_start, 2),
+                "genesis": round(_genesis, 2),
                 "peak_equity": round(float(m["peak"]), 2),
                 "low_equity": round(float(m["low"]), 2),
-                "pnl": round(float(final_eq) - _start, 2),
-                "pnl_pct": (round((float(final_eq) / _start - 1) * 100, 4) if _start else 0.0),
+                # 盈亏基准必须是本金（genesis），不是曲线首点：玩家在第一个 tick 前开仓时，
+                # 首点已经扣掉点差/滑点/手续费，用它做基准会让 JSON 的 pnl 比 HTML 报告和
+                # /state 少算一笔开局成本。三处出口（HTML / JSON / state）口径必须一致。
+                "pnl": round(float(final_eq) - _genesis, 2),
+                "pnl_pct": (round((float(final_eq) / _genesis - 1) * 100, 4) if _genesis else 0.0),
                 "target": round(_target, 2),
                 "hit_target": bool(float(final_eq) >= _target and self._qualified()),
                 "max_drawdown_pct": round(float(m["mdd"]) * 100, 4),

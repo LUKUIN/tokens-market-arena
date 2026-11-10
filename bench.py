@@ -248,6 +248,8 @@ def _print_stats(rows):
     hits = sum(1 for r in rows if r.get("hit_target"))
     blown = sum(1 for r in rows if not r.get("settled", True))
     audited = sum(1 for r in rows if not (r.get("audit") or []))
+    # 破产：权益跌到 0 或以下（穿仓）。与「结算异常」是两回事——前者是亏光，后者是账没平。
+    bankrupt = sum(1 for r in rows if float(r.get("final_equity") or 0.0) <= 0.0)
     print("\n样本 %d 局" % n)
     print("  盈亏%%   均值 %8.2f   中位数 %8.2f   标准差 %8.2f" % (
         statistics.fmean(pnl), statistics.median(pnl),
@@ -256,8 +258,8 @@ def _print_stats(rows):
         _quantile(pnl, 0.10), _quantile(pnl, 0.90), max(pnl), min(pnl)))
     print("  回撤%%   中位数 %8.2f   最大 %8.2f" % (
         statistics.median(mdd), max(mdd)))
-    print("  达成目标 %d/%d   结算异常 %d/%d   账本自检通过 %d/%d" % (
-        hits, n, blown, n, audited, n))
+    print("  达成目标 %d/%d   破产(权益≤0) %d/%d   结算异常 %d/%d   账本自检通过 %d/%d" % (
+        hits, n, bankrupt, n, blown, n, audited, n))
 
 
 def cmd_summary(args):
