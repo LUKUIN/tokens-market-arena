@@ -311,7 +311,7 @@ def _idle_rule_text():
             "activity'. Read-only calls (/state, /prices, /rules) do not count, so "
             "slow thinking is never cut short. TM_IDLE_ABORT tunes it, 0 disables"
             % ("/".join(IDLE_ACTION_LABELS), IDLE_ABORT_MINUTES))
-ENGINE_VERSION = "1.2.20"  # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.21"  # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -353,6 +353,11 @@ ROLL_COMBOS = len(GAP_LEVELS) * len(LIQ_LEVELS)   # 25
 GAP_SPREAD_MULT = 3.0     # spread multiplier on a gap tick (liquidity drought)
 RESET_COOLDOWN = 30.0     # minimum interval between manual resets (seconds), stops match farming
 HISTORY_LEN = 2000
+# /state export caps. The engine keeps HISTORY_LEN points for replay and reports,
+# but only ships the tail the spectator actually draws -- sending the full history
+# every 300 ms is what dragged the polling loop down.
+STATE_CURVE_POINTS = 900      # equity curve: reports use all of it, the window needs 900
+STATE_HISTORY_POINTS = 600    # per-pair mini sparkline
 
 STATE_FILE = "session.json"
 RUNNING_FILE = ".running"
@@ -1779,13 +1784,20 @@ class Engine:
                         "error": "Quota too low: %.0f s left, this step needs %d s (nothing executed)" % (
                             p["remain"], sec)}
             n = max(1, int(round(sec / TICK_SECONDS)))
-            done = 0
-            st = self.state()
-            for _ in range(n):
+        # Advance one tick at a time and release the lock between ticks. Holding it
+        # for the whole 60-tick jump starved the spectator's 300 ms polling for 2-3
+        # seconds, and it reported "service not responding" while the match ran on.
+        # RLock is re-entrant, so tick()'s own `with LOCK` cannot deadlock here.
+        done = 0
+        st = self.state()
+        for _ in range(n):
+            with LOCK:
                 if self.s.get("finished"):
                     break
                 st = self.tick(manual=True)
                 done += 1
+            time.sleep(0)          # yield the GIL so HTTP threads can get in
+        with LOCK:
             real = done * TICK_SECONDS
             self.s["ff_used"] = float(self.s.get("ff_used") or 0.0) + real
             self.s["ff_last_at"] = time.time()
@@ -2994,6 +3006,9 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             eq = self.equity()
             ml = self.margin_level()
             target = self.s["target"]
+            # Computing MDD/Sharpe twice per /state (each walks the whole curve) is pure
+            # waste: the spectator polls every 300 ms, so that is 6 full recomputes a second.
+            _m = self._metrics()
             return {
                 "tick": self.s["tick"],
                 "session_id": self.s.get("session_id", ""),
@@ -3063,8 +3078,8 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "maint_rate": round(MAINT_MARGIN_RATE * 100, 2),
                 "tampered": bool(self.s.get("tampered")),
                 "resets": self.s.get("resets", 0),
-                "max_drawdown": round(self._metrics()["mdd"] * 100, 2),
-                "sharpe": round(self._metrics()["sharpe"], 2),
+                "max_drawdown": round(_m["mdd"] * 100, 2),
+                "sharpe": round(_m["sharpe"], 2),
                 "positions": positions,
                 "prices": {s: {"price": px[s], "name": PAIR_NAMES[s],
                                "spread_pct": PAIRS[s]["spread"] * 100} for s in PAIRS},
@@ -3090,8 +3105,12 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "total_fees": round(self.s["total_fees"], 2),
                 "total_swap": round(self.s["total_swap"], 2),
                 "order_count": self.s["order_count"],
-                "equity_curve": (self.s["equity_curve"][-HISTORY_LEN:] if include_curve else []),
-                "price_history": (self.s["price_history"] if include_history else {}),
+                # Only ship the tail the spectator draws: serialising, parsing and rendering
+                # the full 2000-point history every 300 ms grows linearly with match length
+                # and was one of the causes of the false "service not responding" banner.
+                "equity_curve": (self.s["equity_curve"][-STATE_CURVE_POINTS:] if include_curve else []),
+                "price_history": ({s: v[-STATE_HISTORY_POINTS:] for s, v in self.s["price_history"].items()}
+                                  if include_history else {}),
                 "events": (self.s["events"][-60:] if include_events else []),
                 "finished": self.s["finished"],
                 "session_minutes": SESSION_MINUTES,

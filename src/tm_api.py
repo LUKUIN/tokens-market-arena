@@ -85,7 +85,9 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def _send(self, obj, code=200):
-        body = json.dumps(obj, ensure_ascii=False, indent=1).encode("utf-8")
+        # No pretty-printing: /state is fetched every 300 ms and indent=1 inflates the
+        # payload by 30%+; the consumer is a program, not a human reading JSON.
+        body = json.dumps(obj, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -282,6 +284,19 @@ def _roll_printer():
         _t.sleep(1.0)
 
 
+class _Server(ThreadingHTTPServer):
+    """Concurrency settings.
+
+    ThreadingHTTPServer's default backlog is 5. With the spectator polling every 300 ms,
+    external scripts, and the assist poll all hitting at once, an overflowing accept queue
+    drops the SYN and the client sits there until its 3 s timeout -- which shows up as
+    "service not responding" even though the service never went down.
+    """
+    daemon_threads = True
+    allow_reuse_address = True
+    request_queue_size = 64
+
+
 def serve(host="127.0.0.1", port=8734):
     # The AI build has no GUI to trigger the draw, so it starts drawing difficulty as soon as the service is up.
     # The human build's tm_watch also calls /roll/start, but start_roll() is idempotent.
@@ -302,7 +317,7 @@ def serve(host="127.0.0.1", port=8734):
     threading.Thread(target=_auto_tick, daemon=True).start()
     threading.Thread(target=_roll_printer, daemon=True).start()
     global SERVER
-    srv = ThreadingHTTPServer((host, port), Handler)
+    srv = _Server((host, port), Handler)
     SERVER = srv
     print("Tokens Trading Market started: http://%s:%d" % (host, port), flush=True)
     try:

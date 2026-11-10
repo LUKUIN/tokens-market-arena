@@ -512,33 +512,62 @@ class Watch:
 
     # ------------------------------------------------------------ refresh
     def refresh(self):
+        delay = 300
         try:
             st = get("/state")
-            self._render(st)
+        except Exception as exc:
+            # Only a failed fetch counts as "not responding". Render failures are handled
+            # in the else branch below: the old code wrapped both in one try, so a single
+            # rendering bug was reported as "service not responding" while the match ran on.
+            self._api_fail += 1
+            self._log_watch_error("get", exc)
+            delay = min(5000, 300 * (2 ** min(self._api_fail, 4)))   # back off, do not hammer
+            self._set_offline()
+        else:
             self._api_fail = 0
             self._api_ever = True
-        except Exception:
-            self._api_fail += 1
-            self._set_offline()
+            try:
+                self._render(st)
+            except Exception as exc:
+                self._log_watch_error("render", exc)
+                try:
+                    self.lbl_status.config(
+                        text="UI render error (match still running; see data/watch.log)", fg=ORANGE)
+                except Exception:
+                    pass
         self._assist_n += 1
         if self._assist_n % 5 == 0:
             self._poll_assist()
-        self.root.after(300, self.refresh)
+        self.root.after(delay, self.refresh)
+
+    def _log_watch_error(self, kind, exc):
+        """Persist the failure. A "not responding" banner without a log is undebuggable."""
+        try:
+            import traceback, datetime
+            p = os.path.join(HERE, "data", "watch.log")
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "a", encoding="utf-8") as f:
+                f.write("[%s] %s: %r\n%s\n" % (
+                    datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    kind, exc, traceback.format_exc()))
+        except Exception:
+            pass
 
     def _set_offline(self):
         """Status line while /state is unreachable.
 
-        Distinguishes "never connected yet" from "was connected, now unreachable":
-        one transient timeout must not read as "the process is gone" - the old text
-        printed the startup command, which was actively misleading.
+        Distinguishes "never connected yet" from "was connected, now unreachable", and it
+        must say the match is still running: the spectator is an independent reader, so
+        losing it does not stop the game. The old wording made it look like the server died.
         """
         n = self._api_fail
         if not self._api_ever:
             txt, fg = "Waiting for the service to start (%s)" % API, ORANGE
         elif n < 3:
-            txt, fg = "Service not responding, retrying... (%s)" % API, ORANGE
+            txt, fg = "Spectator connection lost, retrying... (match still running)", ORANGE
         else:
-            txt, fg = ("Service not responding (%d retries; showing the last good data)" % n), RED
+            txt, fg = ("Spectator connection lost (%d retries; match still running; "
+                       "showing the last good data)" % n), RED
         self.lbl_status.config(text=txt, fg=fg)
 
     # ---------------- Outside Mercy ----------------

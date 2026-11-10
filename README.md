@@ -174,6 +174,31 @@ Sections, top to bottom:
 
 > Every number comes from `/state`; nothing is simulated. Full detail lives in the HTML report.
 
+### When the spectator disconnects (v1.2.21)
+
+The spectator is a **separate child process** that refreshes by fetching `GET /state` every 300 ms.
+Losing it **does not affect the match**: the server keeps ticking, the clock keeps counting down,
+and settlement still writes the report. A red banner means "this one reader cannot reach the
+server", not that the game stopped.
+
+Before v1.2.21, three problems in that polling loop made the window falsely report
+"Service not responding" and stop updating:
+
+| Problem | Consequence |
+|---|---|
+| `/state` shipped the whole `price_history` (2000 points per pair) and `equity_curve` (2000 points) | payload grew linearly with match length; serialisation, parsing and rendering got heavier every minute |
+| `state()` called `_metrics()` twice inside the return dict | every poll recomputed MDD / Sharpe twice for nothing |
+| `fast_forward()` held `LOCK` for all 60 ticks of a jump | every HTTP read queued behind it and the spectator timed out |
+
+All three are fixed (export only the tail, compute metrics once, release the lock between ticks);
+the HTTP server's `request_queue_size` also went from the default 5 to 64, and `/state` responses
+are no longer pretty-printed. When the connection really drops, the window now says
+"Spectator connection lost (match still running)" and writes the exception to `src/data/watch.log`
+instead of pretending the service is dead.
+
+If the banner never clears, run `launchers\Spectator.bat` to attach another window — with a
+match already running it only opens the window, it does not start a server or seal the sources.
+
 ## How a match runs
 
 0. **Nothing is asked.** Contestant ID, random events, **Preferred Financing** and **Slot Machine**
