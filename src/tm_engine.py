@@ -304,7 +304,7 @@ def _idle_rule_text():
             % (IDLE_ABORT_MINUTES, "、".join(IDLE_ACTION_LABELS)))
 
 
-ENGINE_VERSION = "1.2.20"  # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.21"  # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -346,6 +346,10 @@ ROLL_COMBOS = len(GAP_LEVELS) * len(LIQ_LEVELS)   # 25
 GAP_SPREAD_MULT = 3.0     # 跳空 tick 上点差放大倍数（流动性枯竭）
 RESET_COOLDOWN = 30.0     # 手动重开的最小间隔（秒），防止反复刷局
 HISTORY_LEN = 2000
+# /state 每次下发的点数上限。内部仍保留 HISTORY_LEN 点供复算与报告，
+# 但只把观众席画图用的尾部发出去——整段历史每 300ms 传一次会拖垮轮询。
+STATE_CURVE_POINTS = 900      # 权益曲线：报告用全量，观众席 900 点足够
+STATE_HISTORY_POINTS = 600    # 每品种价格迷你走势
 
 STATE_FILE = "session.json"
 RUNNING_FILE = ".running"
@@ -1771,13 +1775,19 @@ class Engine:
                         "error": "额度不足：剩余 %.0f 秒，本档需要 %d 秒（该次不执行）" % (
                             p["remain"], sec)}
             n = max(1, int(round(sec / TICK_SECONDS)))
-            done = 0
-            st = self.state()
-            for _ in range(n):
+        # 快进逐 tick 释放锁：一次推进 60 tick 若全程持锁，观众席 300ms 的轮询
+        # 会被饿死 2-3 秒，被它判成「服务无响应」并停更。RLock 可重入，
+        # tick() 内部自己的 with LOCK 不会死锁。
+        done = 0
+        st = self.state()
+        for _ in range(n):
+            with LOCK:
                 if self.s.get("finished"):
                     break
                 st = self.tick(manual=True)
                 done += 1
+            time.sleep(0)          # 让出 GIL，给 HTTP 线程插队的机会
+        with LOCK:
             real = done * TICK_SECONDS
             self.s["ff_used"] = float(self.s.get("ff_used") or 0.0) + real
             self.s["ff_last_at"] = time.time()
@@ -2990,6 +3000,9 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
             eq = self.equity()
             ml = self.margin_level()
             target = self.s["target"]
+            # 每次 /state 都算两遍 MDD/Sharpe（各遍历一遍权益曲线）是纯浪费：
+            # 观众席 300ms 轮询一次，等于每秒白烧 6 次全量重算。
+            _m = self._metrics()
             return {
                 "tick": self.s["tick"],
                 "session_id": self.s.get("session_id", ""),
@@ -3060,8 +3073,8 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "maint_rate": round(MAINT_MARGIN_RATE * 100, 2),
                 "tampered": bool(self.s.get("tampered")),
                 "resets": self.s.get("resets", 0),
-                "max_drawdown": round(self._metrics()["mdd"] * 100, 2),
-                "sharpe": round(self._metrics()["sharpe"], 2),
+                "max_drawdown": round(_m["mdd"] * 100, 2),
+                "sharpe": round(_m["sharpe"], 2),
                 "positions": positions,
                 "prices": {s: {"price": px[s], "name": PAIR_NAMES[s],
                                "spread_pct": PAIRS[s]["spread"] * 100} for s in PAIRS},
@@ -3087,8 +3100,11 @@ background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:
                 "total_fees": round(self.s["total_fees"], 2),
                 "total_swap": round(self.s["total_swap"], 2),
                 "order_count": self.s["order_count"],
-                "equity_curve": (self.s["equity_curve"][-HISTORY_LEN:] if include_curve else []),
-                "price_history": (self.s["price_history"] if include_history else {}),
+                # 只导出观众席真正会画的尾部：2000 点整段历史每 300ms 传一次，
+                # 字符串化 + 解析 + 渲染的开销会随对局推进线性上升，是「服务无响应」的元凶之一。
+                "equity_curve": (self.s["equity_curve"][-STATE_CURVE_POINTS:] if include_curve else []),
+                "price_history": ({s: v[-STATE_HISTORY_POINTS:] for s, v in self.s["price_history"].items()}
+                                  if include_history else {}),
                 "events": (self.s["events"][-60:] if include_events else []),
                 "finished": self.s["finished"],
                 "session_minutes": SESSION_MINUTES,

@@ -84,7 +84,9 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def _send(self, obj, code=200):
-        body = json.dumps(obj, ensure_ascii=False, indent=1).encode("utf-8")
+        # 不带缩进：/state 每 300ms 就要传一次，indent=1 会让体积膨胀三成以上，
+        # 解析端（观众席主线程）跟着多吃一份 CPU。接口消费者是程序，不需要花排版。
+        body = json.dumps(obj, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -278,6 +280,18 @@ def _roll_printer():
         _t.sleep(1.0)
 
 
+class _Server(ThreadingHTTPServer):
+    """并发参数。
+
+    ThreadingHTTPServer 的默认 backlog 只有 5。观众席 300ms 轮询、外部脚本、
+    观众席的求助轮询同时打进来时，accept 队列一溢出，新连接就被丢 SYN，
+    客户端等满 3 秒超时——表现就是「服务无响应」，而服务本身一直活着。
+    """
+    daemon_threads = True
+    allow_reuse_address = True
+    request_queue_size = 64
+
+
 def serve(host="127.0.0.1", port=8734):
     # AI 版没有 GUI 去触发盲盒，服务一起来就开始抽难度。
     # 人类版的 tm_watch 也会调 /roll/start，但 start_roll() 内部有幂等保护。
@@ -298,7 +312,7 @@ def serve(host="127.0.0.1", port=8734):
     threading.Thread(target=_auto_tick, daemon=True).start()
     threading.Thread(target=_roll_printer, daemon=True).start()
     global SERVER
-    srv = ThreadingHTTPServer((host, port), Handler)
+    srv = _Server((host, port), Handler)
     SERVER = srv
     print("Tokens 交易市场已启动： http://%s:%d" % (host, port), flush=True)
     try:

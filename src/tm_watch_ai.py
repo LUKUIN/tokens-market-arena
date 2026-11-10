@@ -511,32 +511,60 @@ class Watch:
 
     # ------------------------------------------------------------ 刷新
     def refresh(self):
+        delay = 300
         try:
             st = get("/state")
-            self._render(st)
+        except Exception as exc:
+            # 只有「拿不到数据」才计入无响应。渲染异常在下面的 else 分支里单独处理——
+            # 旧代码把 _render 也包在同一个 try 里，界面画崩一次就报「服务无响应」，
+            # 玩家会以为进程死了，实际对局一直在跑。
+            self._api_fail += 1
+            self._log_watch_error("get", exc)
+            delay = min(5000, 300 * (2 ** min(self._api_fail, 4)))   # 指数退避，别把服务打爆
+            self._set_offline()
+        else:
             self._api_fail = 0
             self._api_ever = True
-        except Exception:
-            self._api_fail += 1
-            self._set_offline()
+            try:
+                self._render(st)
+            except Exception as exc:
+                self._log_watch_error("render", exc)
+                try:
+                    self.lbl_status.config(
+                        text="界面渲染异常（对局仍在继续，详见 data/watch.log）", fg=ORANGE)
+                except Exception:
+                    pass
         self._assist_n += 1
         if self._assist_n % 5 == 0:
             self._poll_assist()
-        self.root.after(300, self.refresh)
+        self.root.after(delay, self.refresh)
+
+    def _log_watch_error(self, kind, exc):
+        """把失败原因落盘。没有日志的「无响应」只能靠猜，这是上次排查踩的坑。"""
+        try:
+            import traceback, datetime
+            p = os.path.join(HERE, "data", "watch.log")
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "a", encoding="utf-8") as f:
+                f.write("[%s] %s: %r\n%s\n" % (
+                    datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    kind, exc, traceback.format_exc()))
+        except Exception:
+            pass
 
     def _set_offline(self):
         """连不上服务时的状态栏文案。
 
-        区分「还没起来」和「连上过又断了」：一次瞬时失败不该被读成
-        「进程死了」——旧文案会把启动命令写出来，误导性很强。
+        区分「还没起来」和「连上过又断了」；且必须写明「对局仍在继续」——
+        服务端是独立的，观众席掉线不等于比赛停了，旧文案会让人误判。
         """
         n = self._api_fail
         if not self._api_ever:
             txt, fg = "等待服务启动（%s）" % API, ORANGE
         elif n < 3:
-            txt, fg = "服务无响应，重试中…（%s）" % API, ORANGE
+            txt, fg = "观众席连接中断，重试中…（对局仍在继续）", ORANGE
         else:
-            txt, fg = "服务无响应（已重试 %d 次，数据停在最后一次成功）" % n, RED
+            txt, fg = "观众席连接中断（已重试 %d 次，对局仍在继续；数据停在最后一次成功）" % n, RED
         self.lbl_status.config(text=txt, fg=fg)
 
     # ---------------- 外部的怜悯 ----------------
