@@ -77,7 +77,14 @@ class TestStatePayloadLimits(_Base):
 
 class TestFastForwardYieldsLock(_Base):
     def test_readers_are_not_starved_by_fast_forward(self):
-        """While fast-forwarding 60 ticks, another thread reading /state must not stall >1 s."""
+        """A reader thread must get into the lock repeatedly during a jump.
+
+        Do not make "single wait < 1 s" the primary assertion: on a cold CI runner one
+        60-tick loop can take 1-2 s and the reader may win only one scheduling slot,
+        which looks like a regression. What actually separates fixed from broken is
+        how many times it gets in -- 0 with the old whole-jump lock, dozens now.
+        """
+        count = [0]
         worst = [0.0]
         stop = [False]
 
@@ -85,7 +92,9 @@ class TestFastForwardYieldsLock(_Base):
             while not stop[0]:
                 t0 = time.time()
                 self.e.state(include_history=False, include_events=False)
-                worst[0] = max(worst[0], time.time() - t0)
+                wait = time.time() - t0
+                worst[0] = max(worst[0], wait)
+                count[0] += 1
                 time.sleep(0.01)
 
         th = threading.Thread(target=reader)
@@ -97,9 +106,10 @@ class TestFastForwardYieldsLock(_Base):
             th.join(timeout=5)
         self.assertTrue(r.get("ok"), r)
         self.assertGreater(r.get("ticks", 0), 0)
-        self.assertLess(worst[0], 1.0,
-                        "reader starved for %.2f s during fastforward; the spectator would "
-                        "call the service dead" % worst[0])
+        self.assertGreater(count[0], 3,
+                           "reader got in only %d times during the jump: the lock is held "
+                           "for the whole loop and the spectator would starve" % count[0])
+        self.assertLess(worst[0], 5.0, "single wait of %.2f s is too long" % worst[0])
 
 
 if __name__ == "__main__":
