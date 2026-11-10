@@ -73,7 +73,13 @@ class TestStatePayloadLimits(_Base):
 
 class TestFastForwardYieldsLock(_Base):
     def test_readers_are_not_starved_by_fast_forward(self):
-        """快进 60 tick 期间，另一个线程读 /state 不能被卡住超过 1 秒。"""
+        """快进期间，另一个线程必须能反复插进锁；旧版整段持锁时它一次都进不来。
+
+        不要用「单次等待 < 1 秒」当主断言：CI 冷机 + 慢核时，一次 60 tick 的循环
+        本身就要 1-2 秒，抢锁线程可能只赢到一次调度，被误判成回归。真正区分
+        修好与没修好的是「插进来几次」——旧版是 0 次，新版是几十次。
+        """
+        count = [0]
         worst = [0.0]
         stop = [False]
 
@@ -81,7 +87,9 @@ class TestFastForwardYieldsLock(_Base):
             while not stop[0]:
                 t0 = time.time()
                 self.e.state(include_history=False, include_events=False)
-                worst[0] = max(worst[0], time.time() - t0)
+                wait = time.time() - t0
+                worst[0] = max(worst[0], wait)
+                count[0] += 1
                 time.sleep(0.01)
 
         th = threading.Thread(target=reader)
@@ -93,8 +101,10 @@ class TestFastForwardYieldsLock(_Base):
             th.join(timeout=5)
         self.assertTrue(r.get("ok"), r)
         self.assertGreater(r.get("ticks", 0), 0)
-        self.assertLess(worst[0], 1.0,
-                        "fastforward 期间读者被饿死 %.2f 秒，观众席会被判成服务无响应" % worst[0])
+        self.assertGreater(count[0], 3,
+                           "快进期间读者只插进来 %d 次：锁被整段持有，观众席会被饿死" % count[0])
+        self.assertLess(worst[0], 5.0,
+                        "单次等待 %.2f 秒过长，观众席会超时" % worst[0])
 
 
 if __name__ == "__main__":
