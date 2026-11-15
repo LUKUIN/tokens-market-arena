@@ -107,11 +107,11 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/quit":
             resp = ENGINE.quit_session()
             self._send(resp)
-            # 玩家结束游戏后，服务与观众席随之退出
+            # 玩家结束游戏后，服务与游戏窗口随之退出
             threading.Timer(3.0, lambda: SERVER and SERVER.shutdown()).start()
             return
         if path == "/shutdown":
-            # 立即停止服务（不结算、不清数据），供观众席的「结束相关进程」按钮使用。
+            # 立即停止服务（不结算、不清数据），供界面上的「结束相关进程」按钮使用。
             # 但「非正常退出」也要在 reports/ 里留一份快照，方便事后翻账。
             try:
                 ENGINE.abnormal_exit_report("结束相关进程")
@@ -191,20 +191,13 @@ def _roll_printer():
 
 
 def serve(host="127.0.0.1", port=8734):
-    # AI 版没有 GUI 去触发盲盒，服务一起来就开始抽难度。
-    # 人类版的 tm_watch 也会调 /roll/start，但 start_roll() 内部有幂等保护。
-    try:
-        ENGINE.start_roll()
-    except Exception:
-        pass
-
+    # 人类版：服务起来后由 tm_watch 走「分辨率 → 难度盲盒 → 规则窗 → 主界面」，
+    # 盲盒本身也是 GUI 里的按钮触发的（POST /roll/start、/roll/stop）。
+    # 这里不主动 start_roll，避免服务先于窗口开始计时。
     print("")
     print("  " + "-" * 58)
-    print("   草稿纸终端（可选）：对局中随时记录判断与对策")
-    print("     python scratchpad.py \"你的想法\"   追加一条")
-    print("     python scratchpad.py --list        查看已记内容")
-    print("     python scratchpad.py --clear       清空")
-    print("   结算时会并入 HTML 报告的「草稿纸」章节；不写也不影响结算。")
+    print("   服务已就绪，等待游戏窗口连接。")
+    print("   若窗口没有自动出现，请回到启动它的命令行查看提示。")
     print("  " + "-" * 58)
     print("")
     threading.Thread(target=_auto_tick, daemon=True).start()

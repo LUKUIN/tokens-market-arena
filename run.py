@@ -150,6 +150,13 @@ def main(argv=None):
     mode = argv[0].lower() if argv else "human"
 
     if mode == "server":
+        # 人类版：跳过问答直接起服务时，两个全局开关按「关闭」处理，与本版文档一致。
+        # （引擎 _env_flag 的默认值是「开启」，那是 AI 版的启动口径；人类版的
+        #  交互开局一定会显式写 TM_FR/TM_SLOT，这里的兜底只为 server 调试模式。）
+        # 必须写在 import tm_api 之前：tm_api 在模块级就 Engine(HOME) 建好会话，
+        # 之后再设环境变量已经晚了。
+        os.environ.setdefault("TM_FR", "0")
+        os.environ.setdefault("TM_SLOT", "0")
         from tm_api import serve
         host = argv[1] if len(argv) > 1 else "127.0.0.1"
         port = int(argv[2]) if len(argv) > 2 else 8734

@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Tokens 交易市场 —— 观众席（只读 | 交易终端风格）
+"""Tokens 交易市场 —— 人类交互界面（交易终端风格）
 
 显示：账户权益、累计盈亏、保证金水平、目标进度、可贷额度、
 持仓表、权益曲线、多货币报价台、活动流（可滚动、不跳回）。
 
 额外提供：
-  | 结束相关进程 —— 通知 API 立即退出，随后关闭观众席
+  | 结束相关进程 —— 通知 API 立即退出，随后关闭本窗口
 """
 
 import json
@@ -18,7 +18,7 @@ import tkinter.font as tkfont
 from tkinter import ttk, messagebox
 import urllib.request
 
-# 服务端端口可以变（run.py 的 TM_PORT 或命令行参数），观众席必须跟着走，
+# 服务端端口可以变（run.py 的 TM_PORT 或命令行参数），界面必须跟着走，
 # 否则服务在 8740 而这里连 8734，界面会永远停在「等待服务启动」。
 API = (os.environ.get("TM_WATCH_API") or "http://127.0.0.1:8734").rstrip("/")
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -267,7 +267,7 @@ def _apply_icon(win):
 
 # Fluent 配色
 # 两个全局开关的显示名：与 tm_engine.SPECIAL_FR_NAME / SPECIAL_SLOT_NAME 保持一致。
-# 观众席是独立进程、不 import 引擎，所以这里再声明一份，改名字要同时改两处。
+# 界面是独立进程、不 import 引擎，所以这里再声明一份，改名字要同时改两处。
 FR_NAME = "优惠融资"
 SLOT_NAME = "老虎机"
 BG = "#F3F3F3"
@@ -2223,7 +2223,7 @@ class Watch:
 
     def _tp_do_quit(self):
         if not _ask_yesno(self.root, "结束并结算",
-                                   "将平掉全部持仓、清算贷款并生成报告，\n随后服务和观众席会关闭。确定吗？"):
+                                   "将平掉全部持仓、清算贷款并生成报告，\n随后服务和游戏窗口会关闭。确定吗？"):
             return
         try:
             post("/quit")
@@ -2233,7 +2233,7 @@ class Watch:
 
     # ------------------------------------------------------------ 应急按钮
     def _kill_all(self):
-        if not _ask_yesno(self.root, "结束相关进程", "将立即停止 Tokens 服务并关闭观众席。\n确定吗？"):
+        if not _ask_yesno(self.root, "结束相关进程", "将立即停止 Tokens 服务并关闭游戏窗口。\n确定吗？"):
             return
         try:
             post("/shutdown")
@@ -2248,7 +2248,7 @@ class Watch:
 
 
 def _acquire_single_instance():
-    """同一个游戏目录只允许存在一个观众席。
+    """同一个游戏目录只允许开一个游戏窗口。
 
     用占住本地端口做进程级互斥：绑定成功即拿到锁，进程退出（含被强杀）
     时操作系统自动释放，不会留下需要人工清理的锁文件。
@@ -2268,7 +2268,7 @@ def _warn_already_open():
     root = tk.Tk()
     root.withdraw()
     try:
-        messagebox.showwarning("Tokens 交易市场", "已打开观众席！")
+        messagebox.showwarning("Tokens 交易市场", "游戏窗口已经打开了！")
     finally:
         try:
             root.destroy()
