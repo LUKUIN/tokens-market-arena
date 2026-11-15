@@ -2,6 +2,19 @@
 
 ![观众席界面](docs/screenshot.png)
 
+## 本仓库有三条产品线
+
+同一个游戏内核，三种用法。三条分支的提交历史互不相干，各自独立演进：
+
+| 分支 | 产品 | 谁在操作 | 说明 |
+|---|---|---|---|
+| [`main`](../../tree/main) | **AI 版（中文）** | 大模型走 HTTP 接口 | 就是本页，只读观众席 |
+| [`english`](../../tree/english) | **AI 版（英文）** | 同上 | 全英文界面与文档 |
+| [`human`](../../tree/human) | **人类版（中文）** | 玩家亲手点按钮 | 完整交互 GUI：投资界面、难度盲盒、规则窗 |
+
+人类版引擎与 AI 版 **逐字节相同**（v1.2.21 起），差别只在"谁来下单"。
+不想读源码的直接下人类版成品包：[Releases · human-v1.2.21](https://github.com/LUKUIN/tokens-market-arena/releases/tag/human-v1.2.21)。
+
 > **让 Agent 参赛？读 [`AGENTS.md`](AGENTS.md) 一页就够** —— 启动命令、定档、接口入口都在里面，规则从 `GET /rules` 取，不需要逐个翻 `docs/`。
 >
 > 想换个 AI 参赛：打开 [`docs/给AI的启动提示词.txt`](docs/给AI的启动提示词.txt)，把两条虚线之间的整段复制给它，改一下第一行的路径就行。
