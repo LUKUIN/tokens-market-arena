@@ -1544,7 +1544,7 @@ class Engine:
         return os.path.join(self.home, ".scratchpad.jsonl")
 
     # ---------------- Outside Mercy ----------------
-    ASSIST_PRICE = 500000        # cost to enable it after the match has started
+    ASSIST_PRICE = 0             # mid-match enabling was removed in v1.2.23; kept for protocol compatibility
     ASSIST_ASK_LIMIT = 3         # how many times the contestant may ask the spectators
 
     def _assist_push(self, who, text, ticket=None, status=None, kind=None):
@@ -1582,24 +1582,17 @@ class Engine:
             self._assist_push("system", "Assistance enabled (%s)" % why)
             return {"ok": True, "already": False}
 
-    @_writing
     def assist_enable(self):
-        """Enable after the match has started; costs 500,000 cash."""
+        """Removed in v1.2.23: assistance can only be enabled before the match (free).
+
+        The method name and the /assist/enable route are kept so older clients get a
+        clear error instead of a 404. It no longer uses @_writing — a failed call must
+        not refresh the idle-abort timer.
+        """
         with LOCK:
-            if self.s.get("finished"):
-                return {"ok": False, "error": "the match has ended"}
             if self.s.get("assist_on"):
-                return {"ok": False, "error": "assistance is already enabled"}
-            if self.s["balance"] < self.ASSIST_PRICE:
-                return {"ok": False,
-                        "error": "not enough cash: need %d, have %d"
-                                 % (self.ASSIST_PRICE, int(self.s["balance"]))}
-            self.s["balance"] -= self.ASSIST_PRICE
-            self.s["assist_on"] = True
-            self.s["assist_spent"] = self.ASSIST_PRICE
-            self._assist_push("system", "Spectators enabled assistance for %d cash"
-                              % self.ASSIST_PRICE)
-            return {"ok": True, "cost": self.ASSIST_PRICE, "balance": round(self.s["balance"], 2)}
+                return {"ok": False, "error": "Assistance is already enabled"}
+            return {"ok": False, "error": "Assistance can only be enabled before the match starts"}
 
     @_writing
     def assist_ask(self, text):

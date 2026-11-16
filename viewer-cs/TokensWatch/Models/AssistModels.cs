@@ -8,8 +8,8 @@ public sealed class AssistPending
     [JsonPropertyName("enabled")] public bool Enabled { get; set; }
     [JsonPropertyName("remaining")] public int Remaining { get; set; }
 
-    /// <summary>局内开通需要花多少Cash，服务端默认 500000。</summary>
-    [JsonPropertyName("price")] public double Price { get; set; } = 500000;
+    /// <summary>Mid-match enabling was removed in v1.2.23; the server always returns 0.</summary>
+    [JsonPropertyName("price")] public double Price { get; set; }
 
     [JsonPropertyName("log")] public List<AssistLogItem> Log { get; set; } = new();
     [JsonPropertyName("pending")] public List<AssistTicket> Pending { get; set; } = new();

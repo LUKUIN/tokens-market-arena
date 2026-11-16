@@ -162,7 +162,7 @@ The HTML report is written to `src/data/reports/`.
 
 - During a match `src/*.py` is sealed and replaced with decoys. What you read is a fake file; executing or importing it writes a cheating flag and ends the match immediately
 - Spectators can only answer after you actually ask (`POST /assist/ask`). They cannot message you unprompted, and they cannot place orders for you
-- Three asks per match; enabling it mid-match costs 500,000 cash and is the contestant's own decision — the spectator window has no enable control
+- Three asks per match; **pre-match only** (`TM_ASSIST=1`, free). Mid-match paid enabling was removed in v1.2.23 — `/assist/enable` now only returns an error.
 
 ## Split documents
 

@@ -43,7 +43,7 @@ public partial class AssistWindow : Window
 
         if (a is null)
         {
-            TxtSubtitle.Text = "Load failed: 空回包";
+            TxtSubtitle.Text = "Load failed: empty response";
             TxtSubtitle.Foreground = Theme.Red;
             return;
         }
@@ -51,12 +51,13 @@ public partial class AssistWindow : Window
         // ---------- 副标题 ----------
         if (a.Enabled)
         {
-            TxtSubtitle.Text = $"已开通 · 参赛者还可求助 {a.Remaining} 次";
+            TxtSubtitle.Text = $"Enabled · the contestant can still ask {a.Remaining} more time(s)";
             TxtSubtitle.Foreground = Theme.Muted;
         }
         else
         {
-            TxtSubtitle.Text = $"未开通 · 由参赛者自行决定是否花 {a.Price:N0} Cash开通";
+            // Mid-match enabling was removed in v1.2.23: not enabled means not this match.
+            TxtSubtitle.Text = "Not enabled · no assistance will be available this match";
             TxtSubtitle.Foreground = Theme.Orange;
         }
 
