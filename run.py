@@ -36,6 +36,46 @@ import threading
 import time
 import urllib.request
 
+# 本地回环请求一律直连：系统代理（Clash 等）或 HTTP_PROXY 环境变量若把
+# 127.0.0.1 也代理出去，观众席每 300ms 的轮询会整批超时，表现就是「服务暂断」，
+# 而服务本身一直活着。ProxyHandler({}) 关掉代理，只影响本进程发出的请求。
+_LOCAL_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def _local_open(url, timeout=3, data=None, headers=None):
+    """访问本机服务：显式绕过代理，失败语义与 urlopen 一致。"""
+    req = urllib.request.Request(url, data=data, headers=headers or {})
+    return _LOCAL_OPENER.open(req, timeout=timeout)
+
+
+def _decode_bytes(raw):
+    """把控制台命令的原始字节解成 str：不依赖 locale，GBK / UTF-8 / 系统码页都能落地。"""
+    if not raw:
+        return ""
+    for enc in ("utf-8", "gb18030", "mbcs"):
+        try:
+            return raw.decode(enc)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return raw.decode("utf-8", "replace")
+
+
+def _run_text(cmd, timeout=8):
+    """执行控制台命令并把 stdout 解成 str。
+
+    不能依赖 text=True 的默认编码：中文 Windows 下 netstat 输出是 GBK，
+    而 PYTHONUTF8=1 / -X utf8 启动时 subprocess 会按 UTF-8 解码，reader 线程抛
+    UnicodeDecodeError、stdout 变成 None，下游 splitlines() 直接崩
+    （v1.2.21 现场日志：'NoneType' object has no attribute 'splitlines'）。
+    这里拿原始字节自己解码，任何编码都能落地。
+    """
+    try:
+        raw = subprocess.run(cmd, capture_output=True, timeout=timeout).stdout or b""
+    except Exception:
+        return ""
+    return _decode_bytes(raw)
+
+
 # 控制台编码兜底：英文 Windows 或输出被重定向到文件时，默认编码可能是
 # cp1252 / GBK，直接 print 中文会抛 UnicodeEncodeError —— 那会把版本守卫
 # 的退出码从 2 变成 1，让 CI 误判成「守卫失效」。
@@ -203,8 +243,8 @@ def _probe_state(host="127.0.0.1", port=8734, timeout=1.0):
     """
     import urllib.request
     try:
-        raw = urllib.request.urlopen("http://%s:%d/health" % (host, port),
-                                     timeout=timeout).read()
+        raw = _local_open("http://%s:%d/health" % (host, port),
+                          timeout=timeout).read()
     except Exception:
         return None
     try:
@@ -267,10 +307,9 @@ def _start_server(host="127.0.0.1", port=8734):
     t = threading.Thread(target=serve, args=(host, port), daemon=True)
     t.start()
 
-    import urllib.request
     for _ in range(40):
         try:
-            urllib.request.urlopen("http://%s:%d/health" % (host, port), timeout=0.5).read()
+            _local_open("http://%s:%d/health" % (host, port), timeout=0.5).read()
             return t
         except Exception:
             time.sleep(0.05)
@@ -280,10 +319,10 @@ def _start_server(host="127.0.0.1", port=8734):
 def _listening_pids(port):
     """返回监听该端口的 PID 列表（Windows 走 netstat -ano；其它平台尽力而为）。"""
     pids = []
-    try:
-        out = subprocess.run(["netstat", "-ano"], capture_output=True, text=True,
-                             timeout=8).stdout
-    except Exception:
+    # 走 _run_text：text=True 在 UTF-8 模式下解 GBK 的 netstat 会崩，
+    # stdout 变 None 后 splitlines() 报 NoneType —— 这正是现场 run.err.log 的堆栈。
+    out = _run_text(["netstat", "-ano"])
+    if not out:
         return pids
     for line in out.splitlines():
         if "LISTENING" not in line.upper():
@@ -309,8 +348,7 @@ def _is_our_process(pid):
         "(Get-CimInstance Win32_Process -Filter \"ProcessId=%d\").CommandLine" % pid,
     ]
     try:
-        out = subprocess.run(cmd, capture_output=True, text=True,
-                             errors="replace", timeout=8).stdout or ""
+        out = _run_text(cmd)
     except Exception:
         return False
     low = out.lower()
@@ -358,7 +396,9 @@ def _start_autoclean(home, host="127.0.0.1", port=8734):
         while True:
             time.sleep(2.0)
             try:
-                with urllib.request.urlopen(url, timeout=2) as r:
+                # 本机轮询同样直连：被代理劫持时这里会静默失败，
+                # 自动清理就永远等不到 finished。
+                with _local_open(url, timeout=2) as r:
                     st = json.loads(r.read().decode("utf-8"))
             except Exception:
                 continue

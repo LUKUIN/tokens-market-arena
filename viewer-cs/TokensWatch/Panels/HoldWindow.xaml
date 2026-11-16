@@ -1,0 +1,35 @@
+<Window x:Class="TokensWatch.Panels.HoldWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="持仓明细（同步）"
+        Height="380" Width="820"
+        MinHeight="240" MinWidth="620"
+        Background="{StaticResource Bg}"
+        WindowStartupLocation="CenterOwner"
+        UseLayoutRounding="True"
+        ShowInTaskbar="False">
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <UniformGrid Grid.Row="0" Columns="8" Margin="12,4,12,8">
+            <TextBlock Text="交易对" Style="{StaticResource TableHeader}" />
+            <TextBlock Text="方向" Style="{StaticResource TableHeader}" />
+            <TextBlock Text="手数" Style="{StaticResource TableHeader}" />
+            <TextBlock Text="杠杆" Style="{StaticResource TableHeader}" />
+            <TextBlock Text="开仓价" Style="{StaticResource TableHeader}" />
+            <TextBlock Text="最新价" Style="{StaticResource TableHeader}" />
+            <TextBlock Text="保证金" Style="{StaticResource TableHeader}" />
+            <TextBlock Text="浮动盈亏" Style="{StaticResource TableHeader}" />
+        </UniformGrid>
+
+        <Border Grid.Row="1" Style="{StaticResource CardBorder}" Padding="0">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12">
+                <StackPanel x:Name="Rows" />
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</Window>

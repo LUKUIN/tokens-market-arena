@@ -194,6 +194,43 @@ v1.2.21 之前，这条轮询链路有三个问题会让窗口误报「服务无
 窗口一直停在红条时，双击 `launchers\只开观众席.bat` 补挂一个即可——有对局在跑时它
 只开窗口，不起服务、不封存源码。
 
+## C# 观众席（可选，替代 tkinter 窗口）
+
+`viewer-cs/` 里是一个独立的 WPF 观众席，用来替代 `src/tm_watch_ai.py` 那个 tkinter 窗口。**Python 引擎一行没改**，它只经 HTTP 轮询既有的 `/state`。
+
+### 为什么会有这个
+
+tkinter 的 Canvas 没有抗锯齿，曲线在斜向上永远带毛边；Fluent 的半透明、阴影、Mica 也做不出来。C# + WPF 是矢量渲染，这些是白送的。
+
+### 需要什么
+
+- Windows 10 1809 以上
+- .NET 8 SDK（构建）或 .NET 8 Desktop Runtime（只运行）
+
+### 怎么构建
+
+```bat
+launchers\构建观众席(新版).bat
+```
+
+产物在 `viewer-cs/TokensWatch/bin/Release/net8.0-windows/TokensWatch.exe`。
+
+### 怎么启动
+
+先按原来的方式开局（`launchers\开一局.bat`），然后：
+
+```bat
+launchers\只开观众席(新版).bat
+```
+
+两个观众席可以同时开：新版的单实例锁是 `Global\TokensWatchViewerCs`，不占 tkinter 版用的 8735 端口。
+
+### 与 tkinter 版的关系
+
+- 并存，不互斥；哪边看着顺眼用哪边
+- 只读，不写引擎状态
+- 依赖零安装（不放 NuGet 包，图表是 WPF 矢量自绘），`requirements.txt` 不受影响
+
 ## 一局的流程
 
 0. **全程不询问。** 参赛 ID、随机事件、【优惠融资】、【老虎机】全部来自环境变量，没设的取默认值。

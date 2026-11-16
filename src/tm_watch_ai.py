@@ -21,6 +21,11 @@ import urllib.request
 # 服务端端口可以变（run.py 的 TM_PORT 或命令行参数），观众席必须跟着走，
 # 否则服务在 8740 而这里连 8734，界面会永远停在「等待服务启动」。
 API = (os.environ.get("TM_WATCH_API") or "http://127.0.0.1:8734").rstrip("/")
+
+# 只看本机服务：显式绕过系统代理。开着 Clash / 设了 HTTP_PROXY 时，
+# urllib 默认会把 127.0.0.1 也塞进代理，一次握手失败就是一条
+# 「观众席连接中断」，而服务端其实一直正常。
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 # 单实例锁：占住一个本地端口，进程退出自动释放。
@@ -171,7 +176,7 @@ PAIR_COLORS = {
 
 
 def get(path):
-    with urllib.request.urlopen(API + path, timeout=3) as r:
+    with _OPENER.open(API + path, timeout=3) as r:
         return json.loads(r.read().decode("utf-8"))
 
 
@@ -179,7 +184,7 @@ def post(path, payload=None):
     body = json.dumps(payload or {}).encode("utf-8")
     req = urllib.request.Request(API + path, data=body,
                                  headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=3) as r:
+    with _OPENER.open(req, timeout=3) as r:
         return json.loads(r.read().decode("utf-8"))
 
 

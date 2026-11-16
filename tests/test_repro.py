@@ -146,8 +146,12 @@ class RandomStreamRegressionTest(_Base):
         for _ in range(2):
             home = tempfile.mkdtemp(prefix="tm_repro2_")
             self.addCleanup(shutil.rmtree, home, True)
-            e = T.Engine(home)
+            # 种子必须设在 Engine 构造**之前**：构造期会抽出 news_rate 等参数，
+            # 而 _roll_news 的分支走向取决于它。seed 晚设就等于让构造期的随机性
+            # 漏进比较，两次运行的 random 消耗次数不同，序列必然错开。
+            # 这正是本用例此前偶发失败（约 5 次 1 次）的原因。
             T.random.seed(576407804)
+            e = T.Engine(home)
             e.s["began"] = e.s["begun"] = True
             e.s["paused"] = False
             for _tick in range(10):

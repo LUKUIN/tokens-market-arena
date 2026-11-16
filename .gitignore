@@ -31,3 +31,7 @@ _guard_vault/
 
 # 本地脚本与过程产物（不进版本库）
 _scratch/
+
+# C# 观众席构建产物（源码入库，产物不入库）
+viewer-cs/**/bin/
+viewer-cs/**/obj/
