@@ -201,6 +201,30 @@ Right-click the bat → Properties → tick "Unblock" → OK. Once is enough.
 
 ---
 
+## Huge Wave warning (a special event)
+
+One shape of random event stands apart: it fires **at most twice per session**, and the
+count is rolled, not fixed. At session start the engine draws once - 35% of sessions see
+none, 45% see exactly one, 20% see two. Nothing fires during the first 2.5 minutes.
+
+When it does fire it runs in three stages, timed after Plants vs. Zombies' "a huge wave of
+zombies is approaching":
+
+| Stage | What happens | Duration |
+|---|---|---|
+| 1. Warning | A red banner snaps open in the dead centre of the spectator window reading "A HUGE WAVE OF VOLATILITY IS APPROACHING!" while the original horn sample plays; the event feed records one `kind=huge_wave` entry | instant |
+| 2. Hold | **No ordinary news is drawn at all**, though prices keep moving. These two ticks are your window to cut exposure or hedge | 2 ticks = 10 s |
+| 3. Burst | 3-5 shock events land at once (flash crash, Swiss franc moment, chained gaps, liquidity drought ...), all taking effect in the same tick | instant |
+
+Three boundaries worth knowing:
+
+- **It announces arrival, never direction or size** - the banner will not tell you whether
+  it is bullish or bearish. That judgement is yours.
+- **The burst pool contains no tailwind events** - "ample liquidity" and "market makers
+  return" cannot be drawn into it. That is deliberate, not an omission.
+- **The warning itself changes nothing** - all the damage is in the third stage. The silent
+  second stage is not a cushion, it is the countdown.
+
 ## Platform-restriction events (random)
 
 | Event | Duration | Blocks | Exception |

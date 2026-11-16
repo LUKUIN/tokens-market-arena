@@ -243,6 +243,12 @@ Every endpoint lives at `http://127.0.0.1:8734`.
   "finished": false,
   "settlement": null,                   // settlement result: {settled, warnings, reason}; null before the run ends
   "audit": [],                          // ledger audit: empty array means cash/positions/loan/equity all reconcile
+  "huge_wave": {                        // Huge Wave warning (0-2 per session)
+    "show": false,                      // true only on the warning tick; drops next tick
+    "left": 1,                          // occurrences still available this session
+    "fired": 1,                         // occurrences fired so far
+    "text": "A HUGE WAVE OF VOLATILITY IS APPROACHING!"
+  },
   "events": [ ... ]                     // recent events, full text included
 }
 ```

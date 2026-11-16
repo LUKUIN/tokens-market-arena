@@ -66,6 +66,34 @@ NEWS_REGIMES = [
 ]
 NEWS_COOLDOWN = 3          # minimum gap between events (ticks)
 
+# ---------------- Huge Wave warning (port of the PvZ set piece) ----------------
+# The original PvZ "A HUGE WAVE OF ZOMBIES IS APPROACHING" is a three-stage set piece
+# (see pvz_tools/ref/Board.cpp:5338-5346):
+#   1) banner + sound (DisplayAdviceAgain + SOUND_HUGE_WAVE)
+#   2) a silent hold where nothing spawns (mHugeWaveCountDown = 750 frames ~= 12.5 s,
+#      and `return` short-circuits the spawn so the field goes quiet)
+#   3) hold expires, a whole batch of zombies enters at once (NextWaveComing)
+# This port keeps the same three stages on the tick clock: 5 s per tick, so a 2-tick
+# hold is 10 s -- enough to play hugewave.wav (6.57 s) in full and leave a tail.
+HUGE_WAVE_TEXT = "A HUGE WAVE OF VOLATILITY IS APPROACHING!"
+HUGE_WAVE_MAX = 2              # CEILING, not a default. It does not mean "fires twice".
+                               # The count is rolled once at session start:
+                               # 35% none, 45% once, 20% twice.
+HUGE_WAVE_COUNT_W = (0.35, 0.45, 0.20)   # roll weights; together with the line above they
+HUGE_WAVE_RATE = 0.010         # per-tick chance to fire while budget remains
+HUGE_WAVE_MIN_TICK = 30        # no warning during the first 30 ticks (2.5 min).
+                               # PvZ only raises the flag wave after several waves have
+                               # passed: announcing at tick 1 leaves nobody anything to
+                               # escape from, so the opening gets a grace period.
+HUGE_WAVE_WARN_TICKS = 2       # hold length in ticks: 2 x 5 s = 10 s
+HUGE_WAVE_BURST = (3, 5)       # events released at once when the hold expires (inclusive)
+# The burst pool keeps only shock and cost events -- no tailwind. A "huge wave" has to
+# be a threat, so "ample liquidity" must never be drawn into it.
+HUGE_WAVE_BURST_KINDS = ("pair_rand", "all_rand", "haven", "gap_burst", "mod")
+HUGE_WAVE_EXCLUDE_NAMES = ("Ample liquidity", "Market makers return", "Black Swan silence",
+                           "Liquidity feast", "Platform cuts margin", "Margin relief",
+                           "Interest-free window", "Fee cut window", "Central bank easing")
+
 
 _EVENTS_CACHE = None
 
@@ -145,6 +173,17 @@ def _pick_news_rate():
         if r < acc:
             return rate
     return NEWS_REGIMES[1][0]
+
+
+def _pick_huge_wave_count():
+    """How many huge waves this session gets: 0 / 1 / 2 at 35% / 45% / 20%.
+
+    Most sessions (55%) see at least one, but roughly a third see none -- if it fired
+    every session it would stop being an event and become a script the player rehearses.
+    """
+    # min() clamps to the ceiling: the weights may later be tilted toward "more often",
+    # but HUGE_WAVE_MAX still caps every session.
+    return min(HUGE_WAVE_MAX, random.choices([0, 1, 2], weights=HUGE_WAVE_COUNT_W)[0])
 SAFE_HAVEN = ("FROST/CORE", "AMBER/CORE")
 
 # Design principles:
@@ -311,7 +350,7 @@ def _idle_rule_text():
             "activity'. Read-only calls (/state, /prices, /rules) do not count, so "
             "slow thinking is never cut short. TM_IDLE_ABORT tunes it, 0 disables"
             % ("/".join(IDLE_ACTION_LABELS), IDLE_ABORT_MINUTES))
-ENGINE_VERSION = "1.2.23"  # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.24"  # release version: report footer and docs both quote this
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -474,6 +513,13 @@ def _new_session(seed=None, apply_rng=True, roll_index=None):
         "events_on": events_on,
         "news_rate": _pick_news_rate() if events_on else 0.0,
         "last_news_name": None,
+        # ---- huge wave: remaining budget + hold deadline + number fired ----
+        # The budget is rolled once at session start and only ever decreases, so
+        # "at most twice per session" is a hard guarantee, not a probability.
+        "huge_wave_left": _pick_huge_wave_count() if events_on else 0,
+        "huge_wave_warn_until": 0,   # non-zero means the hold runs; burst fires at this tick
+        "huge_wave_show_tick": -1,   # the tick that raised the banner; viewer keys on this
+        "huge_wave_fired": 0,        # occurrences so far, for report and /state cross-check
         "halt_orders": False,
         "halt_loan_until": 0,    # risk review: no borrowing before this tick (negative-cash rescue excepted)
         "halt_close_until": 0,   # exchange maintenance: no closing before this tick (forced liquidation unaffected)
@@ -1093,6 +1139,66 @@ class Engine:
         px = self.s["prices"]
         px[sym] = round(max(px[sym] * (1.0 + mag), 0.01), 6)
 
+    def _roll_huge_wave(self):
+        """Three stages: warning -> silent hold -> batch burst.
+
+        Mirrors pvz_tools/ref/Board.cpp:5338-5346 stage by stage:
+
+            1) warning  DisplayAdviceAgain + SOUND_HUGE_WAVE
+                        -> here: _event(HUGE_WAVE_TEXT, "huge_wave"); the viewer raises
+                           the banner and plays hugewave.wav off this one event
+            2) hold     mHugeWaveCountDown = 750 and `return` short-circuits spawning
+                        -> here: huge_wave_warn_until = tick + 2; ordinary news is
+                           suppressed for the whole hold so the warning is not drowned
+            3) burst    NextWaveComing releases a batch of zombies at once
+                        -> here: 3-5 _apply_news calls in a single tick, drawn from the
+                           shock pool only
+
+        Returns True when the huge wave owns this tick and no ordinary news should fire.
+        """
+        if not self.s.get("events_on"):
+            return False
+
+        t = int(self.s["tick"])
+
+        # ---- 3) hold expired: release the batch ----
+        until = int(self.s.get("huge_wave_warn_until") or 0)
+        if until and t >= until:
+            self.s["huge_wave_warn_until"] = 0
+            self.s["last_news_tick"] = t     # push ordinary cooldown so nothing follows
+            pool = [r for r in NEWS_TABLE
+                    if r[2] in HUGE_WAVE_BURST_KINDS and r[0] not in HUGE_WAVE_EXCLUDE_NAMES]
+            if not pool:
+                return False
+            n = random.randint(*HUGE_WAVE_BURST)
+            self._event("[BURST] The shock lands -- %d risk events take effect at once" % n,
+                        "huge_wave")
+            for _ in range(n):
+                name, _w, kind, params = random.choices(pool, weights=[r[1] for r in pool])[0]
+                self._apply_news(name, kind, params)
+                self.s["last_news_name"] = name
+            return True
+
+        # ---- 2) hold running: stay silent ----
+        if until:
+            return True
+
+        # ---- 1) warning: past grace, budget left, and the dice agree ----
+        if t < HUGE_WAVE_MIN_TICK:
+            return False
+        if int(self.s.get("huge_wave_left") or 0) <= 0:
+            return False
+        if random.random() >= HUGE_WAVE_RATE:
+            return False
+
+        self.s["huge_wave_left"] = int(self.s["huge_wave_left"]) - 1
+        self.s["huge_wave_fired"] = int(self.s.get("huge_wave_fired") or 0) + 1
+        self.s["huge_wave_warn_until"] = t + HUGE_WAVE_WARN_TICKS
+        self.s["huge_wave_show_tick"] = t     # the viewer keys the banner off this tick
+        self.s["last_news_tick"] = t
+        self._event(HUGE_WAVE_TEXT, "huge_wave")
+        return True
+
     def _roll_news(self):
         """Poisson-style injection: the total varies per run, so a run may see none or a dozen."""
         rate = self.s.get("news_rate", 0.0)
@@ -1179,7 +1285,11 @@ class Engine:
     def _advance_prices(self):
         self._expire_mods()
         self._gap_pairs = set()     # clear the previous tick first
-        self._roll_news()           # marks recorded by gap_burst this tick must survive
+        # The huge wave outranks ordinary news: both its warning tick and the whole silent
+        # hold are owned by it, so the set piece never gets diluted by an unrelated headline
+        # (the original short-circuits the same span with `return`).
+        if not self._roll_huge_wave():
+            self._roll_news()       # marks recorded by gap_burst this tick must survive
         for sym, cfg in PAIRS.items():
             p = self.s["prices"][sym]
             r = random.gauss(0, cfg["vol"] * self._mod("vol_mult"))
@@ -3222,6 +3332,15 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
                 "elapsed_seconds": int(self._elapsed()),
                 "unnamed": bool(self.s.get("unnamed")),
                 "events_on": bool(self.s.get("events_on", True)),
+                # Huge wave warning: the viewer reads this to decide whether to raise
+                # the banner and play hugewave.wav. `show` is true for the warning tick
+                # alone, so a slow poll cannot miss it and a second poll cannot replay it.
+                "huge_wave": {
+                    "show": int(self.s["tick"]) == int(self.s.get("huge_wave_show_tick", -1)),
+                    "left": int(self.s.get("huge_wave_left") or 0),
+                    "fired": int(self.s.get("huge_wave_fired") or 0),
+                    "text": HUGE_WAVE_TEXT,
+                },
                 "clock_cheat": bool(self.s.get("clock_cheat")),
                 "disqualified": not self._qualified(),
             }
@@ -3247,6 +3366,13 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
                            SLOT_MAX_PLAYS, SLOT_MAX_STAKE)
                        ).replace("%%", "%"),
             "Leverage": "Selectable %d - %d x (the cap can be temporarily lowered by events; trust the error message)" % (MIN_LEVERAGE, MAX_LEVERAGE),
+            "Huge Wave warning": ("A special shape of random event: at most 2 per session "
+                                 "(rolled at start: 35%% none / 45%% one / 20%% two), never during "
+                                 "the first 2.5 minutes. When it fires, one banner event "
+                                 "(kind=huge_wave) is emitted, then 2 ticks (10 s) pass without any "
+                                 "ordinary news, then 3~5 shock events land in a single tick. It "
+                                 "announces arrival only, never direction or size; the burst pool "
+                                 "contains no tailwind events; the warning itself has no numeric effect" % ()),
             "Dynamic modifiers": ("Leverage cap, fees, spread, overnight swap, gap chance and the loan pool can all be"
                                   " temporarily rewritten by random events; the values above are base values, see"
                                   " active_mods in GET /state for what is currently in force"),

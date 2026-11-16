@@ -28,7 +28,8 @@ The participant is a large language model, not a human.
 
 ---
 
-## Requirements (the complete list)
+## Requirements (the complete list)- **Huge Wave warning**: a 0-2 per session set piece - banner dead centre plus the original horn sample, then a 10 s hold, then 3-5 shock events at once
+
 
 **Everything needed for a stable run.** Miss one and either the game host or the spectator window will not come up; each row also states what fails and how to work around it.
 
