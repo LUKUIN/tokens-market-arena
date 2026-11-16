@@ -1,0 +1,214 @@
+<Window x:Class="TokensWatch.Panels.TradeWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="投资 | Tokens 交易市场"
+        Height="860" Width="960"
+        MinHeight="620" MinWidth="820"
+        Background="{StaticResource Bg}"
+        WindowStartupLocation="CenterOwner"
+        UseLayoutRounding="True"
+        ShowInTaskbar="False">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="16">
+
+            <!-- 局面摘要 + 操作反馈 -->
+            <TextBlock x:Name="TxtInfo" Text="账户权益 —" FontSize="15" FontWeight="Bold"
+                       Foreground="{StaticResource Ink}" TextWrapping="Wrap" />
+            <TextBlock x:Name="TxtMsg" Text="" FontSize="13"
+                       Foreground="{StaticResource Muted}" Margin="0,4,0,10"
+                       TextWrapping="Wrap" />
+
+            <!-- ===== 开仓 ===== -->
+            <Border Style="{StaticResource CardBorder}" Margin="0,0,0,10">
+                <StackPanel>
+                    <TextBlock Text="开仓" Style="{StaticResource SectionTitle}" Margin="0,0,0,8" />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="110" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="110" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0" Text="交易对" Style="{StaticResource Caption}"
+                                   VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <ComboBox x:Name="CmbPair" Grid.Column="1" FontSize="14"
+                                  Height="30" Margin="0,0,16,0" />
+
+                        <TextBlock Grid.Column="2" Text="方向" Style="{StaticResource Caption}"
+                                   VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <StackPanel Grid.Column="3" Orientation="Horizontal"
+                                    VerticalAlignment="Center" Margin="0,0,16,0">
+                            <RadioButton x:Name="RdoLong" Content="做多" IsChecked="True"
+                                         FontSize="14" GroupName="Side"
+                                         Foreground="{StaticResource Good}"
+                                         VerticalAlignment="Center" />
+                            <RadioButton x:Name="RdoShort" Content="做空" FontSize="14"
+                                         GroupName="Side" Margin="12,0,0,0"
+                                         Foreground="{StaticResource Bad}"
+                                         VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <TextBlock Grid.Column="4" Text="手数" Style="{StaticResource Caption}"
+                                   VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <TextBox x:Name="TxtLots" Grid.Column="5" Text="10" FontSize="14"
+                                 Height="30" Margin="0,0,16,0"
+                                 VerticalContentAlignment="Center" />
+
+                        <TextBlock Grid.Column="6" Text="杠杆" Style="{StaticResource Caption}"
+                                   VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <TextBox x:Name="TxtLeverage" Grid.Column="7" Text="20" FontSize="14"
+                                 Height="30" VerticalContentAlignment="Center" />
+                    </Grid>
+
+                    <Grid Margin="0,10,0,0">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="1x" Style="{StaticResource GhostButton}"
+                                    Padding="10,4" Margin="0,0,4,0" Click="OnQuickLev1" />
+                            <Button Content="10x" Style="{StaticResource GhostButton}"
+                                    Padding="10,4" Margin="0,0,4,0" Click="OnQuickLev10" />
+                            <Button Content="50x" Style="{StaticResource GhostButton}"
+                                    Padding="10,4" Margin="0,0,4,0" Click="OnQuickLev50" />
+                            <Button Content="100x" Style="{StaticResource GhostButton}"
+                                    Padding="10,4" Margin="0,0,4,0" Click="OnQuickLev100" />
+                            <Button Content="1000x" Style="{StaticResource GhostButton}"
+                                    Padding="10,4" Click="OnQuickLev1000" />
+                        </StackPanel>
+                        <Button Content="下单" Style="{StaticResource PrimaryButton}"
+                                Padding="26,7" HorizontalAlignment="Right" Click="OnOpenClick" />
+                    </Grid>
+
+                    <TextBlock x:Name="TxtHint" Text="" FontSize="13"
+                               Foreground="{StaticResource Muted}" Margin="0,8,0,0"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <!-- ===== 持仓 ===== -->
+            <Border Style="{StaticResource CardBorder}" Margin="0,0,0,10">
+                <StackPanel>
+                    <TextBlock Text="持仓（点一行后平仓）" Style="{StaticResource SectionTitle}"
+                               Margin="0,0,0,8" />
+
+                    <Grid Margin="0,0,0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="150" />
+                            <ColumnDefinition Width="60" />
+                            <ColumnDefinition Width="66" />
+                            <ColumnDefinition Width="66" />
+                            <ColumnDefinition Width="96" />
+                            <ColumnDefinition Width="96" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="交易对" Style="{StaticResource TableHeader}"
+                                   HorizontalAlignment="Left" />
+                        <TextBlock Grid.Column="1" Text="方向" Style="{StaticResource TableHeader}" />
+                        <TextBlock Grid.Column="2" Text="手数" Style="{StaticResource TableHeader}" />
+                        <TextBlock Grid.Column="3" Text="杠杆" Style="{StaticResource TableHeader}" />
+                        <TextBlock Grid.Column="4" Text="开仓价" Style="{StaticResource TableHeader}" />
+                        <TextBlock Grid.Column="5" Text="最新价" Style="{StaticResource TableHeader}" />
+                        <TextBlock Grid.Column="6" Text="浮动盈亏" Style="{StaticResource TableHeader}" />
+                    </Grid>
+
+                    <ListBox x:Name="HoldList" Height="176" BorderThickness="0"
+                             Background="Transparent" FontSize="14"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="150" />
+                                        <ColumnDefinition Width="60" />
+                                        <ColumnDefinition Width="66" />
+                                        <ColumnDefinition Width="66" />
+                                        <ColumnDefinition Width="96" />
+                                        <ColumnDefinition Width="96" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding Pair}"
+                                               Foreground="{Binding PairBrush}" FontSize="14" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Side}"
+                                               Foreground="{Binding SideBrush}" FontSize="14" />
+                                    <TextBlock Grid.Column="2" Text="{Binding Lots}" FontSize="14" />
+                                    <TextBlock Grid.Column="3" Text="{Binding Leverage}" FontSize="14" />
+                                    <TextBlock Grid.Column="4" Text="{Binding Entry}" FontSize="14"
+                                               FontFamily="Consolas" />
+                                    <TextBlock Grid.Column="5" Text="{Binding Price}" FontSize="14"
+                                               FontFamily="Consolas" />
+                                    <TextBlock Grid.Column="6" Text="{Binding Upnl}"
+                                               Foreground="{Binding UpnlBrush}" FontSize="14"
+                                               FontFamily="Consolas" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <TextBlock x:Name="TxtHoldEmpty" Text="当前没有持仓" FontSize="13"
+                               Foreground="{StaticResource Muted}" Margin="0,6,0,6"
+                               Visibility="Collapsed" />
+
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <Button Content="平掉选中" Style="{StaticResource GhostButton}"
+                                Foreground="{StaticResource Accent}" Padding="16,6"
+                                Click="OnCloseClick" />
+                        <Button Content="全部平仓" Style="{StaticResource DangerButton}"
+                                Padding="16,6" Margin="8,0,0,0" Click="OnCloseAllClick" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- ===== 借贷 ===== -->
+            <Border Style="{StaticResource CardBorder}" Margin="0,0,0,10">
+                <StackPanel>
+                    <TextBlock Text="借贷（随借随还，利息按 tick 计）"
+                               Style="{StaticResource SectionTitle}" Margin="0,0,0,6" />
+                    <TextBlock x:Name="TxtLoan" Text="—" FontSize="13"
+                               Foreground="{StaticResource Muted}" TextWrapping="Wrap" />
+
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <TextBlock Text="金额" Style="{StaticResource Caption}"
+                                   VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <TextBox x:Name="TxtAmount" Text="100000" Width="150" FontSize="14"
+                                 Height="30" VerticalContentAlignment="Center"
+                                 Margin="0,0,10,0" />
+                        <Button Content="借款" Style="{StaticResource GhostButton}"
+                                Foreground="{StaticResource Accent}" Padding="16,6"
+                                Click="OnLoanClick" />
+                        <Button Content="还款" Style="{StaticResource GhostButton}"
+                                Padding="16,6" Margin="8,0,0,0" Click="OnRepayClick" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- ===== 快进 ===== -->
+            <StackPanel Orientation="Horizontal" Margin="4,0,0,10">
+                <TextBlock Text="快进" Style="{StaticResource Caption}"
+                           VerticalAlignment="Center" Margin="0,0,10,0" />
+                <Button x:Name="BtnFf5" Content="快进 5 分钟" Style="{StaticResource GhostButton}"
+                        Foreground="{StaticResource Accent}" Padding="16,6"
+                        Click="OnFf5Click" />
+                <Button x:Name="BtnFf3" Content="快进 3 分钟" Style="{StaticResource GhostButton}"
+                        Foreground="{StaticResource Accent}" Padding="16,6" Margin="8,0,0,0"
+                        Click="OnFf3Click" />
+                <TextBlock x:Name="TxtFfHint" Text="" Style="{StaticResource Caption}"
+                           VerticalAlignment="Center" Margin="12,0,0,0" />
+            </StackPanel>
+
+            <!-- ===== 底部操作 ===== -->
+            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                <Button Content="重开一局" Style="{StaticResource GhostButton}"
+                        Foreground="{StaticResource Warn}" Padding="16,7" Click="OnResetClick" />
+                <Button Content="结束并结算" Style="{StaticResource DangerButton}"
+                        Padding="16,7" Margin="8,0,0,0" Click="OnQuitClick" />
+                <Button Content="关闭窗口" Style="{StaticResource PrimaryButton}"
+                        Padding="18,7" Margin="8,0,0,0" Click="OnCloseWindowClick" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</Window>

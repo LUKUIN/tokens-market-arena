@@ -1,0 +1,71 @@
+<Window x:Class="TokensWatch.Panels.SlotWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="老虎机 · Tokens 交易市场"
+        Height="400" Width="540"
+        MinHeight="360" MinWidth="480"
+        Background="{StaticResource Bg}"
+        WindowStartupLocation="CenterOwner"
+        UseLayoutRounding="True"
+        ShowInTaskbar="False">
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="老虎机" FontSize="22" FontWeight="Bold"
+                   Foreground="{StaticResource Ink}" />
+
+        <TextBlock Grid.Row="1" x:Name="TxtSubtitle" Text="" FontSize="14"
+                   Foreground="{StaticResource Muted}" Margin="0,4,0,0" />
+
+        <TextBlock Grid.Row="2" Text="投入金额（1 ~ 200,000，且不超过当前权益）"
+                   Style="{StaticResource Caption}" Margin="0,16,0,6" />
+
+        <StackPanel Grid.Row="3">
+            <TextBox x:Name="TxtAmount" Text="10000" FontSize="16" Height="36"
+                     VerticalContentAlignment="Center" TextAlignment="Right" />
+            <TextBlock Text="80% 无所得 · 15% 返还 5 倍 · 5% 返还 10 倍"
+                       FontSize="12" Foreground="{StaticResource Muted}" Margin="0,6,0,0" />
+        </StackPanel>
+
+        <Border Grid.Row="4" x:Name="ResultBox" Background="{StaticResource Card}"
+                CornerRadius="8" Padding="14" Margin="0,12,0,0" Visibility="Collapsed">
+            <TextBlock x:Name="TxtResult" FontSize="17" FontWeight="SemiBold"
+                       TextWrapping="Wrap" />
+        </Border>
+
+        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right"
+                    Margin="0,14,0,0">
+            <Button Content="取消" Style="{StaticResource GhostButton}"
+                    Padding="22,7" Click="OnCancelClick" />
+            <Button x:Name="BtnPlay" Content="投入" Padding="26,7" Margin="10,0,0,0"
+                    Click="OnPlayClick"
+                    Background="{StaticResource Accent}" Foreground="White"
+                    BorderThickness="0" FontSize="14" Cursor="Hand">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="#6B4E9B" CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#5A3F9E" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Button.Template>
+            </Button>
+        </StackPanel>
+    </Grid>
+</Window>

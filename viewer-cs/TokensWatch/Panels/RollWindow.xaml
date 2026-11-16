@@ -1,0 +1,54 @@
+<Window x:Class="TokensWatch.Panels.RollWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="难度抽选 | Tokens 交易市场"
+        Height="420" Width="560"
+        MinHeight="380" MinWidth="520"
+        Background="{StaticResource Bg}"
+        WindowStartupLocation="CenterOwner"
+        UseLayoutRounding="True"
+        ShowInTaskbar="False">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="难度抽选" FontSize="22" FontWeight="Bold"
+                   Foreground="{StaticResource Ink}" />
+
+        <TextBlock Grid.Row="1" Text="30 秒内每 0.1 秒换一个组合 —— 你可以随时叫停，也可以等它自己走完。"
+                   Style="{StaticResource Caption}" Margin="0,4,0,0" TextWrapping="Wrap" />
+
+        <Border Grid.Row="2" Style="{StaticResource CardBorder}" Margin="0,14,0,0" Padding="16,14">
+            <StackPanel>
+                <UniformGrid x:Name="GridGap" Columns="5" Height="46" Margin="0,0,0,10" />
+                <UniformGrid x:Name="GridLiq" Columns="5" Height="46" />
+            </StackPanel>
+        </Border>
+
+        <TextBlock Grid.Row="3" x:Name="TxtTimer" Text="剩余 30.0 秒"
+                   FontSize="18" FontWeight="Bold" Foreground="{StaticResource Ink}"
+                   HorizontalAlignment="Center" Margin="0,16,0,2" />
+
+        <TextBlock Grid.Row="4" x:Name="TxtNote" Text="叫停后才会显示抽到的难度"
+                   Style="{StaticResource Caption}" HorizontalAlignment="Center" />
+
+        <TextBlock Grid.Row="5" x:Name="TxtResult" Text="" FontSize="15"
+                   FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,10,0,0"
+                   TextWrapping="Wrap" TextAlignment="Center" />
+
+        <StackPanel Grid.Row="7" Orientation="Horizontal" HorizontalAlignment="Center"
+                    Margin="0,16,0,0">
+            <Button x:Name="BtnStop" Content="叫  停" Style="{StaticResource PrimaryButton}"
+                    Padding="34,9" Click="OnStopClick" />
+        </StackPanel>
+    </Grid>
+</Window>
