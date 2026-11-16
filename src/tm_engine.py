@@ -858,6 +858,20 @@ class Engine:
         diff = (price - pos["entry"]) if pos["side"] == "LONG" else (pos["entry"] - price)
         return diff * pos["lots"] * LOTS_SIZE
 
+    def _virtual_tick(self):
+        """游戏内 tick：按墙钟折算，且不超过实际 tick 数。
+
+        正常节奏下与 `self.s["tick"]` 相等。达标后引擎自动把 tick 间隔压到
+        `TICK_SECONDS / TAIL_SPEED`，同样 45 分钟内实际 tick 会从 540 涨到 2160；
+        「加速只压缩等待时间、不改变任何结果」的承诺要成立，成本与末期滑点就必须
+        按游戏内时间计，而不是按真实 tick 数量计。
+        """
+        try:
+            by_clock = int(self._elapsed()) // int(TICK_SECONDS)
+        except Exception:
+            by_clock = int(self.s.get("tick") or 0)
+        return min(int(self.s.get("tick") or 0), max(0, by_clock))
+
     def _position_margin(self, pos):
         """占用保证金 = 开仓时逐笔累加的真实值。
 
@@ -951,7 +965,8 @@ class Engine:
             cap = SLIP_MAX_SHOCK
         # v1.2.0 早收工激励：越接近收工，滑点越贵。不白送任何收益——
         # 开局立刻退出仍是 0，只是「赖着不走」的成本上升。
-        _late = min(1.0, max(0.0, (self.s["tick"] - LATE_SLIP_START) / 180.0))
+        # 用虚拟 tick：否则达标后的自动加速会让「末期」提前 3/4 时间生效。
+        _late = min(1.0, max(0.0, (self._virtual_tick() - LATE_SLIP_START) / 180.0))
         _k = SLIP_K * (1.0 + (LATE_SLIP_MAX - 1.0) * _late)
         cost = _k / (2.0 * L) * (after * after - before * before)
         # 「报价延迟」等事件在此基础上再加一层滑点
@@ -1165,6 +1180,12 @@ class Engine:
                 del self.s["price_history"][sym][:-HISTORY_LEN]
 
     def _charge_costs(self):
+        # 只在「虚拟 tick」前进时计提一次：达标后自动 4 倍速让真实 tick 走得快，
+        # 但游戏内时间没走快，隔夜利息与借款利息不该按 4 倍累积。
+        _vt = self._virtual_tick()
+        if _vt <= int(self.s.get("_cost_tick") or 0):
+            return
+        self.s["_cost_tick"] = _vt
         total_swap = 0.0
         for p in self.s["positions"]:
             total_swap += (p["lots"] * LOTS_SIZE * self.s["prices"][p["pair"]]
@@ -2180,7 +2201,7 @@ class Engine:
             return {"ok": True, "position": pos, "state": self._state_light()}
 
     @_writing
-    def close_position(self, pair, lots=None):
+    def close_position(self, pair, lots=None, side=None):
         with LOCK:
             if self.s.get("finished"):
                 return {"ok": False, "error": "本局已结束"}
@@ -2195,7 +2216,13 @@ class Engine:
                 return {"ok": False,
                         "error": "不存在的货币对：%s（可用：%s）"
                                  % (pair, "、".join(PAIRS.keys()))}
-            idxs = [i for i, p in enumerate(self.s["positions"]) if p["pair"] == pair]
+            # side 缺省时与旧行为完全一致（同 pair 全部候选、按数组倒序先平最新一笔）；
+            # 传了 side 才按方向过滤 —— 同品种多空并存时能指定平哪一边。
+            _side = (side or "").strip().upper()
+            if _side not in ("LONG", "SHORT"):
+                _side = None
+            idxs = [i for i, p in enumerate(self.s["positions"])
+                    if p["pair"] == pair and (_side is None or p["side"] == _side)]
             if not idxs:
                 return {"ok": False, "error": "没有 %s 的持仓" % pair}
             if lots in (None, "", 0, "0"):
