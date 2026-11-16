@@ -229,6 +229,12 @@ curl -X POST http://127.0.0.1:8734/roll/stop
   "finished": false,
   "settlement": null,                   // 结算结果：{settled, warnings, reason}；未结算为 null
   "audit": [],                          // 账本自检：空数组=手续费/贷款/持仓三条恒等式全部成立
+  "huge_wave": {                        // 「一大波」预警（突发大事件，整局 0~2 次）
+    "show": false,                      // 只在预警那一 tick 为 true；下一 tick 自动翻回
+    "left": 1,                          // 本局还没用掉的次数
+    "fired": 1,                         // 本局已触发次数
+    "text": "一大波异常行情正在接近！"
+  },
   "events": [ ... ]                     // 最近事件，含完整文案
 }
 ```

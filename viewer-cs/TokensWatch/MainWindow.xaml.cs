@@ -1,8 +1,10 @@
 using System.Globalization;
+using System.Media;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using TokensWatch.Controls;
 using TokensWatch.Helpers;
@@ -119,6 +121,16 @@ public partial class MainWindow : Window
 
     private bool _closing;
     private bool _busy;
+
+    // ---------- 一大波预警 ----------
+    // 引擎只在预警那一 tick 把 huge_wave.show 置真，下一 tick 就翻回 false。
+    // 用 tick 号记录「已经为哪一 tick 播过」，防止两件事：
+    //   ① 轮询慢于 tick 推进时同一条预警被连续两帧读到（会重复播音效）；
+    //   ② 用户把窗口最小化再还原、界面重建时重播。
+    private int _hugeWaveShownTick = -999;
+    private DispatcherTimer? _hugeWaveTimer;
+    private readonly SoundPlayer _hugeWavePlayer = new();
+    private bool _hugeWaveAudioReady;
 
     public MainWindow()
     {
@@ -257,6 +269,10 @@ public partial class MainWindow : Window
 
     private void Render(WatchState st)
     {
+        // ---------- 一大波预警（PvZ 演出移植）----------
+        // 放在最前面：预警是全屏级事件，任何其它数据都不该抢先写它。
+        RenderHugeWave(st);
+
         // ---------- 顶栏 ----------
         TxtTrader.Text = string.IsNullOrEmpty(st.Trader) ? "访客" : st.Trader;
         TxtMode.Text = st.EventsOn ? "已开启随机事件" : "理想情况";
@@ -627,6 +643,108 @@ public partial class MainWindow : Window
 
         RenderLogFeed();
         _logWindow?.AppendAll(_logEvents);
+    }
+
+    /// <summary>
+    /// 一大波预警的渲染入口。
+    /// 引擎侧 _roll_huge_wave() 是三段式：预警 tick 把 show 置真 → 静默 2 tick → 成批爆发。
+    /// 这里只负责第一段「出横幅 + 播音效」；第三段爆发走的是普通事件流，由活动流展示。
+    /// </summary>
+    private void RenderHugeWave(WatchState st)
+    {
+        var hw = st.HugeWave;
+        if (hw is null) return;          // 老引擎不返回该字段：当作本局没有预警
+
+        // 只处理「该出场」的那一 tick。收起交给 ShowHugeWave 起的 10 秒定时器，
+        // 不靠 show 翻回 false 来收 —— 否则下一 tick（5 秒后）横幅就被自己掐掉，
+        // 演出时长会缩水成半截，音效还在响画面已经没了。
+        if (!hw.Show) return;
+        if (_hugeWaveShownTick == st.Tick) return;   // 这一 tick 已经播过，不重播
+        _hugeWaveShownTick = st.Tick;
+
+        ShowHugeWave(string.IsNullOrWhiteSpace(hw.Text) ? "一大波异常行情正在接近！" : hw.Text);
+    }
+
+    private void ShowHugeWave(string text)
+    {
+        // 描边层与本体必须逐字一致，否则两层会错位成「重影」
+        HugeWaveText.Text = text;
+        HugeWaveOutline.Text = text;
+        HugeWaveLayer.Visibility = Visibility.Visible;
+
+        // ---- 出现动画：以屏幕正中为轴，横向左右同时展开 ----
+        // PvZ 的横幅不是从上方掉下来、也不是从左往右扫过，而是「啪」地从中间撑开。
+        // 实现上是 ScaleX 0.05→1（RenderTransformOrigin = 0.5,0.5），
+        // ScaleY 只从 0.92 轻微回弹，让字有厚度而不是纯拉伸。
+        var easeOut = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var backOut = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.35 };
+
+        HugeWaveBanner.BeginAnimation(UIElement.OpacityProperty,
+            new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(130)));
+
+        HugeWaveScale.BeginAnimation(ScaleTransform.ScaleXProperty,
+            new DoubleAnimation(0.05, 1.0, TimeSpan.FromMilliseconds(280)) { EasingFunction = easeOut });
+
+        HugeWaveScale.BeginAnimation(ScaleTransform.ScaleYProperty,
+            new DoubleAnimation(0.92, 1.0, TimeSpan.FromMilliseconds(340)) { EasingFunction = backOut });
+
+        PlayHugeWaveSound();
+
+        // PvZ 原版横幅在 mHugeWaveCountDown == 0 时 ClearAdvice 消失。
+        // 换算到本引擎正好是一个演出期：HUGE_WAVE_WARN_TICKS = 2 tick = 10 秒，
+        // 正好包住 hugewave.wav 的 6.57 秒并留约 3.4 秒余韵。
+        _hugeWaveTimer?.Stop();
+        _hugeWaveTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
+        _hugeWaveTimer.Tick += (_, _) =>
+        {
+            _hugeWaveTimer?.Stop();
+            HideHugeWave();
+        };
+        _hugeWaveTimer.Start();
+    }
+
+    private void HideHugeWave()
+    {
+        // 收场同样做动画：淡出 + 轻微外扩，不做硬切
+        var fade = new DoubleAnimation(1.0, 0.0, TimeSpan.FromMilliseconds(220));
+        fade.Completed += (_, _) =>
+        {
+            HugeWaveLayer.Visibility = Visibility.Collapsed;
+            // 复位，让下一次展开从 ScaleX=0.05 重新开始（否则第二次不会播动画）
+            HugeWaveBanner.BeginAnimation(UIElement.OpacityProperty, null);
+            HugeWaveBanner.Opacity = 0;
+            HugeWaveScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            HugeWaveScale.ScaleX = 0.05;
+            HugeWaveScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            HugeWaveScale.ScaleY = 0.92;
+        };
+        HugeWaveBanner.BeginAnimation(UIElement.OpacityProperty, fade);
+    }
+
+    private void PlayHugeWaveSound()
+    {
+        if (_hugeWaveAudioReady)
+        {
+            _hugeWavePlayer.Play();
+            return;
+        }
+        try
+        {
+            // 音效来自 PvZ 的 main.pak（sounds\hugewave.ogg），已转成 PCM WAV：
+            // WPF 的 SoundPlayer 只吃 WAV，而带解码依赖的 MediaPlayer 在干净机器上会静音。
+            string path = System.IO.Path.Combine(
+                AppDomain.CurrentDomain.BaseDirectory, "Assets", "hugewave.wav");
+            if (!System.IO.File.Exists(path)) return;   // 缺资源就只出画面，不影响对局
+            _hugeWavePlayer.SoundLocation = path;
+            _hugeWavePlayer.LoadAsync();     // 1.1 MB，Play() 会自己等加载完成
+            _hugeWaveAudioReady = true;
+            _hugeWavePlayer.Play();
+        }
+        catch
+        {
+            // 声卡被别的程序独占、音频服务没起，都不该让观众席崩——
+            // 横幅才是主体，音效是配角。
+        }
     }
 
     /// <summary>

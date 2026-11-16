@@ -32,6 +32,9 @@ public sealed class WatchState
 
     [JsonPropertyName("special")] public SpecialFlags? Special { get; set; }
 
+    /// <summary>「一大波」预警状态。老引擎不返回该字段时为 null，界面按「没有预警」处理。</summary>
+    [JsonPropertyName("huge_wave")] public HugeWaveInfo? HugeWave { get; set; }
+
     [JsonPropertyName("gap_level")] public string? GapLevel { get; set; }
     [JsonPropertyName("liq_level")] public string? LiqLevel { get; set; }
 
@@ -184,4 +187,20 @@ public sealed class EquityPoint
 {
     [JsonPropertyName("equity")] public double Equity { get; set; }
     [JsonPropertyName("tick")] public int Tick { get; set; }
+}
+
+/// <summary>
+/// 「一大波」预警。PvZ 的「一大波僵尸正在接近」演出移植到交易市场后，
+/// 引擎在三段式的第一段把它置真（tm_engine.py 的 _roll_huge_wave）。
+/// 观众席只认 show 这一个布尔：为真的那一 tick 出横幅 + 播音效，
+/// 之后引擎自己会把它翻回 false，所以刷新间隔再长也不会重复播。
+/// </summary>
+public sealed class HugeWaveInfo
+{
+    [JsonPropertyName("show")] public bool Show { get; set; }
+    /// <summary>本局还没用掉的次数（开局 roll 为 0~2，只减不增）。</summary>
+    [JsonPropertyName("left")] public int Left { get; set; }
+    /// <summary>本局已触发次数，用于核对界面与报告是否一致。</summary>
+    [JsonPropertyName("fired")] public int Fired { get; set; }
+    [JsonPropertyName("text")] public string Text { get; set; } = "一大波异常行情正在接近！";
 }

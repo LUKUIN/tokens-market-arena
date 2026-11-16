@@ -11,7 +11,8 @@
         UseLayoutRounding="True"
         SnapsToDevicePixels="True">
 
-    <Grid Margin="16">
+    <Grid>
+        <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -330,6 +331,42 @@
                         </ScrollViewer>
                     </Grid>
                 </Border>
+            </Grid>
+        </Grid>
+    </Grid>
+
+
+        <!-- ============================================================
+             一大波预警横幅 —— PvZ「A HUGE WAVE OF ZOMBIES IS APPROACHING」的移植。
+             三条硬要求：① 出现在 GUI 正中间；② 红字黑阴影；③ 无底色（透明）。
+             出现动画不是从上而下、也不是从左到右，而是以屏幕正中为轴左右同时展开。
+             IsHitTestVisible=False：横幅只负责吓人，不能挡住下面的按钮。
+             ============================================================ -->
+        <Grid x:Name="HugeWaveLayer" Visibility="Collapsed" IsHitTestVisible="False">
+            <Grid x:Name="HugeWaveBanner"
+                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                  RenderTransformOrigin="0.5,0.5" Opacity="0">
+                <Grid.RenderTransform>
+                    <ScaleTransform x:Name="HugeWaveScale" ScaleX="0.05" ScaleY="0.92" />
+                </Grid.RenderTransform>
+
+                <!-- 黑描边：WPF 的 TextBlock 没有 Stroke，用零偏移大模糊的阴影向外扩一圈 -->
+                <TextBlock x:Name="HugeWaveOutline"
+                           FontFamily="Microsoft YaHei UI" FontWeight="Black" FontSize="64"
+                           Foreground="Black" TextAlignment="Center">
+                    <TextBlock.Effect>
+                        <DropShadowEffect Color="Black" ShadowDepth="0" BlurRadius="10" Opacity="1" />
+                    </TextBlock.Effect>
+                </TextBlock>
+
+                <!-- 红字本体 + 右下黑色实投影，做 PvZ 那种「厚字」观感 -->
+                <TextBlock x:Name="HugeWaveText"
+                           FontFamily="Microsoft YaHei UI" FontWeight="Black" FontSize="64"
+                           Foreground="#E21A1A" TextAlignment="Center">
+                    <TextBlock.Effect>
+                        <DropShadowEffect Color="Black" ShadowDepth="7" Direction="315" BlurRadius="0" Opacity="1" />
+                    </TextBlock.Effect>
+                </TextBlock>
             </Grid>
         </Grid>
     </Grid>

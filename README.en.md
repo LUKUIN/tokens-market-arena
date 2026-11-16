@@ -189,7 +189,8 @@ Sections, top to bottom:
 
 The tkinter Canvas has no antialiasing, so the equity curve always carries jagged edges on diagonals; Fluent translucency, shadows and Mica are out of reach. C# + WPF renders vectors, so those come for free.
 
-### Requirements
+### Requirements- **Huge Wave warning**: a 0-2 per session set piece - banner dead centre plus the original horn sample, then a 10 s hold, then 3-5 shock events at once
+
 
 - Windows 10 1809 or newer
 - .NET 8 SDK (to build) or .NET 8 Desktop Runtime (to run only)
