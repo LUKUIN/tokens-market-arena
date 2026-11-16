@@ -29,6 +29,41 @@
 
 ---
 
+## 运行环境与必需组件
+
+**这一节是稳定运行的完整条件清单。**
+
+### 必需项
+
+| 组件 | 版本要求 | 用来干什么 | 缺了会怎样 |
+|---|---|---|---|
+| **Windows** | 10 / 11（x64） | 全部 | — |
+| **Python** | **3.14，且只有 3.14** | 引擎、HTTP 服务、主界面（tkinter） | 启动即退出，`.pyc` 报 `bad magic number` |
+| **Tcl/Tk** | 随 Python 3.14 附带 | 主界面的窗口层 | 窗口起不来 |
+
+**Python 3.14 是硬锁**：`.pyc` 缓存与 tkinter 控件都按 3.14 编译，换 3.12 / 3.13 只会得到 `bad magic number`。安装位置不限。
+
+**Tcl/Tk 不是单独安装的**：Windows 上的官方 Python 安装包（python.org 与 Microsoft Store 版）默认都带；`conda` 等精简发行版可能裁掉，那种情况下 `import tkinter` 会失败。
+
+### 可选件：C# 观众席
+
+C# / WPF 版的观众席是**可选的替代界面**，本版默认仍然用 Python 的 tkinter 主界面。要用它还需要：
+
+| 组件 | 版本要求 | 缺了会怎样 |
+|---|---|---|
+| **.NET 8 Desktop Runtime** | 8.0.x（x64） | C# 观众席窗口闪一下就退；Python 主界面不受影响 |
+
+发行包里的 zip **已内置** `viewer-cs/TokensWatch/bin/Release/net8.0-windows/TokensWatch.exe`，所以解压即用；只有从源码 clone 且 `bin/` 被清掉时，才需要 .NET 8 **SDK** 跑一次 `构建观众席(新版).bat`（首次约 10 秒）。
+
+### 明确不需要的东西
+
+- **pip 第三方包**：全部代码只用 Python 标准库，`requirements.txt` 为空操作。
+- **Node.js / npm / 浏览器 / WebView2**：界面是原生窗口，不是网页。
+- **数据库、Redis**：状态在进程内存 + `src/data/` 下的 JSON。
+- **联网**：行情与事件本地生成，只监听 `127.0.0.1`。
+
+---
+
 ## 快速开始
 
 ```
@@ -132,7 +167,7 @@ Tokens 交易市场 | 我的名字 | 黑天鹅频率：低 | 流动性枯竭程�
 
 ---
 
-## C# 观众席（可选，替代 tkinter 窗口）
+## C# 观众席（可选替代品，包内已带可执行文件）
 
 `viewer-cs/` 里是一个独立的 WPF 界面，用来替代 `src/tm_watch.py` 那个 tkinter 窗口。**Python 引擎一行没改**，它只经 HTTP 与既有服务通信。
 
