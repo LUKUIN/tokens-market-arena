@@ -73,6 +73,20 @@ def _hard_exit():
 
 MAX_BODY_BYTES = 1 << 20
 
+# Slow-request probe: when a "service blip" happens again, the time and endpoint are
+# on disk instead of guessed from memory. 0.5 s sits well below the spectator's 3 s timeout.
+SLOW_LOG = os.path.join(HOME, "slow.log")
+SLOW_SECONDS = 0.5
+
+
+def _note_slow(what, seconds):
+    try:
+        os.makedirs(HOME, exist_ok=True)
+        with open(SLOW_LOG, "a", encoding="utf-8") as f:
+            f.write("%s %.3fs %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), seconds, what))
+    except Exception:
+        pass
+
 
 class _BodyTooLarge(Exception):
     """Request body over the cap: maps to HTTP 413 instead of 500."""
@@ -93,6 +107,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+        _t0 = getattr(self, "_t0", None)
+        if _t0 is not None:
+            _dt = time.perf_counter() - _t0
+            if _dt > SLOW_SECONDS:
+                _note_slow("%s %s" % (getattr(self, "command", "?"), self.path), _dt)
 
     def _note(self):
         ENGINE.note_ua(self.headers.get("User-Agent", ""))
@@ -111,6 +130,7 @@ class Handler(BaseHTTPRequestHandler):
         return obj if isinstance(obj, dict) else {}
 
     def do_GET(self):
+        self._t0 = time.perf_counter()
         self._note()
         path = urlparse(self.path).path.rstrip("/") or "/"
         if path == "/health":
@@ -148,6 +168,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._send({"ok": False, "error": "unknown endpoint: %s" % path}, 404)
 
     def do_POST(self):
+        self._t0 = time.perf_counter()
         try:
             self._note()
             path = urlparse(self.path).path.rstrip("/") or "/"
@@ -236,7 +257,9 @@ def _auto_tick():
         # TM_TAIL_SPEED overrides the multiplier (set 1 for the real pace).
         speed = 1.0
         try:
-            if getattr(ENGINE.s, "hit_at_tick", None) is not None:
+            # ENGINE.s is a dict: getattr(dict, "hit_at_tick") is always None, so the
+            # TAIL_SPEED catch-up after hitting the target never actually engaged.
+            if (ENGINE.s or {}).get("hit_at_tick") is not None:
                 speed = max(1.0, float(os.environ.get("TM_TAIL_SPEED") or TAIL_SPEED))
         except Exception:
             speed = 1.0

@@ -23,6 +23,11 @@ import urllib.request
 API = (os.environ.get("TM_WATCH_API") or "http://127.0.0.1:8734").rstrip("/")
 HERE = os.path.dirname(os.path.abspath(__file__))
 
+# Local service only: bypass system proxies explicitly. With Clash / HTTP_PROXY set,
+# urllib would send 127.0.0.1 through the proxy too; one failed handshake then shows up
+# as "spectator connection lost" while the service itself is perfectly healthy.
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
 # Single-instance lock: hold one local port; released automatically when the process exits.
 WATCH_LOCK_PORT = 8735
 _LOCK_SOCK = None
@@ -172,7 +177,7 @@ PAIR_COLORS = {
 
 
 def get(path):
-    with urllib.request.urlopen(API + path, timeout=3) as r:
+    with _OPENER.open(API + path, timeout=3) as r:
         return json.loads(r.read().decode("utf-8"))
 
 
@@ -180,7 +185,7 @@ def post(path, payload=None):
     body = json.dumps(payload or {}).encode("utf-8")
     req = urllib.request.Request(API + path, data=body,
                                  headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=3) as r:
+    with _OPENER.open(req, timeout=3) as r:
         return json.loads(r.read().decode("utf-8"))
 
 

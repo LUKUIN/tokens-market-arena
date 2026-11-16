@@ -1,0 +1,35 @@
+<Window x:Class="TokensWatch.Panels.HoldWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Positions（同步）"
+        Height="380" Width="820"
+        MinHeight="240" MinWidth="620"
+        Background="{StaticResource Bg}"
+        WindowStartupLocation="CenterOwner"
+        UseLayoutRounding="True"
+        ShowInTaskbar="False">
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <UniformGrid Grid.Row="0" Columns="8" Margin="12,4,12,8">
+            <TextBlock Text="Pair" Style="{StaticResource TableHeader}" />
+            <TextBlock Text="Side" Style="{StaticResource TableHeader}" />
+            <TextBlock Text="Lots" Style="{StaticResource TableHeader}" />
+            <TextBlock Text="Leverage" Style="{StaticResource TableHeader}" />
+            <TextBlock Text="Entry" Style="{StaticResource TableHeader}" />
+            <TextBlock Text="Last" Style="{StaticResource TableHeader}" />
+            <TextBlock Text="Margin" Style="{StaticResource TableHeader}" />
+            <TextBlock Text="Unrealized P&amp;L" Style="{StaticResource TableHeader}" />
+        </UniformGrid>
+
+        <Border Grid.Row="1" Style="{StaticResource CardBorder}" Padding="0">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12">
+                <StackPanel x:Name="Rows" />
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</Window>

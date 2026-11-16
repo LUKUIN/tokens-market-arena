@@ -34,6 +34,7 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.request
 
 # Console encoding fallback: an English Windows console or redirected output
 # defaults to cp1252/GBK, and printing non-ASCII text raises
@@ -203,8 +204,8 @@ def _probe_state(host="127.0.0.1", port=8734, timeout=1.0):
     """
     import urllib.request
     try:
-        raw = urllib.request.urlopen("http://%s:%d/health" % (host, port),
-                                     timeout=timeout).read()
+        raw = _local_open("http://%s:%d/health" % (host, port),
+                          timeout=timeout).read()
     except Exception:
         return None
     try:
@@ -271,7 +272,7 @@ def _start_server(host="127.0.0.1", port=8734):
     import urllib.request
     for _ in range(40):
         try:
-            urllib.request.urlopen("http://%s:%d/health" % (host, port), timeout=0.5).read()
+            _local_open("http://%s:%d/health" % (host, port), timeout=0.5).read()
             return t
         except Exception:
             time.sleep(0.05)
@@ -365,13 +366,50 @@ def _run_ai(interactive=False, port=None):
     return 0
 
 
+# Local health probes must bypass system proxies: with Clash / HTTP_PROXY set,
+# urllib may route 127.0.0.1 through the proxy and every probe fails even though
+# the service is alive. ProxyHandler({}) disables proxying for this process only.
+_LOCAL_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def _local_open(url, timeout=3, data=None, headers=None):
+    """Talk to the local service: explicit proxy bypass, urlopen-compatible semantics."""
+    req = urllib.request.Request(url, data=data, headers=headers or {})
+    return _LOCAL_OPENER.open(req, timeout=timeout)
+
+
+def _decode_bytes(raw):
+    """Decode a console command's raw bytes: locale-independent, GBK/UTF-8/codepage all land."""
+    if not raw:
+        return ""
+    for enc in ("utf-8", "gb18030", "mbcs"):
+        try:
+            return raw.decode(enc)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return raw.decode("utf-8", "replace")
+
+
+def _run_text(cmd, timeout=8):
+    """Run a console command and decode stdout ourselves.
+
+    Do not rely on text=True: on a Chinese Windows netstat prints GBK, while
+    PYTHONUTF8=1 / -X utf8 makes subprocess decode as UTF-8, the reader thread raises
+    UnicodeDecodeError, stdout becomes None and splitlines() dies with
+    'NoneType' object has no attribute 'splitlines' (the v1.2.21 crash in run.err.log).
+    """
+    try:
+        raw = subprocess.run(cmd, capture_output=True, timeout=timeout).stdout or b""
+    except Exception:
+        return ""
+    return _decode_bytes(raw)
+
+
 def _listening_pids(port):
     """PIDs listening on this port (netstat -ano on Windows; best effort elsewhere)."""
     pids = []
-    try:
-        out = subprocess.run(["netstat", "-ano"], capture_output=True, text=True,
-                             timeout=8).stdout
-    except Exception:
+    out = _run_text(["netstat", "-ano"])
+    if not out:
         return pids
     for line in out.splitlines():
         if "LISTENING" not in line.upper():
@@ -398,8 +436,7 @@ def _is_our_process(pid):
         "(Get-CimInstance Win32_Process -Filter \"ProcessId=%d\").CommandLine" % pid,
     ]
     try:
-        out = subprocess.run(cmd, capture_output=True, text=True,
-                             errors="replace", timeout=8).stdout or ""
+        out = _run_text(cmd)
     except Exception:
         return False
     low = out.lower()

@@ -1,0 +1,58 @@
+<Window x:Class="TokensWatch.Panels.AssistWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Outside Mercy · Outside Aid"
+        Height="680" Width="780"
+        MinHeight="460" MinWidth="560"
+        Background="{StaticResource Bg}"
+        WindowStartupLocation="CenterOwner"
+        UseLayoutRounding="True"
+        ShowInTaskbar="False">
+
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 标题 -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
+            <TextBlock Text="Outside Aid" FontSize="20" FontWeight="SemiBold"
+                       Foreground="{StaticResource Ink}" />
+            <TextBlock x:Name="TxtSubtitle" Text="Loading…" FontSize="13"
+                       Foreground="{StaticResource Muted}" Margin="12,0,0,0"
+                       VerticalAlignment="Bottom" />
+        </StackPanel>
+
+        <!-- 历史 -->
+        <Border Grid.Row="1" Style="{StaticResource CardBorder}" Padding="12">
+            <RichTextBox x:Name="History" IsReadOnly="True" BorderThickness="0"
+                         Background="Transparent" FontFamily="{StaticResource UiFont}"
+                         FontSize="14" VerticalScrollBarVisibility="Auto"
+                         IsDocumentEnabled="True">
+                <FlowDocument PagePadding="0" />
+            </RichTextBox>
+        </Border>
+
+        <!-- 待处理 -->
+        <Border x:Name="PendingBox" Grid.Row="2" Style="{StaticResource CardBorder}"
+                Padding="12" Margin="0,8,0,0" Visibility="Collapsed">
+            <StackPanel>
+                <TextBlock x:Name="TxtPendingTitle" Text="Pending requests"
+                           FontSize="13" FontWeight="SemiBold"
+                           Foreground="{StaticResource Bad}" Margin="0,0,0,6" />
+                <TextBox x:Name="ReplyBox" Height="66" Margin="0,0,0,8" />
+                <StackPanel Orientation="Horizontal">
+                    <Button x:Name="BtnReply" Content="Reply" Style="{StaticResource PrimaryButton}"
+                            Padding="16,6" Click="OnReplyClick" />
+                    <Button x:Name="BtnReject" Content="Dismiss" Style="{StaticResource DangerButton}"
+                            Padding="16,6" Margin="8,0,0,0" Click="OnRejectClick" />
+                    <TextBlock x:Name="TxtHint" Text="" FontSize="12"
+                               Foreground="{StaticResource Muted}" Margin="12,0,0,0"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>
