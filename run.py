@@ -473,13 +473,30 @@ def _run_ai(interactive=False, port=None):
     base = os.path.dirname(os.path.abspath(__file__))
     spectator = None
     try:
-        spectator = subprocess.Popen(
-            [sys.executable, "-c",
-             "import sys, os; sys.path.insert(0, os.path.join(os.getcwd(), 'src')); "
-             "import tm_watch_ai; tm_watch_ai.main()"],
-            cwd=base,
-            env=dict(os.environ, TM_WATCH_API="http://127.0.0.1:%d" % port))
-        print("  正在拉起只读观众席（进程 %d）……" % spectator.pid)
+        # 观众席有两套实现，都是只读、都只经 HTTP 读 /state：
+        #   1) C# / WPF（viewer-cs/）：矢量渲染，曲线有抗锯齿，默认用这个
+        #   2) tkinter（src/tm_watch_ai.py）：零依赖兜底，没构建 C# 版时用它
+        # 想强制回到 tkinter：启动前设 TM_WATCH_IMPL=py
+        cs_exe = os.path.join(
+            base, "viewer-cs", "TokensWatch", "bin", "Release",
+            "net8.0-windows", "TokensWatch.exe")
+        want_py = (os.environ.get("TM_WATCH_IMPL") or "").strip().lower() in (
+            "py", "tk", "tkinter")
+
+        if os.path.isfile(cs_exe) and not want_py:
+            spectator = subprocess.Popen(
+                [cs_exe],
+                cwd=base,
+                env=dict(os.environ, TM_WATCH_API="http://127.0.0.1:%d" % port))
+            print("  正在拉起只读观众席（C# 版，进程 %d）……" % spectator.pid)
+        else:
+            spectator = subprocess.Popen(
+                [sys.executable, "-c",
+                 "import sys, os; sys.path.insert(0, os.path.join(os.getcwd(), 'src')); "
+                 "import tm_watch_ai; tm_watch_ai.main()"],
+                cwd=base,
+                env=dict(os.environ, TM_WATCH_API="http://127.0.0.1:%d" % port))
+            print("  正在拉起只读观众席（tkinter 版，进程 %d）……" % spectator.pid)
     except Exception as exc:
         print("  观众席启动失败：%s（对局服务照常运行）" % exc)
 

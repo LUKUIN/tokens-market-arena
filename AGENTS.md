@@ -20,6 +20,8 @@ TokensMarket-OpenSource-AI-v97/
 │   └── 进程深度清理.bat
 ├── tools/deep-clean.ps1  非交互清理（AI 直接调这个）
 ├── src/               引擎与 HTTP（对局中会被封存，不要改）
+├── viewer-cs/          ★ C# 观众席（默认界面；构建过就用它，否则退回 tkinter）
+│   └── TokensWatch/    WPF 工程：只读 /state，不碰引擎。Agent 不必碰它
 ├── tests/             unittest 用例
 ├── docs/              ★ 规则文档
 │   ├── rules.md       完整规则

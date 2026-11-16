@@ -152,6 +152,9 @@ python run.py --headless          # 等价于 run.py server --headless
 
 ## 观众席界面
 
+> 本节描述的是默认的 **tkinter 观众席**（`src/tm_watch_ai.py`）。
+> C# / WPF 版的结构不同——曲线量程自适应、标题栏浅色、系统按钮已移除，见下一节。
+
 观众席是**只读**的，除「AI 行为」「外部的怜悯」两个查看按钮外不能操作任何东西。
 
 AI 每发一次求助（`POST /assist/ask`），屏幕正中会弹一个**系统原生**提示框（`messagebox.showwarning`）并响提示音，标题是「外部的怜悯」，正文写明当前有几条求助。
@@ -421,10 +424,12 @@ TokensMarket-OpenSource-AI-v97/
 ├── README.md / README.en.md
 ├── AGENTS.md               给 Agent 的单页入口 + 项目地图（AI 先读这个）
 ├── launchers/              所有双击入口（内部自动切回仓库根）
-│   ├── launchers\开一局.bat          双击入口（5 秒内按 Y 才启动，不按就清理退出）
-│   ├── launchers\AI-Start.bat        无人值守入口（不做确认；脚本 / Agent 专用）
-│   ├── launchers\只开观众席.bat      窗口被误关时补挂；对局在跑就静默附上
-│   └── launchers\进程深度清理.bat    人工双击用（含 pause）
+│   ├── launchers\开一局.bat                双击入口（5 秒内按 Y 才启动，不按就清理退出）
+│   ├── launchers\AI-Start.bat              无人值守入口（不做确认；脚本 / Agent 专用）
+│   ├── launchers\只开观众席.bat            tkinter 观众席：窗口被误关时补挂
+│   ├── launchers\构建观众席(新版).bat      C# 观众席的构建入口（需要 .NET 8 SDK）
+│   ├── launchers\只开观众席(新版).bat      C# 观众席的启动入口
+│   └── launchers\进程深度清理.bat          人工双击用（含 pause）
 ├── tools/
 │   └── tools\deep-clean.ps1      清理本体；AI 请直接调用它（非交互，退出码 0 即成功）
 ├── src/
@@ -434,6 +439,11 @@ TokensMarket-OpenSource-AI-v97/
 │   ├── scratchpad.py       草稿纸终端
 │   ├── app.ico / warn.ico  图标
 │   └── data/               运行时生成：session.json、reports/、.scratchpad.jsonl
+├── viewer-cs/TokensWatch/  C# / WPF 观众席（可选，替代 tkinter 窗口）
+│   ├── Controls/           权益曲线与迷你走势线（纯 WPF 矢量自绘，无第三方库）
+│   ├── Services/           只读 HTTP 客户端（显式绕过系统代理）
+│   ├── Panels/             四个附属窗口：AI 行为 / 外部的怜悯 / 活动流 / 持仓
+│   └── Theme/              Fluent 样式：卡片、按钮、表格、滚动条
 ├── tests/                  unittest 用例（python -m unittest discover -s tests）
 ├── docs/
 │   ├── rules.md            完整规则      · rules.en.md 英文版

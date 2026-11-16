@@ -174,6 +174,36 @@ Sections, top to bottom:
 
 > Every number comes from `/state`; nothing is simulated. Full detail lives in the HTML report.
 
+## C# spectator (optional, replaces the tkinter window)
+
+`viewer-cs/` holds a standalone WPF spectator that replaces the tkinter window in `src/tm_watch_ai.py`. **Not a single line of the Python engine changed** — it only polls the existing `/state` over HTTP.
+
+### Why it exists
+
+The tkinter Canvas has no antialiasing, so the equity curve always carries jagged edges on diagonals; Fluent translucency, shadows and Mica are out of reach. C# + WPF renders vectors, so those come for free.
+
+### Requirements
+
+- Windows 10 1809 or newer
+- .NET 8 SDK (to build) or .NET 8 Desktop Runtime (to run only)
+
+### Build
+
+```bat
+launchers\\Build Spectator (C#).bat
+```
+
+### Run
+
+Start a match the usual way (`launchers\\Start Match.bat`), then launch the exe above.
+Both spectators can run at once: the new build uses the `Global\\TokensWatchViewerCs` mutex and does not touch port 8735 used by the tkinter build.
+
+### Relationship to the tkinter build
+
+- They coexist; use whichever looks better
+- Read-only — it never writes engine state
+- Zero extra dependencies (no NuGet packages, the chart is hand-drawn WPF vectors), so `requirements.txt` is untouched
+
 ## How a match runs
 
 0. **Nothing is asked.** Contestant ID, random events, **Preferred Financing** and **Slot Machine**
