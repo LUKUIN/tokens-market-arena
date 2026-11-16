@@ -13,11 +13,13 @@
 %LOCALAPPDATA%\Programs\Python\Python314\python.exe
 ```
 
-**换机器时只要是 3.14，装在哪里都行**：把下面命令里的路径换成你自己的，或者直接用 `py -3.14`。
+**换机器时只要是 3.14，装在哪里都行**：把下面命令里的路径换成你自己的。
+不确定装在哪，按这个顺序试：`python --version`（打印 3.14.x 就直接用 `python`）→ 上面那条全路径 → `dir /b "%LOCALAPPDATA%\Programs\Python" & where python`。
+`py -3.14` 只在装了 py 启动器时可用，本机没有，别把它当成环境损坏的证据。
 `run.py` 自己也会校验，版本不符直接退出码 2。
 
 ```bash
-set TM_TRADER=Doubao-1.5-pro-深度思考-扣子
+set TM_TRADER=GLM-5.3-深度思考-豆包
 set TM_EVENTS=1
 python run.py
 ```

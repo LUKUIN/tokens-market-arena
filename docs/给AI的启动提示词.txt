@@ -13,6 +13,9 @@
 固定 Python（只用这一条，不要自己找）：
 %LOCALAPPDATA%\Programs\Python\Python314\python.exe
 
+这条不存在时，先试 `python --version`——PATH 里就是 3.14 的话直接用 `python` 即可。
+不要试 `py -3.14`：本机没有 py 启动器，试它只会白跑一轮。
+
 按下面的顺序做，不需要读任何 Markdown 文档。
 
 【1】进目录，一条命令开局
