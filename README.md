@@ -44,6 +44,53 @@
 
 ---
 
+## 运行环境与必需组件
+
+**这一节是稳定运行的完整条件清单。** 缺任何一项，游戏本体或观众席会起不来；下文也写清"缺了会怎样"和"怎么绕过"。
+
+### 必需项（四件，缺一不可）
+
+| 组件 | 版本要求 | 用来干什么 | 缺了会怎样 |
+|---|---|---|---|
+| **Windows** | 10 1607+ / 11（x64） | 全部 | — |
+| **Python** | **3.14，且只有 3.14** | 引擎、HTTP 服务、tkinter 观众席 | `run.py` 启动即退出，**退出码 2**；`.pyc` 报 `bad magic number` |
+| **Tcl/Tk** | 随 Python 3.14 附带 | tkinter 观众席的窗口层 | 用了 `TM_WATCH_IMPL=py` 时窗口起不来 |
+| **.NET 8 Desktop Runtime** | 8.0.x（x64） | **C# 观众席**（默认界面） | 观众席窗口闪一下就退；游戏本体与服务照常运行 |
+
+**Python 3.14 是硬锁。** `run.py` 第一件事就是校验版本，不是 3.14 直接中止；`.pyc` 缓存与 tkinter 控件都按 3.14 编译，换 3.12 / 3.13 只会得到 `bad magic number`。安装位置不限——`run.py` 只校验版本号，不校验路径。
+
+**Tcl/Tk 不是单独安装的。** Windows 上的官方 Python 安装包（python.org 的 installer 与 Microsoft Store 版）默认都带；用 `conda` 或某些精简发行版时可能被裁掉，那种情况下 `import tkinter` 会失败。
+
+**.NET 8 Desktop Runtime 只需要 Runtime，不需要 SDK。** 下载 [.NET 8 Desktop Runtime (x64)](https://dotnet.microsoft.com/download/dotnet/8.0)，选 **Desktop Runtime** 那一列（不是 ASP.NET Core，也不是 Console Runtime）。只运行不构建时，装 Runtime 就够；要自己改 `viewer-cs/` 的界面源码才需要 **.NET 8 SDK**。
+
+### 明确不需要的东西
+
+- **pip 第三方包**：`requirements.txt` 是空的。全部代码只用 Python 标准库（`argparse` / `json` / `http.server` / `urllib` / `tkinter` / `subprocess` 等），`pip install -r requirements.txt` 是一个空操作。
+- **Node.js / npm / 浏览器 / WebView2**：观众席是原生窗口，不是网页。
+- **数据库、Redis、消息队列**：全部状态在进程内存 + `src/data/` 下的 JSON。
+- **联网**：行情与事件都是本地生成，全程只监听 `127.0.0.1`，不访问外网。
+
+### 降级路径（组件不全时怎么办）
+
+C# 观众席不可用时，游戏本体不受影响——观众席是独立子进程，只是显示层。
+
+```bash
+# 强制回到 tkinter 观众席（只需 Python 3.14 + Tcl/Tk）
+TM_WATCH_IMPL=py python run.py
+```
+
+如果 `viewer-cs/TokensWatch/bin/Release/net8.0-windows/TokensWatch.exe` 不存在，`run.py` 会自动走 tkinter，不需要手动设变量。发行包里的 zip **已内置这个 exe**，所以解压即用 C# 界面；只有从源码 clone 且 `bin/` 被清掉时才会回退。
+
+想恢复 C# 观众席：双击 `launchers\构建观众席(新版).bat`（需要 .NET 8 SDK，首次构建约 10 秒）。
+
+### 本机实测环境（仅供参考，非要求）
+
+Windows 11 Insider build 26300（26H2）、Python 3.14.7、.NET SDK 8.0.428 / 9.0.321 / 10.0.404、.NET Desktop Runtime 8.0.34。WebView2 Runtime 虽在位但本版未使用。
+
+这只说明"上述配置能跑"，不构成对其他环境的保证。Win10 上的可用性来自 .NET 8 的支持矩阵（最低 Windows 10 1607），项目本身未在 Win10 实机验证。
+
+---
+
 ## 快速开始
 
 **本版全程不询问输入。** 所有配置走环境变量，没设就用默认值——没有 `input()`、没有「按任意键」、没有二次确认。

@@ -32,6 +32,11 @@ _guard_vault/
 # 本地脚本与过程产物（不进版本库）
 _scratch/
 
-# C# 观众席构建产物（源码入库，产物不入库）
-viewer-cs/**/bin/
+# C# 观众席构建产物：obj、Debug、调试符号、WPF 中间缓存都不入库；
+# Release 的 4 个运行文件入库，这样 Release 附件里的 zip 开箱即可用 C# 观众席，
+# 不必先装 .NET SDK 自己构建。
 viewer-cs/**/obj/
+viewer-cs/**/bin/Debug/
+viewer-cs/**/bin/**/*.pdb
+viewer-cs/**/bin/**/*.cache
+viewer-cs/**/bin/**/wpftmp/
