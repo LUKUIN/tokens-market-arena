@@ -2638,17 +2638,18 @@ class Engine:
                       - _slot_win + _slot_paid)
             _attr_rows = [
                 ("Direction and gaps (gross P&L)", _gross, ""),
-                ("└ Slippage cost", -_slip_c, "down" if _slip_c > 0 else ""),
-                ("└ Spread cost", -_spread_c, "down" if _spread_c > 0 else ""),
-                ("└ Commission", -_fees_c, "down" if _fees_c > 0 else ""),
-                ("└ Overnight interest", -_swap_c, "down" if _swap_c > 0 else ""),
-                ("|- Slot Machine stakes", -_slot_paid, "down" if _slot_paid > 0 else ""),
+                ("· Slippage cost", -_slip_c, "down" if _slip_c > 0 else ""),
+                ("· Spread cost", -_spread_c, "down" if _spread_c > 0 else ""),
+                ("· Commission", -_fees_c, "down" if _fees_c > 0 else ""),
+                ("· Overnight interest", -_swap_c, "down" if _swap_c > 0 else ""),
+                ("· Slot Machine stakes", -_slot_paid, "down" if _slot_paid > 0 else ""),
                 ("Slot Machine payouts", _slot_win, "up" if _slot_win > 0 else ""),
                 ("Net P&L", float(pnl), "up" if pnl >= 0 else "down"),
             ]
             _attr_html = "".join(
-                '<div class="kv"><span>%s</span><span class="%s">%s</span></div>'
-                % (k, c, fmt(v)) for k, v, c in _attr_rows)
+                '<div class="kv%s"><span>%s</span><span class="%s">%s</span></div>'
+                % (" sub" if k.startswith("· ") else "", k,
+                   c, fmt(v)) for k, v, c in _attr_rows)
 
             _as_items = self.s.get("assist") or []
             _as_rows = []
@@ -2734,55 +2735,81 @@ class Engine:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>After-action report - {trader} - {now}</title>
 <style>
-:root{{--bg:#f6f7f9;--card:#fff;--line:#e4e6eb;--ink:#1d2129;--muted:#86909c;--up:#0d9458;--down:#d93025}}
+:root{{--bg:#F3F3F3;--card:#FFFFFF;--line:#E1E1E1;--ink:#1A1A1A;--muted:#6B6B6B;
+--up:#107C10;--down:#C42B1C;--accent:#0078D4;--warn:#CA5010;--soft:#FAFAFA}}
 *{{box-sizing:border-box}}
-body{{margin:0;background:var(--bg);color:var(--ink);font:14px/1.65 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}}
-.wrap{{max-width:980px;margin:0 auto;padding:28px 20px 60px}}
-header{{border-top:6px solid #c8161d;background:var(--card);border-radius:10px;padding:22px 26px;margin-bottom:18px;box-shadow:0 1px 3px rgba(0,0,0,.06)}}
-h1{{margin:0 0 4px;font-size:22px;letter-spacing:-.3px}}
-.sub{{color:var(--muted);font-size:13px}}
-.badge{{display:inline-block;margin-left:10px;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600}}
-.badge.hit{{background:#e6f6ee;color:var(--up)}}
-.badge.miss{{background:#fdecea;color:var(--down)}}
-.cards{{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}}
-.card{{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}}
-.card .k{{color:var(--muted);font-size:12px;margin-bottom:6px}}
-.card .v{{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}}
-.up{{color:var(--up)}} .down{{color:var(--down)}}
-section{{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin-bottom:18px}}
-h2{{margin:0 0 14px;font-size:15px;font-weight:700}}
-.curve{{width:100%;height:auto;display:block}}
-.grid2{{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}}
-.kv{{display:flex;flex-direction:column;gap:3px;padding:9px 12px;border:1px solid var(--line);border-radius:8px}}
-.kv span:first-child{{color:var(--muted);font-size:12px}}
-.kv span:last-child{{font-weight:600;font-variant-numeric:tabular-nums}}
-table{{width:100%;border-collapse:collapse;font-size:12.5px}}
-th,td{{padding:6px 8px;text-align:right;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}}
-th{{color:var(--muted);font-weight:600}}
-th:first-child,td:first-child,th:nth-child(2),td:nth-child(2),th:nth-child(3),td:nth-child(3){{text-align:left}}
-ul.ev{{list-style:none;padding:0;margin:0;font-size:12.5px;max-height:320px;overflow:auto}}
-ul.ev li{{padding:4px 0;border-bottom:1px solid #f2f3f5}}
-.tag{{display:inline-block;min-width:70px;font-size:11px;color:var(--muted)}}
-.muted{{color:var(--muted)}}
-footer{{text-align:center;color:var(--muted);font-size:12px;padding-top:8px}}
-.kvbox{{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:2px 24px;background:#fbfbfd;border:1px solid var(--line);border-radius:8px;padding:12px 16px;margin-bottom:10px}}
-.note{{color:var(--muted);font-size:12.5px;line-height:1.7;padding:0 2px}}
-.toc{{display:flex;flex-wrap:wrap;gap:6px 14px;margin:-6px 0 16px;padding:10px 16px;
-background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:12.5px}}
-.toc a{{color:#0b6bcb;text-decoration:none}}
+body{{margin:0;background:var(--bg);color:var(--ink);
+font:14px/1.7 "Microsoft YaHei UI","Microsoft YaHei","Segoe UI","Cascadia Mono","Consolas",system-ui,sans-serif;
+-webkit-font-smoothing:antialiased}}
+.wrap{{width:100%;max-width:none;margin:0;padding:20px 24px 48px}}
+header{{background:var(--card);border:1px solid var(--line);border-radius:8px;
+padding:20px 24px;margin-bottom:14px}}
+h1{{margin:0 0 6px;font-size:21px;font-weight:700;letter-spacing:-.2px}}
+.sub{{color:var(--muted);font-size:13px;line-height:1.8}}
+.badge{{display:inline-block;margin-left:10px;padding:2px 10px;border-radius:10px;
+font-size:12px;font-weight:600;vertical-align:2px}}
+.badge.hit{{background:#E8F4EA;color:var(--up)}}
+.badge.miss{{background:#FCE9E7;color:var(--down)}}
+.toc{{display:flex;flex-wrap:wrap;gap:6px 16px;margin:0 0 14px;padding:10px 18px;
+background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:13px}}
+.toc a{{color:var(--accent);text-decoration:none}}
 .toc a:hover{{text-decoration:underline}}
-.scratch{{background:#fbfbfd;border:1px solid var(--line);border-radius:8px;padding:10px 14px;max-height:520px;overflow:auto;font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;font-size:13.5px;line-height:1.75}}
-.sc-item{{padding:6px 0;border-bottom:1px dashed #eceef2;white-space:pre-wrap;word-break:break-word}}
+.cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+gap:12px;margin-bottom:14px}}
+.card{{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px 18px}}
+.card .k{{color:var(--muted);font-size:13px;margin-bottom:8px}}
+.card .v{{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.5px}}
+.up{{color:var(--up)}} .down{{color:var(--down)}}
+section{{background:var(--card);border:1px solid var(--line);border-radius:8px;
+padding:18px 22px;margin-bottom:14px}}
+h2{{margin:0 0 14px;padding-bottom:10px;border-bottom:1px solid var(--line);
+font-size:15px;font-weight:700}}
+.curve{{width:100%;height:auto;display:block}}
+.grid2{{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}}
+.kv{{display:flex;flex-direction:column;gap:4px;padding:10px 14px;
+border:1px solid var(--line);border-radius:6px;background:var(--soft)}}
+.kv span:first-child{{color:var(--muted);font-size:12.5px}}
+.kv.sub{{background:transparent;border-style:dashed}}
+.kv.sub span:first-child{{padding-left:16px}}
+.kv span:last-child{{font-weight:600;font-size:15px;font-variant-numeric:tabular-nums}}
+table{{width:100%;border-collapse:collapse;font-size:13px}}
+th,td{{padding:8px 12px;text-align:right;border-bottom:1px solid var(--line);
+font-variant-numeric:tabular-nums}}
+th{{color:var(--muted);font-weight:600;background:var(--soft)}}
+th:first-child,td:first-child,th:nth-child(2),td:nth-child(2),
+th:nth-child(3),td:nth-child(3),th:nth-child(4),td:nth-child(4){{text-align:left}}
+tbody tr:hover{{background:#FAFAFA}}
+ul.ev{{list-style:none;padding:0;margin:0;font-size:13px;max-height:420px;overflow:auto}}
+ul.ev li{{padding:6px 0;border-bottom:1px solid #F0F0F0}}
+ul.ev li:last-child{{border-bottom:0}}
+.tag{{display:inline-block;min-width:78px;font-size:11.5px;color:var(--muted)}}
+.muted{{color:var(--muted)}}
+footer{{text-align:center;color:var(--muted);font-size:12.5px;padding:6px 0 20px}}
+.kvbox{{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+gap:2px 28px;background:var(--soft);border:1px solid var(--line);border-radius:6px;
+padding:14px 18px;margin-bottom:10px}}
+.note{{color:var(--muted);font-size:12.5px;line-height:1.8;padding:2px 0 0}}
+.scratch{{background:var(--soft);border:1px solid var(--line);border-radius:6px;
+padding:12px 16px;max-height:560px;overflow:auto;
+font-family:"Microsoft YaHei UI","Microsoft YaHei","Segoe UI","Cascadia Mono","Consolas",sans-serif;
+font-size:13.5px;line-height:1.8}}
+.sc-item{{padding:7px 0;border-bottom:1px dashed #ECECEC;white-space:pre-wrap;word-break:break-word}}
 .sc-item:last-child{{border-bottom:0}}
-.asline{{padding:6px 0;border-bottom:1px dashed #eceef2;white-space:pre-wrap;word-break:break-word}}
+.asline{{padding:7px 0;border-bottom:1px dashed #ECECEC;white-space:pre-wrap;word-break:break-word}}
 .asline:last-child{{border-bottom:0}}
 .astag{{font-weight:600;margin-right:6px}}
-.as-ai .astag{{color:#0078d4}}
-.as-human .astag{{color:#0a7a3d}}
-.as-sys .astag{{color:#6b6b6b}}
+.as-ai .astag{{color:var(--accent)}}
+.as-human .astag{{color:var(--up)}}
+.as-sys .astag{{color:var(--muted)}}
 .sc-meta{{color:var(--muted);margin-right:10px;font-size:12px}}
-.ev .tag{{display:inline-block;padding:0 6px;border-radius:4px;background:#eef2f7;color:#5b6b7c;font-size:12px;margin-right:6px}}
+.ev .tag{{display:inline-block;padding:0 7px;border-radius:4px;background:#EEF4FB;
+color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
 .ev .evt{{color:var(--muted);font-size:12px;margin-right:8px}}
+@media (max-width:760px){{
+.wrap{{padding:14px 14px 32px}}
+.cards,.grid2{{grid-template-columns:1fr}}
+.card .v{{font-size:22px}}
+}}
 </style></head><body><div class="wrap">
 <header>
   <h1>Tokens Trading Market · After-action report<span class="badge {hitcls}">{verdict}</span></h1>
