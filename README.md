@@ -28,6 +28,53 @@ The participant is a large language model, not a human.
 
 ---
 
+## Requirements (the complete list)
+
+**Everything needed for a stable run.** Miss one and either the game host or the spectator window will not come up; each row also states what fails and how to work around it.
+
+### Required (four items, nothing optional about them)
+
+| Component | Version | What it is for | If missing |
+|---|---|---|---|
+| **Windows** | 10 1607+ / 11 (x64) | everything | - |
+| **Python** | **3.14 and nothing else** | engine, HTTP server, tkinter spectator | `run.py` exits immediately with **code 2**; `.pyc` files raise `bad magic number` |
+| **Tcl/Tk** | ships with Python 3.14 | the window layer of the tkinter spectator | the window cannot start when `TM_WATCH_IMPL=py` |
+| **.NET 8 Desktop Runtime** | 8.0.x (x64) | the **C# spectator** (the default UI) | the window flashes and closes; the engine and HTTP service keep running |
+
+**Python 3.14 is a hard lock.** `run.py` validates the version before anything else and aborts otherwise; the `.pyc` cache and the tkinter widgets are compiled for 3.14, so 3.12 or 3.13 only produces `bad magic number`. The install location is free: `run.py` checks the version, not the path.
+
+**Tcl/Tk is not a separate install.** The official Windows Python installers (python.org and Microsoft Store) bundle it. Trimmed distributions such as some `conda` builds may drop it, in which case `import tkinter` fails.
+
+**.NET 8 Desktop Runtime, not the SDK.** Download [.NET 8 Desktop Runtime (x64)](https://dotnet.microsoft.com/download/dotnet/8.0) - the **Desktop Runtime** column, not ASP.NET Core and not the console runtime. Runtime is enough to run; the **.NET 8 SDK** is only needed when you modify the `viewer-cs/` sources.
+
+### Explicitly not needed
+
+- **Third-party pip packages.** `requirements.txt` is empty on purpose. Everything is Python standard library (`argparse`, `json`, `http.server`, `urllib`, `tkinter`, `subprocess`, ...); `pip install -r requirements.txt` is a no-op.
+- **Node.js / npm / a browser / WebView2.** The spectator is a native window, not a web page.
+- **Database, Redis, message queue.** All state lives in process memory plus JSON under `src/data/`.
+- **Network access.** Quotes and events are generated locally; the server binds `127.0.0.1` only and never reaches the internet.
+
+### Degraded mode
+
+The game host does not depend on the spectator - the spectator is a separate child process and only a display layer.
+
+```bash
+# Force the tkinter spectator (needs only Python 3.14 + Tcl/Tk)
+TM_WATCH_IMPL=py python run.py
+```
+
+If `viewer-cs/TokensWatch/bin/Release/net8.0-windows/TokensWatch.exe` is absent, `run.py` falls back to tkinter automatically. **The release zip ships that exe**, so a downloaded package runs the C# UI out of the box; only a source clone with a cleaned `bin/` falls back.
+
+To restore the C# spectator from source: run `launchers\Build Spectator (C#).bat` (needs the .NET 8 SDK; the first build takes about ten seconds).
+
+### Verified environment (reference only, not a requirement)
+
+Windows 11 Insider build 26300 (26H2), Python 3.14.7, .NET SDK 8.0.428 / 9.0.321 / 10.0.404, .NET Desktop Runtime 8.0.34. WebView2 Runtime is present but unused by this edition.
+
+This only proves that the configuration above runs. Windows 10 support is inferred from the .NET 8 support matrix (Windows 10 1607 minimum); the project has not been tested on a Windows 10 machine.
+
+---
+
 ## Quick start
 
 **This edition never prompts for input.** Every setting comes from environment variables; anything
