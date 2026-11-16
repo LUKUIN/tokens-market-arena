@@ -46,12 +46,29 @@ Three hard rules:
 %LOCALAPPDATA%\Programs\Python\Python314\python.exe
 ```
 
+**One lookup order. Follow it; do not invent your own probe loop:**
+
+```bat
+python --version
+```
+
+1. Prints `Python 3.14.x` → use `python`, `cd` into the directory and start. **Most machines finish here.**
+2. Missing or wrong version → use the `%LOCALAPPDATA%\...\python.exe` full path above.
+3. Neither works → this one command lists every candidate at once instead of trying them one by one:
+
+```bat
+dir /b "%LOCALAPPDATA%\Programs\Python" 2>nul & where python 2>nul & where python3 2>nul
+```
+
+**The `py` launcher is optional and many machines never had it** (this one has none — `where py` is empty).
+`py -3.14` is only the "if it happens to be installed" convenience form: if it fails once, go straight to
+step 2. **Never treat a missing `py` as a broken environment and start auditing the registry, environment
+variables, or reinstalling Python.**
+
 `run.py` validates the version as its very first action: anything but 3.14 aborts with **exit code 2**
 and prints that exact command. It refuses to start when a match already owns the port (**exit code 4**)
-instead of starting a second one. Do not use `where python`, `py -3.12` or `python3` to hunt for another
-interpreter — the spectator's GUI widgets and the `.pyc` files are built for 3.14, and any other
-version simply cannot start. If the short name is not found, write the full path; do not report
-"the environment is broken".
+instead of starting a second one. Do not use `py -3.12` or `python3` to hunt for another interpreter —
+the spectator's GUI widgets and the `.pyc` files are built for 3.14, and any other version cannot start.
 
 ## 1. Check for leftovers (clean only if needed)
 

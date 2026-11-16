@@ -89,8 +89,15 @@ unset falls back to a default. There is no `input()`, no "press any key", no con
 ```
 
 > **On another machine it does not have to live at that exact path.** Any Python 3.14 install works —
-> swap the path in the commands below for your own, or use `py -3.14`. `run.py` validates the version,
-> not the install location.
+> swap the path in the commands below for your own.
+>
+> **One lookup order; do not invent your own probe loop:**
+> 1. `python --version` first — prints `Python 3.14.x` → just use `python`. Most machines finish here.
+> 2. Missing or wrong → the `%LOCALAPPDATA%` full path above.
+> 3. Neither → `dir /b "%LOCALAPPDATA%\Programs\Python" & where python & where python3` lists every candidate at once.
+>
+> **The `py` launcher is optional** (many machines never had it). `py -3.14` is only the
+> "if it happens to be installed" form; one failure sends you to step 2, not to auditing the registry.
 
 `run.py` validates the version as its first action: anything but 3.14 exits with **code 2** and prints
 that command. When a match already owns the port (or the sources are still sealed by the previous

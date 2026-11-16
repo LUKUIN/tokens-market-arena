@@ -13,6 +13,9 @@ Project directory: D:\your-path\TokensMarket-OpenSource-AI-EN-v97
 Pinned Python (use this one only; do not search for another):
 %LOCALAPPDATA%\Programs\Python\Python314\python.exe
 
+If that path is missing, try `python --version` first — when PATH already holds 3.14, just use `python`.
+Do not try `py -3.14`: this machine has no py launcher, so it only burns a round.
+
 Do the following in order. You do not need to read any Markdown file.
 
 [1] Enter the directory and start with one command
