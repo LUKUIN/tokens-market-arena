@@ -49,6 +49,21 @@
                                    Foreground="{StaticResource Accent}" />
                     </Border>
 
+                    <!-- One chip per global event; they are not joined into a single label -->
+                    <Border x:Name="ChipFr" Background="#F1F1F1" CornerRadius="11"
+                            Padding="10,3" Margin="6,0,0,0" VerticalAlignment="Center"
+                            Visibility="Collapsed">
+                        <TextBlock x:Name="TxtFr" Text="Preferred Financing" FontSize="13"
+                                   Foreground="{StaticResource Warn}" />
+                    </Border>
+
+                    <Border x:Name="ChipSlot" Background="#F1F1F1" CornerRadius="11"
+                            Padding="10,3" Margin="6,0,0,0" VerticalAlignment="Center"
+                            Visibility="Collapsed">
+                        <TextBlock x:Name="TxtSlot" Text="Slot machine" FontSize="13"
+                                   Foreground="{StaticResource Warn}" />
+                    </Border>
+
                     <Border x:Name="ChipSpecial" Background="#F1F1F1" CornerRadius="11"
                             Padding="10,3" Margin="6,0,0,0" VerticalAlignment="Center">
                         <TextBlock x:Name="TxtSpecial" Text="No global events" FontSize="13"

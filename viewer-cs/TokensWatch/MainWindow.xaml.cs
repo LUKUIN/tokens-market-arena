@@ -237,14 +237,12 @@ public partial class MainWindow : Window
         TxtMode.Text = st.EventsOn ? "Random events ON" : "Ideal (no random events)";
         TxtMode.Foreground = st.EventsOn ? Theme.Blue : Theme.Muted;
 
-        var onFlags = new List<string>();
-        if (st.Special is { } sp0)
-        {
-            if (sp0.Fr) onFlags.Add(Theme.FrName);
-            if (sp0.Slot) onFlags.Add(Theme.SlotName);
-        }
-        TxtSpecial.Text = onFlags.Count > 0 ? string.Join(" · ", onFlags) : "No global events";
-        TxtSpecial.Foreground = onFlags.Count > 0 ? Theme.Orange : Theme.Muted;
+        // One chip per global event: show the ones that are on, never joined.
+        bool fr = st.Special?.Fr == true;
+        bool slot = st.Special?.Slot == true;
+        ChipFr.Visibility = fr ? Visibility.Visible : Visibility.Collapsed;
+        ChipSlot.Visibility = slot ? Visibility.Visible : Visibility.Collapsed;
+        ChipSpecial.Visibility = (fr || slot) ? Visibility.Collapsed : Visibility.Visible;
 
         // ---------- 指标卡 ----------
         TxtEquity.Text = st.Equity.ToString("N0", CultureInfo.CurrentCulture);
@@ -350,7 +348,10 @@ public partial class MainWindow : Window
         TxtLiq.Text = $"{st.LiqLevel ?? "—"}（{liqPct} 往返）";
 
         TxtFf.Text = st.Ff is null ? "—" : FmtFf(st.Ff.Remain);
-        TxtSpecialState.Text = onFlags.Count > 0 ? string.Join("、", onFlags) : "无";
+        var specialNames = new List<string>();
+        if (fr) specialNames.Add(Theme.FrName);
+        if (slot) specialNames.Add(Theme.SlotName);
+        TxtSpecialState.Text = specialNames.Count > 0 ? string.Join("、", specialNames) : "无";
 
         // Peak / Trough：直接取曲线上的极值，和图上标注的是同一组数字。
         // 只有 1 个点时（刚开局）没有“波动”可言，峰谷会等于Principal，显示出来
