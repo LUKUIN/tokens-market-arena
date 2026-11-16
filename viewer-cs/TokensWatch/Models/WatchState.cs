@@ -151,7 +151,10 @@ public sealed class SpecialFlags
     [JsonPropertyName("fr")] public bool Fr { get; set; }
     [JsonPropertyName("fr_left")] public JsonElement? FrLeft { get; set; }
     [JsonPropertyName("slot")] public bool Slot { get; set; }
-    [JsonPropertyName("slot_left")] public int SlotLeft { get; set; }
+    // 引擎在「老虎机未开启」时把 slot_left 输出成 null（tm_engine.py:1817 的
+    // `... if slot else None`）。这里必须是可空类型，否则整个 /state 反序列化失败，
+    // 界面会整块变空并弹「连接失败」。
+    [JsonPropertyName("slot_left")] public JsonElement? SlotLeft { get; set; }
     [JsonPropertyName("slot_win")] public double SlotWin { get; set; }
     [JsonPropertyName("fr_lo_pct")] public double FrLoPct { get; set; }
 }

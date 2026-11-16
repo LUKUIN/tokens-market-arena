@@ -323,7 +323,7 @@ curl -X POST http://127.0.0.1:8734/quit
 ```bash
 POST /assist/ask      {"text": "..."}                     # 求助，整局 3 次，返回 ticket
 GET  /assist/inbox                                        # 取观众席的话（取后不重复投递）
-POST /assist/enable                                       # 开局后开通，扣 500,000 现金
+POST /assist/enable                                       # v1.2.23 起已取消：仅在开局前可开通，调用恒返回错误
 GET  /assist/pending                                      # 观众席 GUI 用
 POST /assist/reply    {"ticket": "a1", "text": "..."}     # 观众席回复
 POST /assist/reject   {"ticket": "a1"}                    # 观众席驳回

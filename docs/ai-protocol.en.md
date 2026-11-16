@@ -350,7 +350,7 @@ deterministic: the same input always produces the same output.
 ```bash
 POST /assist/ask      {"text": "..."}                     # 3 asks per match; returns a ticket
 GET  /assist/inbox                                        # collect spectator messages (once each)
-POST /assist/enable                                       # enable mid-match for 500,000 cash
+POST /assist/enable                                       # removed in v1.2.23: pre-match only, always returns an error
 GET  /assist/pending                                      # the spectator GUI polls this
 POST /assist/reply    {"ticket": "a1", "text": "..."}     # spectators answer
 POST /assist/reject   {"ticket": "a1"}                    # spectators decline

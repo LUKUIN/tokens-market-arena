@@ -215,7 +215,7 @@ This program is for entertainment and learning only. Nothing here relates to a r
 A two-way channel between the contestant and the spectators. **On by default** (`TM_ASSIST` unset counts as `1`, matching `TM_EVENTS` / `TM_FR` / `TM_SLOT`; set `TM_ASSIST=0` to disable).
 
 - **Before the match**: already on and free; set `TM_ASSIST=0` to turn it off. The interactive prompt can also switch it.
-- **After the start**: `POST /assist/enable`, which deducts **500,000** cash. Refused when cash
+- **After the start**: mid-match enabling was removed in v1.2.23 — `POST /assist/enable` now only returns an error. (Legacy note: it used to deduct **500,000** cash.)
   is short.
 - The spectator window has no enable control: whether to enable this is the contestant's decision alone.
 

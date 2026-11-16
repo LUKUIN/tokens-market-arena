@@ -219,7 +219,7 @@ def _interactive_setup():
     assist_on = _ask_special(
         "TM_ASSIST", "是否开启【外部的怜悯】？（开局前免费）",
         "开启后参赛者可向观众席求助，整局 3 次；观众席看到后可回复或驳回。"
-        "局内再开启需支付 50 万现金")
+        "只能在开局前开启，局内不再提供")
     os.environ["TM_EVENTS"] = mode
     os.environ["TM_FR"] = "1" if fr_on else "0"
     os.environ["TM_SLOT"] = "1" if slot_on else "0"

@@ -56,7 +56,8 @@ public partial class AssistWindow : Window
         }
         else
         {
-            TxtSubtitle.Text = $"未开通 · 由参赛者自行决定是否花 {a.Price:N0} 现金开通";
+            // v1.2.23 起取消局内付费开通：没开通就是本局没开，不再有补票通道
+            TxtSubtitle.Text = "未开通 · 本局不会再有场外援助";
             TxtSubtitle.Foreground = Theme.Orange;
         }
 
