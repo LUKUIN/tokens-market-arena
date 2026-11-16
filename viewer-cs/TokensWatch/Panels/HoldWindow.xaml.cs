@@ -41,7 +41,7 @@ public partial class HoldWindow : Window
             var row = new UniformGrid { Columns = 8, Margin = new Thickness(0, 3, 0, 3) };
 
             row.Children.Add(Cell(p.Pair, Theme.Brush(Theme.PairColor(p.Pair)), left: true));
-            row.Children.Add(Cell(p.Side == "LONG" ? "多" : "空",
+            row.Children.Add(Cell(p.Side == "LONG" ? "Long" : "Short",
                                   p.Side == "LONG" ? Theme.Green : Theme.Red));
             row.Children.Add(Cell(p.Lots.ToString("0.##", CultureInfo.CurrentCulture)));
             row.Children.Add(Cell(p.Leverage.ToString("0", CultureInfo.CurrentCulture) + "x"));

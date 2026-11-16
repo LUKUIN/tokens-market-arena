@@ -1,7 +1,7 @@
 <Window x:Class="TokensWatch.Panels.HoldWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Positions（同步）"
+        Title="Positions (live)"
         Height="380" Width="820"
         MinHeight="240" MinWidth="620"
         Background="{StaticResource Bg}"

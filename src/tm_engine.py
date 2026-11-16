@@ -311,7 +311,7 @@ def _idle_rule_text():
             "activity'. Read-only calls (/state, /prices, /rules) do not count, so "
             "slow thinking is never cut short. TM_IDLE_ABORT tunes it, 0 disables"
             % ("/".join(IDLE_ACTION_LABELS), IDLE_ABORT_MINUTES))
-ENGINE_VERSION = "1.2.21"  # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.23"  # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -797,7 +797,6 @@ class Engine:
             idx = self._roll_index() if idx is None else int(idx) % ROLL_COMBOS
             gap_i = idx % len(GAP_LEVELS)
             liq_i = idx // len(GAP_LEVELS)
-            self._mark_action()
             self.s["difficulty"] = {"gap": gap_i, "liq": liq_i, "at": time.time(),
                                     "gap_pct": GAP_LEVELS[gap_i][1],
                                     "liq_depth": LIQ_LEVELS[liq_i][1]}
@@ -809,6 +808,7 @@ class Engine:
                 st = self.s["liquidity"].setdefault(_sym, {"L": base, "shock_until": 0})
                 st["L"] = base
                 st["shock_until"] = 0
+            self._mark_action()
             self._event("[Difficulty] Black Swan %s | liquidity %s" % (
                 GAP_LEVELS[gap_i][0], LIQ_LEVELS[liq_i][0]), "ok")
             # Lock-in = real start: the clock baseline is now, and the draw's 30 seconds do not count toward the 45 minutes
@@ -842,7 +842,17 @@ class Engine:
             json.dump(self.s, fh, ensure_ascii=False)
             fh.flush()
             os.fsync(fh.fileno())
-        os.replace(tmp, self.path)
+        # On Windows the save file may be briefly held by the indexer or an AV scanner,
+        # so os.replace occasionally raises WinError 5 (PermissionError). A one-off
+        # transient hold must not abort a ledger write — retry a few times.
+        for _attempt in range(5):
+            try:
+                os.replace(tmp, self.path)
+                break
+            except PermissionError:
+                if _attempt == 4:
+                    raise
+                time.sleep(0.05)
         self._seal_touch()
 
     def _event(self, text, kind="info"):
@@ -862,8 +872,15 @@ class Engine:
         return diff * pos["lots"] * LOTS_SIZE
 
     def _position_margin(self, pos):
-        return (pos["lots"] * LOTS_SIZE * pos["entry"]
-                / max(1, pos["leverage"]) * self._mod("margin_mult"))
+        """Margin in use = the value accumulated per fill at open time.
+
+        Never recompute it as `notional / leverage`: the open formula already applied
+        `margin_mult`, so multiplying again diverges from pos["margin"] (adding to a position
+        rewrites leverage and breaks what used to cancel out). `margin_mult` is also the
+        *current* event factor — using it to recompute an old position erases the factor
+        that applied when it was opened.
+        """
+        return float(pos.get("margin") or 0.0)
 
     def _total_margin(self):
         return sum(self._position_margin(p) for p in self.s["positions"])
@@ -1205,8 +1222,11 @@ class Engine:
             self._event(
                 "[Capital negative] Your Tokens fell to %.0f. Borrow via POST /loan within %d seconds to bring it back above 0 and continue; otherwise the run ends immediately." % (cash, NEGATIVE_GRACE * TICK_SECONDS),
                 "warn")
-        used = self.s["tick"] - self.s["negative_since"]
-        if used >= NEGATIVE_GRACE:
+        # Judge by wall clock, not by tick: fast_forward can advance 60 ticks at once,
+        # so a tick-based check lets one call consume the whole 60-second rescue window.
+        _since_at = float(self.s.get("negative_since_at") or 0.0)
+        _used_sec = (time.time() - _since_at) if _since_at > 0 else 0.0
+        if _used_sec >= NEGATIVE_GRACE * TICK_SECONDS:
             self._event("Capital negative with no loan taken; run over", "warn")
             self._end_session("Negative equity")
             return True
@@ -1580,6 +1600,9 @@ class Engine:
             self.s["assist_on"] = True
             self.s["assist_spent"] = 0.0
             self._assist_push("system", "Assistance enabled (%s)" % why)
+            # Called at startup; without a save the switch is lost if the process exits
+            # before the first tick.
+            self._save()
             return {"ok": True, "already": False}
 
     def assist_enable(self):
@@ -1630,6 +1653,9 @@ class Engine:
                     if x.get("kind"):
                         item["kind"] = x["kind"]
                     out.append(item)
+            # The read flag must be persisted, otherwise a restart re-delivers the same
+            # message and breaks the documented "taken once, never redelivered" promise.
+            self._save()
             return {"ok": True, "items": out,
                     "remaining": max(0, self.ASSIST_ASK_LIMIT - int(self.s.get("assist_used") or 0))}
 
@@ -1643,6 +1669,10 @@ class Engine:
     def assist_reply(self, ticket, text):
         """Spectators answer one ask."""
         with LOCK:
+            # Same guard as every other write endpoint: after settlement nothing may be
+            # written, otherwise the report contains a conversation that happened after it.
+            if self.s.get("finished"):
+                return {"ok": False, "error": "The match has ended"}
             t = (text or "").strip()
             if not t:
                 return {"ok": False, "error": "text is required"}
@@ -1657,6 +1687,8 @@ class Engine:
     def assist_reject(self, ticket):
         """Spectators decline one ask."""
         with LOCK:
+            if self.s.get("finished"):
+                return {"ok": False, "error": "The match has ended"}
             hit = self._assist_find_pending(ticket)
             if not hit:
                 return {"ok": False, "error": "no pending ask %s" % ticket}
@@ -1799,6 +1831,11 @@ class Engine:
             recs.append(real)
             self.s["ff_records"] = recs
             self._save()
+            # A mid-way settlement must report failure: otherwise the caller believes the
+            # fast-forward succeeded and keeps planning from ff while the match is over.
+            if done < int(n):
+                return {"ok": False, "ticks": done, "seconds": real,
+                        "error": "The match ended during fast-forward", "state": st, "ff": self.ff_plan()}
             return {"ok": True, "ticks": done, "seconds": real,
                     "state": st, "ff": self.ff_plan()}
 
@@ -1899,9 +1936,12 @@ class Engine:
             if stake < SLOT_MIN_STAKE or stake > SLOT_MAX_STAKE:
                 return {"ok": False,
                         "error": "Stake must be between %.0f and %.0f" % (SLOT_MIN_STAKE, SLOT_MAX_STAKE)}
-            eq = self.equity()
-            if stake > eq:
-                return {"ok": False, "error": "Stake cannot exceed current equity (%.2f)" % eq}
+            # The cap must be cash, not equity: unrealised PnL is not part of balance but is part
+            # of equity(), so capping by equity and deducting from cash can drive balance negative
+            # (900k unrealised + 100k cash would allow a 500k stake), which then trips the
+            # negative-cash flow and hands out a free rescue.
+            if stake > self.s["balance"]:
+                return {"ok": False, "error": "Stake cannot exceed available cash (%.2f)" % self.s["balance"]}
             self.s["balance"] -= stake
             sp["slot_paid"] = float(sp.get("slot_paid", 0.0)) + stake
             sp["slot_plays"] = played + 1
@@ -2023,6 +2063,12 @@ class Engine:
                 amount = float(amount) if amount is not None else debt
             except (TypeError, ValueError):
                 return {"ok": False, "error": "Amount must be a number"}
+            # Align with borrow / open_position / slot: json.loads accepts NaN and Infinity by
+            # default, and NaN makes every comparison below false (min, <, <=), so both balance
+            # and loan.balance become NaN — while the audit's abs(diff) > 0.05 is also false for
+            # NaN, meaning the ledger gets silently poisoned and still passes self-check.
+            if not math.isfinite(amount):
+                return {"ok": False, "error": "Amount must be a finite number"}
             amount = min(amount, debt)
             if self.s["balance"] < amount:
                 amount = max(0.0, self.s["balance"])
@@ -2134,8 +2180,9 @@ class Engine:
                 cur["lots"] = tot
                 cur["margin"] = round(cur["margin"] + margin, 2)
                 cur["fee"] = round(cur["fee"] + fee, 2)
-                ntl = tot * LOTS_SIZE * cur["entry"]
-                cur["leverage"] = max(1, int(round(ntl / cur["margin"]))) if cur["margin"] > 0 else leverage
+                # Do not rewrite leverage as notional/margin: leverage is the parameter the
+                # player chose, and back-solving it produces values like 67 that nobody picked
+                # while making the reported margin disagree with the ledger.
                 pos = cur
             else:
                 pos = {"pair": pair, "side": side, "lots": lots, "entry": round(fill, 6),
@@ -2199,8 +2246,10 @@ class Engine:
                 if qty >= p["lots"]:
                     self.s["positions"].pop(i)
                 else:
+                    # Scale by lots so the margin_mult captured at open time is preserved;
+                    # recomputing would apply the *current* event factor and make it jump.
+                    p["margin"] = round(p["margin"] * (p["lots"] - qty) / p["lots"], 2)
                     p["lots"] -= qty
-                    p["margin"] = self._position_margin(p)
                 closed.append({"pair": rec["pair"], "side": rec["side"], "lots": qty,
                                "fill": rec["fill"], "pnl": rec["pnl"]})
                 self._event("Closed %s %s %.0f lots @%.4f, P&L %+.0f" % (
@@ -2855,15 +2904,21 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
 <footer>{verline}</footer>
 </div></body></html>""".format(rowsn=len(rows), **body)
 
-            outdir = os.path.join(self.home, "reports")
-            os.makedirs(outdir, exist_ok=True)
+            # Reports are split by type: the human-readable HTML and the machine-read
+            # JSON no longer share one folder, so a match stops scattering two files into
+            # reports/. makedirs(exist_ok=True) is idempotent — created on first run only.
+            outroot = os.path.join(self.home, "reports")
+            html_dir = os.path.join(outroot, "HTML Reports")
+            json_dir = os.path.join(outroot, "JSON Reports")
+            os.makedirs(html_dir, exist_ok=True)
+            os.makedirs(json_dir, exist_ok=True)
             base = "%s_%s" % (stamp, trader)
-            hp = os.path.join(outdir, base + ".html")
+            hp = os.path.join(html_dir, base + ".html")
             with open(hp, "w", encoding="utf-8") as f:
                 f.write(html)
             # 机器可读摘要：bench.py / CI 只读这份 JSON，不解析 HTML。
             # 字段只增不改，历史存档不会因为新字段失效。
-            jp = os.path.join(outdir, base + ".json")
+            jp = os.path.join(json_dir, base + ".json")
             _start = float(m["start"])
             _genesis = float(self.s.get("genesis", STARTER_CASH))
             _target = float(self.s.get("target", TARGET_EQUITY))

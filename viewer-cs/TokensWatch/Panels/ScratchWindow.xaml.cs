@@ -35,7 +35,7 @@ public partial class ScratchWindow : Window
         }
         catch (Exception ex)
         {
-            TxtTitle.Text = "Scratchpad (读取失败）";
+            TxtTitle.Text = "Scratchpad (load failed)";
             ContentBox.Text = "Load failed: " + ex.Message;
             return;
         }
@@ -58,7 +58,7 @@ public partial class ScratchWindow : Window
             string tick = x.Tick.Text;
             string elapsed = x.Elapsed.ToString("0", CultureInfo.CurrentCulture);
             sb.Append('[').Append('t').Append(tick)
-              .Append(" · ").Append(elapsed).Append(" 秒]")
+              .Append(" · ").Append(elapsed).Append(" s]")
               .Append('\n')
               .Append(x.Text ?? "")
               .Append('\n').Append('\n');

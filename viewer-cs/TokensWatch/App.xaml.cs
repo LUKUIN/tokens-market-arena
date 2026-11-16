@@ -7,6 +7,7 @@ public partial class App : Application
 {
     private Mutex? _mutex;
     private bool _ownsMutex;
+    private int _fatalShown;   // 0=还没弹过；用 Interlocked 保证只弹一次
 
     protected override void OnStartup(StartupEventArgs e)
     {

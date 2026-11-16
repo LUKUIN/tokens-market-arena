@@ -180,7 +180,7 @@ def _interactive_setup():
     assist_on = _ask_special(
         "TM_ASSIST", "Enable Outside Mercy? (free before the match starts)",
         "Lets the contestant ask the spectators for help, 3 times per match; spectators may reply "
-        "or decline. Enabling it after the start costs 500,000 cash")
+        "or decline. It can only be enabled before the match starts.")
     os.environ["TM_EVENTS"] = mode
     os.environ["TM_FR"] = "1" if fr_on else "0"
     os.environ["TM_SLOT"] = "1" if slot_on else "0"

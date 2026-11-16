@@ -127,7 +127,13 @@ public partial class MainWindow : Window
         BuildPriceGrid();
 
         _uiTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(PollMs) };
-        _uiTimer.Tick += async (_, _) => await PollAsync();
+        // async void is the one place a WPF exception escapes the Task boundary; keep it
+        // inside so it never reaches the global handler and turns into a hard exit.
+        _uiTimer.Tick += async (_, _) =>
+        {
+            try { await PollAsync(); }
+            catch (Exception ex) { TxtRunState.Text = "Refresh error: " + ex.Message; }
+        };
 
         _assistTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(AssistPollMs) };
         _assistTimer.Tick += async (_, _) => await PollAssistAsync();
@@ -170,15 +176,14 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            // 服务未启动 / 中途重启 / 反序列化失败都会到这里。
-            // 必须把原因显示出来，否则界面只会停在「Waiting for service…」，排查时两眼一抹黑。
-            if (_state is null)
-            {
-                string msg = ex.Message.Replace("\r", " ").Replace("\n", " ");
-                if (msg.Length > 80) msg = msg[..80] + "…";
-                TxtRunState.Text = "Connection failed: " + msg;
-                TxtRunState.Foreground = Theme.Red;
-            }
+            // Service not started / restarted mid-match / deserialization failure all land here.
+            // Both the first frame and a **mid-match** failure must update the status bar: guarding
+            // on _state == null means that once the first frame succeeds, a later disconnect leaves
+            // stale prices and countdown on screen with no hint at all — worse than crashing.
+            string msg = ex.Message.Replace("\r", " ").Replace("\n", " ");
+            if (msg.Length > 80) msg = msg[..80] + "...";
+            TxtRunState.Text = (_state is null ? "Connection failed: " : "Connection lost: ") + msg;
+            TxtRunState.Foreground = Theme.Red;
         }
         finally
         {
@@ -300,8 +305,17 @@ public partial class MainWindow : Window
         TxtRunState.Text = $"{stateTxt} | {mm:00}:{ss:00} | orders {st.OrderCount}" +
                            (mods.Length > 0 ? "  |  " + mods : "");
 
-        bool danger = new[] { "critical", "tampered", "rolled back", "Unnamed", "Margin call", "negative" }
-            .Any(k => stateTxt.Contains(k));
+        // Decide by field, not by matching the localised text: the label is presentation,
+        // the colour is logic. String matching silently breaks on the next wording change,
+        // and it previously missed "blown up" and "match finished" entirely.
+        bool danger = st.Blowups > 0
+                      || st.Finished
+                      || st.Tampered
+                      || st.ClockCheat
+                      || st.Unnamed
+                      || st.NegativeRemain is not null
+                      || st.MarginCallRemain is not null
+                      || (st.MarginLevel is { } mlv2 && mlv2 < 50);
         TxtRunState.Foreground = danger ? Theme.Red : Theme.Muted;
 
         // ---------- 统计行 ----------
@@ -313,8 +327,8 @@ public partial class MainWindow : Window
         double fee = st.Fees + st.Swap;
 
         TxtStats.Text = $"Target {st.Target:N0}" +
-                        (st.TargetBonus > 0 ? $"（贷款上浮 +{st.TargetBonus:N0}）" : "") +
-                        $" | Drawdown {mddTxt} | Sharpe {shp} | {st.ClosedN} 笔 · win rate {winRate} | fees {fee:N0}";
+                        (st.TargetBonus > 0 ? $" (loan uplift +{st.TargetBonus:N0})" : "") +
+                        $" | Drawdown {mddTxt} | Sharpe {shp} | {st.ClosedN} trades · win rate {winRate} | fees {fee:N0}";
 
         // ---------- 快进 ----------
         if (st.Ff is { } ff)
@@ -322,7 +336,7 @@ public partial class MainWindow : Window
             double usedSum = ff.Records.Sum();
             string txt = "FF left " + FmtFf(ff.Remain);
             if (ff.Records.Count > 0) txt += " | used " + FmtFf(usedSum);
-            if (ff.CoolLeft > 0) txt += $" | 冷却 {(int)Math.Ceiling(ff.CoolLeft)} 秒";
+            if (ff.CoolLeft > 0) txt += $" | cooldown {(int)Math.Ceiling(ff.CoolLeft)}s";
             TxtFastForward.Text = txt;
             TxtFastForward.Foreground = ff.CoolLeft > 0 ? Theme.Red : Theme.Muted;
         }
@@ -338,20 +352,20 @@ public partial class MainWindow : Window
         TxtTimeLeft.Foreground = frac < 0.8 ? Theme.Muted : Theme.Orange;
 
         // ---------- Status面板 ----------
-        TxtAudit.Text = st.Audit.Count > 0 ? $"{st.Audit.Count} 项告警" : "通过（4 条恒等式）";
+        TxtAudit.Text = st.Audit.Count > 0 ? $"{st.Audit.Count} warnings" : "passed (4 identities)";
         TxtAudit.Foreground = st.Audit.Count > 0 ? Theme.Red : Theme.Green;
 
         string gapPct = st.GapLevel is not null && Theme.GapPct.TryGetValue(st.GapLevel, out var gp) ? gp : "?";
         TxtGap.Text = $"{st.GapLevel ?? "—"}（{gapPct}/tick）";
 
         string liqPct = st.LiqLevel is not null && Theme.LiqPct.TryGetValue(st.LiqLevel, out var lp) ? lp : "?";
-        TxtLiq.Text = $"{st.LiqLevel ?? "—"}（{liqPct} 往返）";
+        TxtLiq.Text = $"{st.LiqLevel ?? "—"} ({liqPct} round-trip)";
 
         TxtFf.Text = st.Ff is null ? "—" : FmtFf(st.Ff.Remain);
         var specialNames = new List<string>();
         if (fr) specialNames.Add(Theme.FrName);
         if (slot) specialNames.Add(Theme.SlotName);
-        TxtSpecialState.Text = specialNames.Count > 0 ? string.Join("、", specialNames) : "无";
+        TxtSpecialState.Text = specialNames.Count > 0 ? string.Join("、", specialNames) : "None";
 
         // Peak / Trough：直接取曲线上的极值，和图上标注的是同一组数字。
         // 只有 1 个点时（刚开局）没有“波动”可言，峰谷会等于Principal，显示出来
@@ -664,7 +678,7 @@ public partial class MainWindow : Window
     private static string FmtFf(double sec)
     {
         int s = (int)Math.Round(Math.Max(0, sec));
-        return $"{s / 60} 分 {s % 60:00} 秒";
+        return $"{s / 60}m {s % 60:00}s";
     }
 
     // ==================== 顶栏按钮 ====================
@@ -675,8 +689,8 @@ public partial class MainWindow : Window
     private void OnQuitClick(object sender, RoutedEventArgs e)
     {
         var r = MessageBox.Show(
-            "这会把本局服务一起结束，对局将记一次异常退出。\n\n确定要结束吗？",
-            "结束相关进程",
+            "This also stops the match service and records an abnormal exit.\n\nEnd it anyway?",
+            "Stop related processes",
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning,
             MessageBoxResult.No);
@@ -685,7 +699,7 @@ public partial class MainWindow : Window
 
         try
         {
-            // 与 Python 侧「结束相关进程」按钮语义一致：先让服务自己收尾
+            // 与 Python 侧「Stop related processes」按钮语义一致：先让服务自己收尾
             _ = _client.PostShutdownAsync();
         }
         catch

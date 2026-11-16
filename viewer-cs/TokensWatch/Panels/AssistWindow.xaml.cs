@@ -66,7 +66,7 @@ public partial class AssistWindow : Window
 
         if (a.Log.Count == 0)
         {
-            doc.Blocks.Add(new Paragraph(new Run("本局还没有Outside Aid记录。"))
+            doc.Blocks.Add(new Paragraph(new Run("No Outside Aid records this match."))
             {
                 Foreground = Theme.Muted,
             });
@@ -77,9 +77,9 @@ public partial class AssistWindow : Window
             {
                 (string tag, Brush color) = x.Who switch
                 {
-                    "ai" => ("参赛者", Theme.Blue),
-                    "human" => ("观众席", Theme.Brush("#0A7A3D")),
-                    _ => ("系统", Theme.Muted),
+                    "ai" => ("Contestant", Theme.Blue),
+                    "human" => ("Spectators", Theme.Brush("#0A7A3D")),
+                    _ => ("System", Theme.Muted),
                 };
 
                 var p = new Paragraph { Margin = new Thickness(0, 0, 0, 10) };
@@ -113,25 +113,25 @@ public partial class AssistWindow : Window
         string text = ReplyBox.Text.Trim();
         if (text.Length == 0)
         {
-            TxtHint.Text = "内容不能为空";
+            TxtHint.Text = "Message cannot be empty";
             TxtHint.Foreground = Theme.Red;
             return;
         }
 
         if (string.IsNullOrEmpty(_lastTicket))
         {
-            TxtHint.Text = "没有Pending requests";
+            TxtHint.Text = "No pending requests";
             TxtHint.Foreground = Theme.Red;
             return;
         }
 
-        SetBusy(true, "发送中…");
+        SetBusy(true, "Sending...");
         var (ok, err) = await _client.ReplyAsync(_lastTicket, text);
         SetBusy(false, "");
 
         if (!ok)
         {
-            TxtHint.Text = string.IsNullOrEmpty(err) ? "发送失败" : err;
+            TxtHint.Text = string.IsNullOrEmpty(err) ? "Send failed" : err;
             TxtHint.Foreground = Theme.Red;
             return;
         }
@@ -144,18 +144,18 @@ public partial class AssistWindow : Window
     {
         if (string.IsNullOrEmpty(_lastTicket))
         {
-            TxtHint.Text = "没有Pending requests";
+            TxtHint.Text = "No pending requests";
             TxtHint.Foreground = Theme.Red;
             return;
         }
 
-        SetBusy(true, "Dismiss中…");
+        SetBusy(true, "Dismissing...");
         var (ok, err) = await _client.RejectAsync(_lastTicket);
         SetBusy(false, "");
 
         if (!ok)
         {
-            TxtHint.Text = string.IsNullOrEmpty(err) ? "Dismiss失败" : err;
+            TxtHint.Text = string.IsNullOrEmpty(err) ? "Dismiss failed" : err;
             TxtHint.Foreground = Theme.Red;
             return;
         }

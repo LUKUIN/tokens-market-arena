@@ -121,6 +121,8 @@ Example: target 2M, borrow 300k and draw +6% -> new target = 2M + 18k = **2.018M
 
 When disabled: unlimited loans, uplift always `+1% ~ +100%` (also cumulative).
 
+**Borrow interest (previously undocumented)**: debt accrues `0.0001` per tick (= 0.01%), and **interest is added to principal, so it compounds**; only the outstanding balance is charged. A full 540-tick match costs about `(1.0001)^540 ≈ 1.056`, i.e. borrowing 1,000,000 and holding to the end repays roughly **1,056,000**. Repaying early with `POST /repay` avoids part of that cost.
+
 ### Slot Machine
 
 When enabled:
