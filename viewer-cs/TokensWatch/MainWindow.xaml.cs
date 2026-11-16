@@ -1,8 +1,10 @@
 using System.Globalization;
+using System.Media;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using TokensWatch.Controls;
 using TokensWatch.Helpers;
@@ -124,6 +126,18 @@ public partial class MainWindow : Window
     private bool _closing;
     private bool _busy;
 
+    // ---------- Huge Wave warning ----------
+    // The engine raises huge_wave.show for the warning tick only and drops it on the next
+    // one. Keying on the tick number prevents two things:
+    //   1) the same warning being read on two consecutive polls (which would replay the
+    //      sound) when polling is slower than the tick clock;
+    //   2) a replay after the window is minimised and restored and the UI is rebuilt.
+    private int _hugeWaveShownTick = -999;
+    private DispatcherTimer? _hugeWaveTimer;
+    private readonly SoundPlayer _hugeWavePlayer = new();
+    private bool _hugeWaveAudioReady;
+
+
     public MainWindow()
     {
         InitializeComponent();
@@ -201,6 +215,10 @@ public partial class MainWindow : Window
 
     private void Render(WatchState st)
     {
+        // ---------- Huge Wave warning (PvZ port) ----------
+        // First, because it is a full-screen event: nothing else may outrank it.
+        RenderHugeWave(st);
+
         // ---------- 顶栏 ----------
         TxtTrader.Text = string.IsNullOrEmpty(st.Trader) ? "访客" : st.Trader;
         TxtMode.Text = st.EventsOn ? "已开启随机事件" : "理想情况";
@@ -593,6 +611,114 @@ public partial class MainWindow : Window
         if (_logFilter == key) return;
         _logFilter = key;
         RenderLogFeed();
+    }
+
+    /// <summary>
+    /// Render entry for the Huge Wave warning.
+    /// _roll_huge_wave() in the engine is a three-stage set piece: the warning tick flips
+    /// show to true -> a silent two-tick hold -> an all-at-once burst. This handles stage
+    /// one only (banner + sound); the burst is ordinary event flow shown in the activity feed.
+    /// </summary>
+    private void RenderHugeWave(WatchState st)
+    {
+        var hw = st.HugeWave;
+        if (hw is null) return;          // older engine without the field: treat as no warning
+
+        // Only act on the tick that should raise the banner. Dismissal is owned by the
+        // 10 s timer started in ShowHugeWave, not by show flipping back -- otherwise the
+        // next tick (5 s later) would cut the set piece in half while the sound is still playing.
+        if (!hw.Show) return;
+        if (_hugeWaveShownTick == st.Tick) return;   // already played for this tick
+        _hugeWaveShownTick = st.Tick;
+
+        ShowHugeWave(string.IsNullOrWhiteSpace(hw.Text)
+            ? "A HUGE WAVE OF VOLATILITY IS APPROACHING!" : hw.Text);
+    }
+
+    private void ShowHugeWave(string text)
+    {
+        // Outline layer and body must carry identical text, or the two layers ghost apart.
+        HugeWaveText.Text = text;
+        HugeWaveOutline.Text = text;
+        HugeWaveLayer.Visibility = Visibility.Visible;
+
+        // ---- Entrance: open horizontally outward from the screen centre ----
+        // PvZ's banner neither drops from above nor wipes left to right; it snaps open
+        // from the middle. Implemented as ScaleX 0.05 -> 1 with RenderTransformOrigin
+        // 0.5,0.5, while ScaleY only eases 0.92 -> 1 so the glyphs gain slab weight
+        // instead of just stretching.
+        var easeOut = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var backOut = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.35 };
+
+        HugeWaveBanner.BeginAnimation(UIElement.OpacityProperty,
+            new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(130)));
+
+        HugeWaveScale.BeginAnimation(ScaleTransform.ScaleXProperty,
+            new DoubleAnimation(0.05, 1.0, TimeSpan.FromMilliseconds(280)) { EasingFunction = easeOut });
+
+        HugeWaveScale.BeginAnimation(ScaleTransform.ScaleYProperty,
+            new DoubleAnimation(0.92, 1.0, TimeSpan.FromMilliseconds(340)) { EasingFunction = backOut });
+
+        PlayHugeWaveSound();
+
+        // The original clears the banner at mHugeWaveCountDown == 0. Mapped to this engine
+        // that is exactly one hold: HUGE_WAVE_WARN_TICKS = 2 ticks = 10 s, which covers
+        // hugewave.wav (6.57 s) in full and leaves about 3.4 s of tail.
+        _hugeWaveTimer?.Stop();
+        _hugeWaveTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
+        _hugeWaveTimer.Tick += (_, _) =>
+        {
+            _hugeWaveTimer?.Stop();
+            HideHugeWave();
+        };
+        _hugeWaveTimer.Start();
+    }
+
+    private void HideHugeWave()
+    {
+        // Exit is animated too: fade out, no hard cut.
+        var fade = new DoubleAnimation(1.0, 0.0, TimeSpan.FromMilliseconds(220));
+        fade.Completed += (_, _) =>
+        {
+            HugeWaveLayer.Visibility = Visibility.Collapsed;
+            // Reset so the next entrance starts from ScaleX = 0.05 again; without this the
+            // second warning would appear instantly with no animation at all.
+            HugeWaveBanner.BeginAnimation(UIElement.OpacityProperty, null);
+            HugeWaveBanner.Opacity = 0;
+            HugeWaveScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            HugeWaveScale.ScaleX = 0.05;
+            HugeWaveScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            HugeWaveScale.ScaleY = 0.92;
+        };
+        HugeWaveBanner.BeginAnimation(UIElement.OpacityProperty, fade);
+    }
+
+    private void PlayHugeWaveSound()
+    {
+        if (_hugeWaveAudioReady)
+        {
+            _hugeWavePlayer.Play();
+            return;
+        }
+        try
+        {
+            // The clip is the original hugewave.ogg from PvZ's main.pak (sounds\hugewave.ogg,
+            // 111,507 B, 44.1 kHz stereo, 6.57 s), transcoded to PCM WAV: SoundPlayer only
+            // reads WAV, and MediaPlayer with an Ogg codec dependency goes silent on a clean
+            // machine. 1.1 MB buys "it always makes a sound".
+            string path = System.IO.Path.Combine(
+                AppDomain.CurrentDomain.BaseDirectory, "Assets", "hugewave.wav");
+            if (!System.IO.File.Exists(path)) return;   // missing asset: show the banner anyway
+            _hugeWavePlayer.SoundLocation = path;
+            _hugeWavePlayer.LoadAsync();     // 1.1 MB; Play() waits for the load itself
+            _hugeWaveAudioReady = true;
+            _hugeWavePlayer.Play();
+        }
+        catch
+        {
+            // Exclusive-mode audio, or the audio service not running, must never take the
+            // viewer down -- the banner is the substance, the sound is the garnish.
+        }
     }
 
     private void RenderLogFeed()

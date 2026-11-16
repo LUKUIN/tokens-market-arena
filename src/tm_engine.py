@@ -66,6 +66,30 @@ NEWS_REGIMES = [
 ]
 NEWS_COOLDOWN = 3          # 两次事件的最小间隔（tick）
 
+# ---------------- 一大波预警（PvZ 演出移植）----------------
+# 原版 PvZ 的「一大波僵尸正在接近」是三段式（见 pvz_tools/ref/Board.cpp:5338-5346）：
+#   ① 出横幅 + 播音效（DisplayAdviceAgain + SOUND_HUGE_WAVE）
+#   ② 静默演出期，场上不产任何东西（mHugeWaveCountDown = 750 帧 ≈ 12.5 秒，且 return 截住出怪）
+#   ③ 演出结束，一批僵尸同时涌入（NextWaveComing）
+# 这里按同样的三段式移植，用 tick 计时：5 秒/tick，2 tick = 10 秒，
+# 正好包住 hugewave.wav 的 6.57 秒时长并留出余韵。
+HUGE_WAVE_TEXT = "一大波异常行情正在接近！"
+HUGE_WAVE_MAX = 2              # 每局**上限**，不是默认次数。这是天花板，不是"来两次"
+                               # 实际次数开局掷一次骰：35% 不来、45% 来 1 次、20% 来 2 次
+HUGE_WAVE_COUNT_W = (0.35, 0.45, 0.20)   # 掷骰权重，与上一行共同决定分布
+HUGE_WAVE_RATE = 0.010         # 尚有余量时，每 tick 触发预警的概率
+HUGE_WAVE_MIN_TICK = 30        # 开局前 30 tick（2.5 分钟）不触发。
+                               # 对应 PvZ 的「打过几波才有旗波」：开局就宣告会让人无从应对，
+                               # 预警的意义是给已经建好仓位的人一次逃生机会，不是开局吓唬人。
+HUGE_WAVE_WARN_TICKS = 2       # 演出期长度（tick）：2 × 5 秒 = 10 秒
+HUGE_WAVE_BURST = (3, 5)       # 演出结束后一次性涌出的事件条数（含首尾）
+# 爆发池只收冲击与成本类，不掺顺风事件——「一大波」必须是威胁，不能抽到「流动性充裕」
+HUGE_WAVE_BURST_KINDS = ("pair_rand", "all_rand", "haven", "gap_burst", "mod")
+# mod 类里这些是顺风项，爆发时剔除
+HUGE_WAVE_EXCLUDE_NAMES = ("流动性充裕", "做市商回归", "黑天鹅静默", "流动性盛宴",
+                           "平台下调保证金", "保证金减免", "限时免息",
+                           "限时降费", "央行放水")
+
 
 _EVENTS_CACHE = None
 
@@ -141,6 +165,16 @@ def _pick_news_rate():
         if r < acc:
             return rate
     return NEWS_REGIMES[1][0]
+
+
+def _pick_huge_wave_count():
+    """本局会来几次「一大波」：0 / 1 / 2，权重 35% / 45% / 20%。
+
+    大多数局（55%）至少来一次，但有三成多的局一次都不来——
+    「一大波」若每局必现就退化成固定节目，玩家会按剧本应对，张力全失。
+    """
+    # min() 把结果夹在上限内：掷骰权重以后可以往「更多次」调，天花板仍由 HUGE_WAVE_MAX 卡住
+    return min(HUGE_WAVE_MAX, random.choices([0, 1, 2], weights=HUGE_WAVE_COUNT_W)[0])
 SAFE_HAVEN = ("FROST/CORE", "AMBER/CORE")
 
 # 设计原则：
@@ -304,7 +338,7 @@ def _idle_rule_text():
             % (IDLE_ABORT_MINUTES, "、".join(IDLE_ACTION_LABELS)))
 
 
-ENGINE_VERSION = "1.2.23"  # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.24"  # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -466,6 +500,12 @@ def _new_session(seed=None, apply_rng=True, roll_index=None):
         "events_on": events_on,
         "news_rate": _pick_news_rate() if events_on else 0.0,
         "last_news_name": None,
+        # ---- 一大波预警：本局余量 + 演出期截止 tick + 已触发次数 ----
+        # 余量在开局一次性掷定（0~2 次），之后只减不增，保证「全场最多两次」是硬上限。
+        "huge_wave_left": _pick_huge_wave_count() if events_on else 0,
+        "huge_wave_warn_until": 0,   # 非 0 表示正处于演出期，到该 tick 才爆发
+        "huge_wave_show_tick": -1,   # 预警横幅出现的那一 tick；观众席只认这一个 tick
+        "huge_wave_fired": 0,        # 已触发次数，供报告与 /state 核对
         "halt_orders": False,
         "halt_loan_until": 0,    # 风控审查：到该 tick 之前禁止借款（负现金自救窗口例外）
         "halt_close_until": 0,   # 交易所维护：到该 tick 之前禁止平仓（爆仓强平不受影响）
@@ -1075,6 +1115,62 @@ class Engine:
         px = self.s["prices"]
         px[sym] = round(max(px[sym] * (1.0 + mag), 0.01), 6)
 
+    def _roll_huge_wave(self):
+        """「一大波」三段式：预警 → 静默演出 → 成批爆发。
+
+        与 PvZ 原版逐段对应（pvz_tools/ref/Board.cpp:5338-5346）：
+
+            ① 预警   DisplayAdviceAgain + SOUND_HUGE_WAVE
+                     → 这里：_event(HUGE_WAVE_TEXT, "huge_wave")，观众席据此出横幅 + 播音效
+            ② 演出   mHugeWaveCountDown = 750 帧且 return 截住出怪
+                     → 这里：huge_wave_warn_until = tick + 2，期间不投普通新闻
+            ③ 爆发   NextWaveComing 一批僵尸同时进场
+                     → 这里：一次性 _apply_news 3~5 条，从冲击池里抽
+
+        返回 True 表示本 tick 已由大波接管，调用方不要再投普通新闻。
+        """
+        if not self.s.get("events_on"):
+            return False
+
+        t = int(self.s["tick"])
+
+        # ---- ③ 演出结束：成批爆发 ----
+        until = int(self.s.get("huge_wave_warn_until") or 0)
+        if until and t >= until:
+            self.s["huge_wave_warn_until"] = 0
+            self.s["last_news_tick"] = t     # 顺延普通新闻冷却，避免爆发完紧接着再来一条
+            pool = [r for r in NEWS_TABLE
+                    if r[2] in HUGE_WAVE_BURST_KINDS and r[0] not in HUGE_WAVE_EXCLUDE_NAMES]
+            if not pool:
+                return False
+            n = random.randint(*HUGE_WAVE_BURST)
+            self._event("【爆发】冲击全面到来 —— %d 条风险事件同时生效" % n, "huge_wave")
+            for _ in range(n):
+                name, _w, kind, params = random.choices(pool, weights=[r[1] for r in pool])[0]
+                self._apply_news(name, kind, params)
+                self.s["last_news_name"] = name
+            return True
+
+        # ---- ② 演出期：静默，不投任何普通新闻 ----
+        if until:
+            return True
+
+        # ---- ① 预警：开局缓冲已过、尚有余量、且随机命中 ----
+        if t < HUGE_WAVE_MIN_TICK:
+            return False
+        if int(self.s.get("huge_wave_left") or 0) <= 0:
+            return False
+        if random.random() >= HUGE_WAVE_RATE:
+            return False
+
+        self.s["huge_wave_left"] = int(self.s["huge_wave_left"]) - 1
+        self.s["huge_wave_fired"] = int(self.s.get("huge_wave_fired") or 0) + 1
+        self.s["huge_wave_warn_until"] = t + HUGE_WAVE_WARN_TICKS
+        self.s["huge_wave_show_tick"] = t     # 观众席靠这一个 tick 判断「该出横幅了」
+        self.s["last_news_tick"] = t
+        self._event(HUGE_WAVE_TEXT, "huge_wave")
+        return True
+
     def _roll_news(self):
         """泊松式投放：总量随局波动，一局可能一条没有，也可能十几条。"""
         rate = self.s.get("news_rate", 0.0)
@@ -1164,7 +1260,10 @@ class Engine:
     def _advance_prices(self):
         self._expire_mods()
         self._gap_pairs = set()     # 先清上一 tick 的标记
-        self._roll_news()           # 本 tick 由 gap_burst 记下的标记要留到下面读
+        # 大波优先级高于普通新闻：预警那一 tick 与整个静默演出期都由它接管，
+        # 保证「一大波」不会被一条无关的普通新闻冲淡（原版也是 return 掉整段）。
+        if not self._roll_huge_wave():
+            self._roll_news()       # 本 tick 由 gap_burst 记下的标记要留到下面读
         for sym, cfg in PAIRS.items():
             p = self.s["prices"][sym]
             r = random.gauss(0, cfg["vol"] * self._mod("vol_mult"))
@@ -3200,6 +3299,15 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
                 "elapsed_seconds": int(self._elapsed()),
                 "unnamed": bool(self.s.get("unnamed")),
                 "events_on": bool(self.s.get("events_on", True)),
+                # 一大波预警：观众席据此决定要不要出横幅、要不要播 hugewave.wav。
+                # show 只在预警那一 tick 为真（演出期与已爆发后都为假），
+                # 所以观众席不会因为轮询间隔错过它，也不会重复播放。
+                "huge_wave": {
+                    "show": int(self.s["tick"]) == int(self.s.get("huge_wave_show_tick", -1)),
+                    "left": int(self.s.get("huge_wave_left") or 0),
+                    "fired": int(self.s.get("huge_wave_fired") or 0),
+                    "text": HUGE_WAVE_TEXT,
+                },
                 "clock_cheat": bool(self.s.get("clock_cheat")),
                 "disqualified": not self._qualified(),
             }
@@ -3230,6 +3338,10 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
                            SLOT_MAX_PLAYS, SLOT_MAX_STAKE)
                        ).replace("%%", "%"),
             "杠杆": "可选 %d - %d 倍（上限可被事件临时下调，以实际报错为准）" % (MIN_LEVERAGE, MAX_LEVERAGE),
+            "一大波预警": ("随机事件的特殊形态：整局最多 2 次（开局掷骰，35%% 不来 / 45%% 来 1 次 / 20%% 来 2 次），"
+                        "开局前 2.5 分钟不触发。触发时先出一条横幅事件（kind=huge_wave），"
+                        "随后 2 个 tick（10 秒）不投任何普通事件，第 3 个 tick 一次性涌出 3~5 条冲击类事件。"
+                        "只预告「要来」，不预告方向与量级；爆发池不含顺风事件；预警本身无数值影响" % ()),
             "动态修正": ("杠杆上限、手续费、点差、隔夜利息、黑天鹅概率、贷款池都可能被随机事件临时改写；"
                         "上面给的是基础值，当前生效的修正见 GET /state 的 active_mods"),
             "点差": {s: "%.3f%%" % (cfg["spread"] * 100) for s, cfg in PAIRS.items()},

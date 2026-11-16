@@ -10,7 +10,8 @@
         UseLayoutRounding="True"
         SnapsToDevicePixels="True">
 
-    <Grid Margin="16">
+    <Grid>
+        <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -327,6 +328,46 @@
                         </ScrollViewer>
                     </Grid>
                 </Border>
+            </Grid>
+        </Grid>
+    </Grid>
+
+        <!-- ============================================================
+             Huge Wave banner - a port of PvZ's "A HUGE WAVE OF ZOMBIES IS APPROACHING".
+             Three hard requirements: (1) dead centre of the GUI; (2) red text with a
+             black shadow; (3) no background plate at all - the original banner is bare
+             text pressed straight onto the lawn, and a card would turn it into a notice.
+             The entrance is neither a drop from above nor a left-to-right wipe: it opens
+             horizontally from the screen centre outward, in step with hugewave.wav.
+             IsHitTestVisible=False: the banner is meant to startle, not to block clicks.
+             ============================================================ -->
+        <Grid x:Name="HugeWaveLayer" Visibility="Collapsed" IsHitTestVisible="False">
+            <Grid x:Name="HugeWaveBanner"
+                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                  RenderTransformOrigin="0.5,0.5" Opacity="0">
+                <Grid.RenderTransform>
+                    <ScaleTransform x:Name="HugeWaveScale" ScaleX="0.05" ScaleY="0.92" />
+                </Grid.RenderTransform>
+
+                <!-- Black outline: WPF TextBlock has no Stroke, so a zero-offset blurry
+                     shadow plays the part by bleeding a dark rim outward. -->
+                <TextBlock x:Name="HugeWaveOutline"
+                           FontFamily="Microsoft YaHei UI" FontWeight="Black" FontSize="64"
+                           Foreground="Black" TextAlignment="Center">
+                    <TextBlock.Effect>
+                        <DropShadowEffect Color="Black" ShadowDepth="0" BlurRadius="10" Opacity="1" />
+                    </TextBlock.Effect>
+                </TextBlock>
+
+                <!-- Red body plus a hard black drop shadow to the lower right, which is what
+                     gives the original its slab-like weight. -->
+                <TextBlock x:Name="HugeWaveText"
+                           FontFamily="Microsoft YaHei UI" FontWeight="Black" FontSize="64"
+                           Foreground="#E21A1A" TextAlignment="Center">
+                    <TextBlock.Effect>
+                        <DropShadowEffect Color="Black" ShadowDepth="7" Direction="315" BlurRadius="0" Opacity="1" />
+                    </TextBlock.Effect>
+                </TextBlock>
             </Grid>
         </Grid>
     </Grid>

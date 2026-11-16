@@ -32,6 +32,13 @@ public sealed class WatchState
 
     [JsonPropertyName("special")] public SpecialFlags? Special { get; set; }
 
+    /// <summary>
+    /// Huge Wave warning state. A session's allowance is rolled once at start (0-2) and only
+    /// ever decreases, so "twice at most" holds for every session, not just on average.
+    /// Older engines omit the field entirely, in which case this stays null.
+    /// </summary>
+    [JsonPropertyName("huge_wave")] public HugeWaveInfo? HugeWave { get; set; }
+
     [JsonPropertyName("gap_level")] public string? GapLevel { get; set; }
     [JsonPropertyName("liq_level")] public string? LiqLevel { get; set; }
 
@@ -181,4 +188,20 @@ public sealed class EquityPoint
 {
     [JsonPropertyName("equity")] public double Equity { get; set; }
     [JsonPropertyName("tick")] public int Tick { get; set; }
+}
+
+/// <summary>
+/// The Huge Wave warning. PvZ's "a huge wave of zombies is approaching" set piece, ported
+/// to a trading market: the engine flips Show on for the first of the three stages
+/// (see _roll_huge_wave in tm_engine.py). The viewer keys off Show alone -- the engine
+/// turns it back off on the next tick, so a slow poll never double-plays the clip.
+/// </summary>
+public sealed class HugeWaveInfo
+{
+    [JsonPropertyName("show")] public bool Show { get; set; }
+    /// <summary>Occurrences still left this session (rolled 0-2 at start, only decreases).</summary>
+    [JsonPropertyName("left")] public int Left { get; set; }
+    /// <summary>Occurrences fired so far, for cross-checking UI against the report.</summary>
+    [JsonPropertyName("fired")] public int Fired { get; set; }
+    [JsonPropertyName("text")] public string Text { get; set; } = "A HUGE WAVE OF VOLATILITY IS APPROACHING!";
 }
