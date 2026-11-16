@@ -20,12 +20,15 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
+IS_RUNNABLE = sys.version_info[:2] == (3, 14)
+
 
 def _read(rel):
     with open(os.path.join(ROOT, rel), encoding="utf-8") as f:
         return f.read()
 
 
+@unittest.skipUnless(IS_RUNNABLE, "run.py 的版本守卫只允许 Python 3.14 导入，其余版本 import 即退出 2")
 class TestConsoleDecode(unittest.TestCase):
     def setUp(self):
         import run
@@ -49,6 +52,7 @@ class TestConsoleDecode(unittest.TestCase):
         self.assertIsInstance(self.run_mod._listening_pids(65533), list)
 
 
+@unittest.skipUnless(IS_RUNNABLE, "run.py 的版本守卫只允许 Python 3.14 导入，其余版本 import 即退出 2")
 class TestLocalProxyBypass(unittest.TestCase):
     def test_opener_has_no_proxy_handler(self):
         import run
