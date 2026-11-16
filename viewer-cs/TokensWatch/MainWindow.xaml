@@ -125,8 +125,12 @@
                     <Border Style="{StaticResource CardBorder}" Margin="5,0,5,0" Padding="18,14">
                         <StackPanel>
                             <TextBlock Text="Total P&amp;L" Style="{StaticResource Caption}" />
-                            <TextBlock x:Name="TxtPnl" Text="—" FontSize="27" FontWeight="Bold" TextOptions.TextFormattingMode="Ideal"
-                                       Margin="0,8,0,0" />
+                            <!-- Viewbox(DownOnly)：1600 档卡片变窄时 "+131,840 (+13.18%)" 会被右边缘切掉，
+                                 空间够就保持 27 号，不够才等比缩小。 -->
+                            <Viewbox StretchDirection="DownOnly" HorizontalAlignment="Left" Margin="0,8,0,0">
+                                <TextBlock x:Name="TxtPnl" Text="—" FontSize="27" FontWeight="Bold"
+                                           TextOptions.TextFormattingMode="Ideal" />
+                            </Viewbox>
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource CardBorder}" Margin="5,0,5,0" Padding="18,14">
