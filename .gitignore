@@ -21,5 +21,9 @@ python-*.exe
 *.swp
 
 # C# 观众席构建产物（源码入库，产物不入库）
-viewer-cs/**/bin/
+viewer-cs/**/obj/
+viewer-cs/**/bin/Debug/
+viewer-cs/**/bin/**/*.pdb
+viewer-cs/**/bin/**/*.cache
+viewer-cs/**/bin/**/wpftmp/
 viewer-cs/**/obj/
