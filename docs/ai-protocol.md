@@ -156,7 +156,7 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 | 方法 | 路径 | 参数 |
 |---|---|---|
 | POST | `/open` | `{"pair":"AURA/CORE","side":"LONG","lots":10,"leverage":100}` |
-| POST | `/close` | `{"pair":"AURA/CORE","lots":10}`；`lots` 超过实际持仓时按实际持仓全平，不报错 |
+| POST | `/close` | `{"pair":"AURA/CORE","lots":10,"side":"LONG"}`；`lots` 超过实际持仓时按实际持仓全平，不报错；`side` 可选（`LONG`/`SHORT`），缺省时同 pair 全部候选、按持仓数组倒序先平最新一笔——同一品种可能同时存在多空两笔，用 `side` 指定平哪一边 |
 | POST | `/loan` | `{"amount":1000000}` |
 | POST | `/repay` | `{"amount":600000}` |
 | POST | `/close_all` | 无参数：一次性平掉全部持仓（逐笔按当前价平，汇总进成交明细） |
@@ -197,6 +197,7 @@ curl -X POST http://127.0.0.1:8734/roll/stop
   "balance": 1200000.0,       // 现金
   "pnl_pct": 4.33,            // 相对初始本金
 
+  // 同一 pair 可能同时出现 LONG 与 SHORT 两笔（对冲），用 side 区分；
   "positions": [ {"pair":"AURA/CORE","side":"LONG","lots":10,"leverage":100,
                   "entry":150.2,"price":151.4,"upnl":12000,"margin":15140} ],
   "margin_level": 680.5,      // 净值 ÷ (名义敞口 × 10%)；< 100% 追加保证金，< 50% 强平

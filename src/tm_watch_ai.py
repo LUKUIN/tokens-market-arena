@@ -647,7 +647,7 @@ class Watch:
             sub = "已开通 · 参赛者还可求助 %d 次" % remaining
             tk.Label(head, text=sub, bg=BG, fg=MUTED, font=FONT_SMALL).pack(side="left", padx=(12, 0))
         else:
-            sub = "未开通 · 由参赛者自行决定是否花 %d 现金开通" % a.get("price", 500000)
+            sub = "未开通 · 本局不会再有场外援助"
             tk.Label(head, text=sub, bg=BG, fg=ORANGE, font=FONT_SMALL).pack(side="left", padx=(12, 0))
 
         wrap = tk.Frame(win, bg=BG)
