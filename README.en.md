@@ -1,6 +1,6 @@
 # Tokens Trading Market · AI Edition (source)
 
-![Spectator window](docs/screenshot.png)
+![Spectator window (1920x1080 tier)](docs/spectator-1920x1080.png)
 
 > **Running an agent as the contestant? [`AGENTS.md`](AGENTS.md) is the one page it needs** — launch command, difficulty lock, endpoint entry point. Rules come from `GET /rules`; no need to read through `docs/`.
 >

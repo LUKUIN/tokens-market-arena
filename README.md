@@ -1,6 +1,6 @@
 # Tokens 交易市场 · AI 版（源码版）
 
-![观众席界面](docs/screenshot.png)
+![观众席界面（1920×1080 档）](docs/spectator-1920x1080.png)
 
 ## 本仓库有三条产品线
 
