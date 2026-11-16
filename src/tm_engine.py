@@ -304,7 +304,7 @@ def _idle_rule_text():
             % (IDLE_ABORT_MINUTES, "、".join(IDLE_ACTION_LABELS)))
 
 
-ENGINE_VERSION = "1.2.21"  # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.23"  # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -859,8 +859,13 @@ class Engine:
         return diff * pos["lots"] * LOTS_SIZE
 
     def _position_margin(self, pos):
-        return (pos["lots"] * LOTS_SIZE * pos["entry"]
-                / max(1, pos["leverage"]) * self._mod("margin_mult"))
+        """占用保证金 = 开仓时逐笔累加的真实值。
+
+        不能按 `名义/杠杆` 重算：开仓公式里已经乘过 `margin_mult`，再乘一次会与
+        `pos["margin"]` 分叉（加仓会改写 leverage，抵消关系随之失效）；而且
+        `margin_mult` 是「当前」事件系数，用它重算历史仓位会抹掉开仓时的系数。
+        """
+        return float(pos.get("margin") or 0.0)
 
     def _total_margin(self):
         return sum(self._position_margin(p) for p in self.s["positions"])
@@ -1205,8 +1210,11 @@ class Engine:
                 "【资金告负】所持 Tokens 跌到 %.0f。%d 秒内用 POST /loan 借款把它补回 0 以上可继续，"
                 "补不平则本局立即结束。" % (cash, NEGATIVE_GRACE * TICK_SECONDS),
                 "warn")
-        used = self.s["tick"] - self.s["negative_since"]
-        if used >= NEGATIVE_GRACE:
+        # 按真实时间判，不按 tick：fast_forward 一次能推 60 tick，
+        # 按 tick 判会让「60 秒自救窗口」在一次快进调用里被瞬间吃完。
+        _since_at = float(self.s.get("negative_since_at") or 0.0)
+        _used_sec = (time.time() - _since_at) if _since_at > 0 else 0.0
+        if _used_sec >= NEGATIVE_GRACE * TICK_SECONDS:
             self._event("资金为负且未借款，本局结束", "warn")
             self._end_session("资金为负")
             return True
@@ -1584,6 +1592,8 @@ class Engine:
             self.s["assist_on"] = True
             self.s["assist_spent"] = 0.0
             self._assist_push("system", "场外援助已开启（%s）" % why)
+            # 启动阶段就调用本方法；不落盘的话首个 tick 前退出会丢掉这个开关。
+            self._save()
             return {"ok": True, "already": False}
 
     @_writing
@@ -1622,6 +1632,9 @@ class Engine:
                     if x.get("kind"):
                         item["kind"] = x["kind"]
                     out.append(item)
+            # 已读标记必须落盘，否则进程重启后又把同一条消息投递一遍，
+            # 破坏文档承诺的「取后不重复投递」。
+            self._save()
             return {"ok": True, "items": out,
                     "remaining": max(0, self.ASSIST_ASK_LIMIT - int(self.s.get("assist_used") or 0))}
 
@@ -1635,6 +1648,10 @@ class Engine:
     def assist_reply(self, ticket, text):
         """观众席回复某次求助。"""
         with LOCK:
+            # 与其他写接口一致：结算后不再接受任何写入，
+            # 否则报告里会出现「结算后发生的对话」。
+            if self.s.get("finished"):
+                return {"ok": False, "error": "本局已结束"}
             t = (text or "").strip()
             if not t:
                 return {"ok": False, "error": "内容不能为空"}
@@ -1649,6 +1666,8 @@ class Engine:
     def assist_reject(self, ticket):
         """观众席驳回某次求助。"""
         with LOCK:
+            if self.s.get("finished"):
+                return {"ok": False, "error": "本局已结束"}
             hit = self._assist_find_pending(ticket)
             if not hit:
                 return {"ok": False, "error": "没有待回复的求助 %s" % ticket}
@@ -1790,6 +1809,11 @@ class Engine:
             recs.append(real)
             self.s["ff_records"] = recs
             self._save()
+            # 中途结算必须如实报失败：否则调用方会以为快进成功，继续按 state 里的 ff 规划，
+            # 而局面其实已经结束了。
+            if done < int(n):
+                return {"ok": False, "ticks": done, "seconds": real,
+                        "error": "本局在快进过程中已结束", "state": st, "ff": self.ff_plan()}
             return {"ok": True, "ticks": done, "seconds": real,
                     "state": st, "ff": self.ff_plan()}
 
@@ -1889,9 +1913,11 @@ class Engine:
             if stake < SLOT_MIN_STAKE or stake > SLOT_MAX_STAKE:
                 return {"ok": False,
                         "error": "投入金额必须在 %.0f ~ %.0f 之间" % (SLOT_MIN_STAKE, SLOT_MAX_STAKE)}
-            eq = self.equity()
-            if stake > eq:
-                return {"ok": False, "error": "投入不能超过当前权益（%.2f）" % eq}
+            # 上限必须用「现金」而不是「净值」：浮盈不计入 balance，但 equity() 含浮盈，
+            # 用净值当上限再从现金里扣，会把 balance 打成负数（浮盈 90 万 + 现金 10 万时
+            # 能投 50 万），随后触发「资金告负」流程，等于凭空多出一次免费自救。
+            if stake > self.s["balance"]:
+                return {"ok": False, "error": "投入不能超过当前现金（%.2f）" % self.s["balance"]}
             self.s["balance"] -= stake
             sp["slot_paid"] = float(sp.get("slot_paid", 0.0)) + stake
             sp["slot_plays"] = played + 1
@@ -2013,6 +2039,12 @@ class Engine:
                 amount = float(amount) if amount is not None else debt
             except (TypeError, ValueError):
                 return {"ok": False, "error": "金额必须是数字"}
+            # 与 borrow / open_position / slot 对齐：json.loads 默认放行 NaN / Infinity，
+            # 而 NaN 会让下面所有比较恒为 False（min、<、<= 全部失效），
+            # balance 与 loan.balance 双双变成 NaN，审计的 abs(diff) > 0.05 对 NaN 也恒为 False
+            # —— 账本会被静默污染且自检照样通过。
+            if not math.isfinite(amount):
+                return {"ok": False, "error": "金额必须是有限数值"}
             amount = min(amount, debt)
             if self.s["balance"] < amount:
                 amount = max(0.0, self.s["balance"])
@@ -2123,8 +2155,8 @@ class Engine:
                 cur["lots"] = tot
                 cur["margin"] = round(cur["margin"] + margin, 2)
                 cur["fee"] = round(cur["fee"] + fee, 2)
-                ntl = tot * LOTS_SIZE * cur["entry"]
-                cur["leverage"] = max(1, int(round(ntl / cur["margin"]))) if cur["margin"] > 0 else leverage
+                # 不再把 leverage 改写成「名义/保证金」：杠杆是玩家下单时选的参数，
+                # 反推会写出 67 这类没人选过的值，还会让占用保证金与 state 里的数字打架。
                 pos = cur
             else:
                 pos = {"pair": pair, "side": side, "lots": lots, "entry": round(fill, 6),
@@ -2186,8 +2218,10 @@ class Engine:
                 if qty >= p["lots"]:
                     self.s["positions"].pop(i)
                 else:
+                    # 按手数比例缩减，保持与开仓时的 margin_mult 一致；
+                    # 用 _position_margin 重算会套上「当前」事件系数，让占用额跳变。
+                    p["margin"] = round(p["margin"] * (p["lots"] - qty) / p["lots"], 2)
                     p["lots"] -= qty
-                    p["margin"] = self._position_margin(p)
                 closed.append({"pair": rec["pair"], "side": rec["side"], "lots": qty,
                                "fill": rec["fill"], "pnl": rec["pnl"]})
                 self._event("平仓 %s %s %.0f 手 @%.4f，盈亏 %+.0f" % (
@@ -2852,16 +2886,22 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
 <footer>{verline}</footer>
 </div></body></html>""".format(rowsn=len(rows), **body)
 
-            outdir = os.path.join(self.home, "reports")
-            os.makedirs(outdir, exist_ok=True)
+            # 报告按类型分目录：给人看的 HTML 和给机器读的 JSON 分开放，
+            # 一局两个文件不再把 reports/ 铺满。makedirs(exist_ok=True) 天然幂等，
+            # 第一次运行时建好，之后直接复用，不会重复创建或报错。
+            outroot = os.path.join(self.home, "reports")
+            html_dir = os.path.join(outroot, "HTML Reports")
+            json_dir = os.path.join(outroot, "JSON Reports")
+            os.makedirs(html_dir, exist_ok=True)
+            os.makedirs(json_dir, exist_ok=True)
             base = "%s_%s" % (stamp, trader)
-            hp = os.path.join(outdir, base + ".html")
+            hp = os.path.join(html_dir, base + ".html")
             with open(hp, "w", encoding="utf-8") as f:
                 f.write(html)
 
             # 机器可读摘要：bench.py / CI 只读这份 JSON，不解析 HTML。
             # 字段只增不改，历史存档不会因为新字段失效。
-            jp = os.path.join(outdir, base + ".json")
+            jp = os.path.join(json_dir, base + ".json")
             _start = float(m["start"])
             _genesis = float(self.s.get("genesis", STARTER_CASH))
             _target = float(self.s.get("target", TARGET_EQUITY))

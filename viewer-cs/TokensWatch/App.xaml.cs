@@ -7,6 +7,7 @@ public partial class App : Application
 {
     private Mutex? _mutex;
     private bool _ownsMutex;
+    private int _fatalShown;   // 0=还没弹过；用 Interlocked 保证只弹一次
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -28,14 +29,22 @@ public partial class App : Application
 
         DispatcherUnhandledException += (_, args) =>
         {
-            // 观众席是只读窗口：任何未处理异常都不能让进程静默消失，
-            // 否则玩家会以为是游戏崩了。
+            // 观众席是只读窗口：未处理异常要让玩家看见原因，但不能变成弹窗风暴。
+            // 轮询间隔只有几百毫秒，把异常标记为已处理再继续跑，下一次 Tick 会抛出
+            // 同类异常并立刻再弹一个**模态**框，用户关不完，界面事实上已经卡死。
+            // 所以：弹一次，然后退出，让玩家看到的是明确失败而不是假死。
+            if (Interlocked.Exchange(ref _fatalShown, 1) == 1)
+            {
+                args.Handled = true;
+                return;
+            }
             MessageBox.Show(
-                "观众席遇到未处理的错误：\n\n" + args.Exception.Message,
+                "观众席遇到未处理的错误，即将退出：\n\n" + args.Exception.Message,
                 "Tokens 观众席",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
             args.Handled = true;
+            Shutdown(1);
         };
 
         base.OnStartup(e);

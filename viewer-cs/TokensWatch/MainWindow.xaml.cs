@@ -127,7 +127,13 @@ public partial class MainWindow : Window
         BuildPriceGrid();
 
         _uiTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(PollMs) };
-        _uiTimer.Tick += async (_, _) => await PollAsync();
+        // async void 是 WPF 里唯一会让异常逃出 Task 边界的形式；这里自己兜住，
+        // 免得它升到 App 的全局处理器变成「弹一次就退出」。
+        _uiTimer.Tick += async (_, _) =>
+        {
+            try { await PollAsync(); }
+            catch (Exception ex) { TxtRunState.Text = "刷新异常：" + ex.Message; }
+        };
 
         _assistTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(AssistPollMs) };
         _assistTimer.Tick += async (_, _) => await PollAssistAsync();
@@ -171,14 +177,13 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             // 服务未启动 / 中途重启 / 反序列化失败都会到这里。
-            // 必须把原因显示出来，否则界面只会停在「等待服务启动」，排查时两眼一抹黑。
-            if (_state is null)
-            {
-                string msg = ex.Message.Replace("\r", " ").Replace("\n", " ");
-                if (msg.Length > 80) msg = msg[..80] + "…";
-                TxtRunState.Text = "连接失败：" + msg;
-                TxtRunState.Foreground = Theme.Red;
-            }
+            // 首帧失败和**中途**失败都必须改状态条：只在 _state 为 null 时提示的话，
+            // 一旦首帧成功过，后面断线界面会一直显示最后一帧的报价与倒计时，
+            // 玩家会拿过期数据判断局面——这比直接崩更糟。
+            string msg = ex.Message.Replace("\r", " ").Replace("\n", " ");
+            if (msg.Length > 80) msg = msg[..80] + "…";
+            TxtRunState.Text = (_state is null ? "连接失败：" : "连接中断：") + msg;
+            TxtRunState.Foreground = Theme.Red;
         }
         finally
         {
@@ -300,8 +305,17 @@ public partial class MainWindow : Window
         TxtRunState.Text = $"{stateTxt} | {mm:00}:{ss:00} | 订单 {st.OrderCount}" +
                            (mods.Length > 0 ? "  |  " + mods : "");
 
-        bool danger = new[] { "告急", "篡改", "回拨", "未命名", "追加保证金", "资金为负" }
-            .Any(k => stateTxt.Contains(k));
+        // 按字段判定，不要靠文案关键词匹配：文案是本地化层，判色是逻辑层，
+        // 用字符串匹配会在下一次改文案时静默失效，而且「已爆仓」「本局已结束」
+        // 这两种最该警示的状态原本根本不在关键词表里，被渲染成正常的灰色。
+        bool danger = st.Blowups > 0
+                      || st.Finished
+                      || st.Tampered
+                      || st.ClockCheat
+                      || st.Unnamed
+                      || st.NegativeRemain is not null
+                      || st.MarginCallRemain is not null
+                      || (st.MarginLevel is { } mlv2 && mlv2 < 50);
         TxtRunState.Foreground = danger ? Theme.Red : Theme.Muted;
 
         // ---------- 统计行 ----------
