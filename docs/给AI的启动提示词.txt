@@ -19,10 +19,16 @@
 
     cd 上面那个目录
 
-    TM_TRADER="<模型名-思考强度-平台>" TM_EVENTS=1 TM_FR=1 TM_SLOT=1 TM_ASSIST=1 \
+    TM_TRADER="<模型名-思考强度-Agent平台>" TM_EVENTS=1 TM_FR=1 TM_SLOT=1 TM_ASSIST=1 \
       python run.py
 
-    TM_TRADER 填你自己的标识，比如：Doubao-1.5-pro-深度思考-扣子
+    TM_TRADER 三段顺序固定：模型名-思考强度-Agent平台。
+      第一段 = 你实际用的是哪个大模型（GLM-5.3 / DeepSeek-V3.1 / Qwen3-Max / Doubao-1.5-pro）
+      第二段 = 思考强度（深度思考 / 思考 / 快速）
+      第三段 = 你在哪个平台里跑（豆包 / 扣子 / DSH / Cursor / Claude Code）
+      例：在豆包里跑 GLM-5.3 → GLM-5.3-深度思考-豆包
+      反例：Doubao-MainAgent-深度思考-桌面端 —— 平台占了模型位，真正的模型没了，报告会记错参赛者。
+    检验：把第一段单独拿出去，别人能不能看出是谁在参赛；看不出来就是填错了。
     这个值会原样写进报告的文件名和正文。
 
     这条命令会同时做三件事：起 HTTP 服务、打开只读观众席窗口、封存源码防作弊。

@@ -381,7 +381,7 @@ public partial class MainWindow : Window
             TxtTrough.Foreground = Theme.Muted;
         }
 
-        TxtRisk.Text = $"回撤 {mddTxt} · 夏普 {shp}";
+        TxtRisk.Text = $"{mddTxt}|{shp}";
 
         // ---------- 曲线 ----------
         ChartEquity.SetData(st.EquityCurve, baseLine: 1_000_000, target: st.Target);
@@ -414,7 +414,7 @@ public partial class MainWindow : Window
 
         HoldHeader.Visibility = Visibility.Visible;
         TxtHoldEmpty.Visibility = Visibility.Collapsed;
-        BtnHoldMore.Visibility = st.Positions.Count > 7 ? Visibility.Visible : Visibility.Collapsed;
+        BtnHoldMore.Visibility = st.Positions.Count >= 2 ? Visibility.Visible : Visibility.Collapsed;
 
         foreach (var p in st.Positions.Take(7))
         {
@@ -588,8 +588,8 @@ public partial class MainWindow : Window
 
         if (!added) return;
 
-        if (_logEvents.Count > 300)
-            _logEvents.RemoveRange(0, _logEvents.Count - 300);
+        // 不截断：活动流要能回看到开局第一条。渲染侧已经是虚拟化列表，
+        // 主窗右栏本来就只画最近 30 条，内存里留全量不会拖慢界面。
 
         RenderLogFeed();
         _logWindow?.AppendAll(_logEvents);
@@ -652,7 +652,8 @@ public partial class MainWindow : Window
         return kind switch
         {
             "news" => Theme.LogNewsHex,
-            "open" or "close" => Theme.LogTradeHex,
+            "open" => Theme.LogTradeHex,
+            "close" => Theme.LogCloseHex,
             "stopout" or "blowup" or "margin_call" or "warn" => Theme.LogRiskHex,
             "loan" => Theme.LogLoanHex,
             "end" => Theme.LogEndHex,

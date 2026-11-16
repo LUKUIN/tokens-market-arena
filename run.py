@@ -21,8 +21,12 @@
     python run.py spectator       只挂一个观众席窗口，不新开对局
 
 环境变量：
-    TM_TRADER      玩家名，格式【大模型型号-思考强度-Agent平台】，例：Doubao-1.5-pro-深度思考-扣子
-                   这个值原样写进报告文件名与报告正文
+    TM_TRADER      参赛标识，格式【模型名-思考强度-Agent平台】，顺序不可换：
+                   第一段 = 实际参赛的大模型（GLM-5.3 / DeepSeek-V3.1 / Qwen3-Max），
+                   第三段 = 承载它的 Agent 平台（豆包 / 扣子 / DSH / Cursor）。
+                   在豆包里跑 GLM-5.3 写 GLM-5.3-深度思考-豆包；
+                   写成 Doubao-MainAgent-深度思考-桌面端 是把平台当模型，模型会被抹掉。
+                   这个值经白名单过滤后写进报告文件名与报告正文
     TM_EVENTS      1 = 开启随机事件，0 = 理想情况
     TM_SIGN_KEY    存档签名密钥（不设则用 dev 占位值）
 """
@@ -185,7 +189,7 @@ def _interactive_setup():
         return None
 
     name = os.environ.get("TM_TRADER") or _ask(
-        "参赛模型标识（格式：模型名-思考强度-Agent平台，直接回车用「访客」）：", "访客")
+        "参赛标识（模型名-思考强度-Agent平台；第一段填模型如 GLM-5.3，第三段才填平台如 豆包，直接回车用「访客」）：", "访客")
 
     mode = os.environ.get("TM_EVENTS")
     if mode not in ("0", "1"):

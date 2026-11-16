@@ -38,7 +38,7 @@ public partial class HoldWindow : Window
 
         foreach (var p in positions)
         {
-            var row = new UniformGrid { Columns = 8, Margin = new Thickness(0, 4, 0, 4) };
+            var row = new UniformGrid { Columns = 8, Margin = new Thickness(0, 3, 0, 3) };
 
             row.Children.Add(Cell(p.Pair, Theme.Brush(Theme.PairColor(p.Pair)), left: true));
             row.Children.Add(Cell(p.Side == "LONG" ? "多" : "空",

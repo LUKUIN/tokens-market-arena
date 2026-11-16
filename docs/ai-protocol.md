@@ -88,7 +88,8 @@
 #          并清掉 src/data/ 下除 reports/ 以外的运行时文件
 
 # 2. 非交互启动（不读 stdin，适合后台）
-set TM_TRADER=MyAgent
+rem 参赛标识三段：模型名-思考强度-Agent平台（第一段是模型，第三段才是平台）
+set TM_TRADER=GLM-5.3-深度思考-豆包
 set TM_EVENTS=1        # 随机事件
 set TM_FR=1            # 优惠融资（借款次数不限，目标区间 0.01%~100%）
 set TM_SLOT=0          # 老虎机（整局 3 次，80% 空 / 15% 5 倍 / 5% 10 倍）

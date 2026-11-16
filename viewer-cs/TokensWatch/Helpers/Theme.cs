@@ -23,7 +23,8 @@ public static class Theme
     public const string LogGapHex = "#C42B1C";      // 黑天鹅
     public const string LogLiqHex = "#8E562E";      // 流动性枯竭
     public const string LogNewsHex = "#CA5010";     // 随机事件
-    public const string LogTradeHex = "#0078D4";    // 开仓/平仓
+    public const string LogTradeHex = "#0078D4";    // 开仓
+    public const string LogCloseHex = "#038387";    // 平仓（与开仓异色）
     public const string LogRiskHex = "#A4262C";     // 风险
     public const string LogLoanHex = "#8764B8";     // 借款
     public const string LogEndHex = "#444444";      // 对局结束

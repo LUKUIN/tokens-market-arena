@@ -39,7 +39,8 @@ public static class EventKind
         return k switch
         {
             "news" => Theme.LogNewsHex,
-            "open" or "close" => Theme.LogTradeHex,
+            "open" => Theme.LogTradeHex,
+            "close" => Theme.LogCloseHex,
             "stopout" or "blowup" or "margin_call" or "warn" => Theme.LogRiskHex,
             "loan" => Theme.LogLoanHex,
             "end" => Theme.LogEndHex,
