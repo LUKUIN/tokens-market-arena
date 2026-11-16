@@ -707,6 +707,13 @@ python bench.py summary --dir src/data/reports        # summarise existing summa
 ```
 
 `run` advances ticks in-process (no HTTP, no wall-clock wait) and writes one JSON summary per match.
+
+> **When benchmarking models over real matches (the `run.py` HTTP path), always pin `TM_TAIL_SPEED=1`.**
+> Once the target is first hit the engine shortens the tick interval to 1.25 s (4x), so a 45-minute
+> match goes from 540 to 2160 ticks. Costs and the late-session slippage now follow in-game time, but
+> **a different number of decision steps is a different game** — 2160 steps and 540 steps do not belong
+> on one leaderboard. `bench.py` calls `tick()` directly and never enters the `tm_api` speed-up loop,
+> so it is unaffected.
 `summary` prints mean, median, stdev, P10/P90, worst drawdown, target hits, settlement errors and
 audit-pass counts.
 
