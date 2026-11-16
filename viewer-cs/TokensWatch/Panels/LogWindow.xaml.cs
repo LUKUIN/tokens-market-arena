@@ -95,47 +95,52 @@ public partial class LogWindow : Window
 
         bool atBottom = IsAtBottom();
 
-        LogStack.Children.Clear();
-
         string filter = Filter;
         var rows = filter == "all"
             ? _events
             : _events.Where(e => EventKind.Category(e) == filter).ToList();
 
-        if (rows.Count == 0)
-        {
-            LogStack.Children.Add(new TextBlock
-            {
-                Text = "No events.",
-                FontSize = 14,
-                Foreground = Theme.Muted,
-                Margin = new Thickness(4, 14, 0, 0),
-            });
-        }
-        else
-        {
-            foreach (var e in rows)
-            {
-                LogStack.Children.Add(new TextBlock
-                {
-                    Text = $"[t{e.Tick}] {e.Text}",
-                    FontSize = 14,
-                    FontFamily = new FontFamily(Theme.UiFont),
-                    Foreground = Theme.Brush(EventKind.ColorHex(e)),
-                    TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(0, 3, 0, 3),
-                });
-            }
-        }
+        // Only lightweight rows are built here; the virtualizing panel creates the
+        // actual TextBlocks on demand, so keeping the full history stays cheap.
+        LogList.ItemsSource = rows.Count == 0
+            ? new List<LogRow> { new() { Display = "No events.", Brush = Theme.Muted } }
+            : rows.Select(e => new LogRow
+              {
+                  Display = $"[t{e.Tick}] {e.Text}",
+                  Brush = Theme.Brush(EventKind.ColorHex(e)),
+              }).ToList();
 
-        if (atBottom || force)
-            LogScroll.ScrollToEnd();
+        if ((atBottom || force) && LogList.Items.Count > 0)
+            LogList.ScrollIntoView(LogList.Items[LogList.Items.Count - 1]);
     }
 
     private bool IsAtBottom()
     {
-        // ViewportHeight / ExtentHeight 在首次布局前是 0，此时按“在底部”处理
-        if (LogScroll.ExtentHeight <= 0) return true;
-        return LogScroll.VerticalOffset + LogScroll.ViewportHeight >= LogScroll.ExtentHeight - 1.5;
+        // ViewportHeight / ExtentHeight are 0 before the first layout pass; treat that as "at bottom".
+        var sv = FindScrollViewer(LogList);
+        if (sv is null || sv.ExtentHeight <= 0) return true;
+        return sv.VerticalOffset + sv.ViewportHeight >= sv.ExtentHeight - 1.5;
     }
+
+    private static ScrollViewer? FindScrollViewer(DependencyObject root)
+    {
+        int n = VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < n; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is ScrollViewer sv) return sv;
+            var deep = FindScrollViewer(child);
+            if (deep is not null) return deep;
+        }
+        return null;
+    }
+
+}
+
+/// <summary>One activity row. The virtualizing panel only instantiates the visible ones;
+/// the type must be reachable or WPF's binding reflection cannot read its properties.</summary>
+internal sealed class LogRow
+{
+    public string Display { get; init; } = "";
+    public System.Windows.Media.Brush Brush { get; init; } = System.Windows.Media.Brushes.Black;
 }

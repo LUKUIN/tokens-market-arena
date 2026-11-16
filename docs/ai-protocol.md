@@ -100,7 +100,8 @@ the sources before the match is cheating. The line is simple: **did your input c
 #               and remove the src/data/runtime leftovers except reports/
 
 # 2. Non-interactive start (does not read stdin; safe for background use)
-set TM_TRADER=MyAgent
+rem contestant ID: model-effort-agent-platform (segment 1 = model, segment 3 = platform)
+set TM_TRADER=GLM-5.3-thinking-Doubao
 set TM_EVENTS=1        # random events
 set TM_FR=1            # Preferred Financing (unlimited loans, target range 0.01%~100%)
 set TM_SLOT=0          # Slot Machine (3 plays, 80% nothing / 15% 5x / 5% 10x)

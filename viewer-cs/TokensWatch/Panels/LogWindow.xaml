@@ -9,7 +9,7 @@
         UseLayoutRounding="True"
         ShowInTaskbar="False">
 
-    <Grid Margin="12">
+    <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -24,10 +24,35 @@
         </Border>
 
         <Border Grid.Row="1" Style="{StaticResource CardBorder}" Padding="0">
-            <ScrollViewer x:Name="LogScroll" VerticalScrollBarVisibility="Auto"
-                          HorizontalScrollBarVisibility="Disabled" Padding="12">
-                <StackPanel x:Name="LogStack" />
-            </ScrollViewer>
+            <!-- 虚拟化列表：活动流不再截断，一场 45 分钟能有上千条，
+                 用 ListBox + Recycling 只实例化可见行，否则每次刷新重建全部 TextBlock 会卡 -->
+            <ListBox x:Name="LogList" BorderThickness="0" Background="Transparent" Padding="12"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                     ScrollViewer.CanContentScroll="True"
+                     VirtualizingStackPanel.IsVirtualizing="True"
+                     VirtualizingStackPanel.VirtualizationMode="Recycling">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="Margin" Value="0,3,0,3" />
+                        <Setter Property="Focusable" Value="False" />
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListBoxItem">
+                                    <ContentPresenter />
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding Display}" Foreground="{Binding Brush}"
+                                   FontFamily="Microsoft YaHei UI" FontSize="14" TextWrapping="Wrap" />
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
         </Border>
     </Grid>
 </Window>

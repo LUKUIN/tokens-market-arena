@@ -237,9 +237,12 @@ public sealed class EquityChart : FrameworkElement
 
             dc.DrawLine(gridPen, new Point(plot.Left, y), new Point(plot.Right, y));
 
-            string label = Math.Abs(v) >= 1e6 ? $"{v / 1e6:0.##}M"
-                         : Math.Abs(v) >= 1e3 ? $"{v / 1e3:0.#}K"
-                         : $"{v:0}";
+            // 消掉负零：.NET 的 (-0.0).ToString("0") 会输出 "-0"，
+            // 而 yMin 经 PadRange 后可能是 -0.0，或 |v|<0.5 时四舍五入带出负号。
+            double vv = Math.Abs(v) < 0.5 ? 0.0 : v;
+            string label = Math.Abs(vv) >= 1e6 ? $"{vv / 1e6:0.##}M"
+                         : Math.Abs(vv) >= 1e3 ? $"{vv / 1e3:0.#}K"
+                         : $"{vv:0}";
             DrawText(dc, label, new Point(PadLeft - 8, y - 8), Theme.Muted, 11, alignRight: true);
         }
     }

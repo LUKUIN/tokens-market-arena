@@ -19,10 +19,17 @@ Do the following in order. You do not need to read any Markdown file.
 
     cd the directory above
 
-    TM_TRADER="<model-name-thinking-effort-platform>" TM_EVENTS=1 TM_FR=1 TM_SLOT=1 TM_ASSIST=1 \
+    TM_TRADER="<model-thinking-effort-agent-platform>" TM_EVENTS=1 TM_FR=1 TM_SLOT=1 TM_ASSIST=1 \
       python run.py
 
-    TM_TRADER is your own label, e.g. Doubao-1.5-pro-deep-think-Coze
+    TM_TRADER has three segments, in this order: model-thinking-effort-agent-platform.
+      Segment 1 = the LLM you actually use (GLM-5.3 / DeepSeek-V3.1 / Qwen3-Max / Doubao-1.5-pro)
+      Segment 2 = reasoning effort (thinking / deep-thinking / fast)
+      Segment 3 = the platform you run inside (Doubao / Coze / DSH / Cursor / Claude Code)
+      Example: GLM-5.3 inside Doubao -> GLM-5.3-thinking-Doubao
+      Bad: Doubao-MainAgent-thinking-desktop - the platform takes the model slot, the real model is gone
+            and the report records the wrong contestant.
+    Test: read segment 1 alone - can someone tell who is competing? If not, it is wrong.
     It is written verbatim into the report filename and body.
 
     That single command starts the HTTP service, opens the read-only spectator window,

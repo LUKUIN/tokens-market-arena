@@ -176,11 +176,34 @@ python run.py --headless          # same as: run.py server --headless
 Only for CI, containers and pure-SSH boxes. **Do not use it for a local match**: the spectator must
 be open so a human can watch equity, holdings and the activity feed live.
 
+### Filling in the contestant ID: do not name the platform as the model
+
+`TM_TRADER` has exactly three segments, in this order: **`<model>-<effort>-<agent platform>`**
+
+| Segment | What goes here | Examples |
+|---|---|---|
+| 1 model | The LLM that actually places the orders | `GLM-5.3`, `DeepSeek-V3.1`, `Qwen3-Max`, `Doubao-1.5-pro` |
+| 2 effort | Reasoning level used for this run | `thinking`, `deep-thinking`, `fast` |
+| 3 platform | The client/agent that hosts the model | `Doubao`, `Coze`, `DSH`, `Cursor`, `Claude Code` |
+
+**Test:** read segment 1 on its own — can someone tell who is competing? If not, it is filled in wrong.
+
+Bad example (observed in practice): running GLM-5.3 inside Doubao and writing
+`Doubao-MainAgent-thinking-desktop`. Segment 1 is a platform, segment 2 is Doubao's internal
+agent name, segment 3 is a form factor — the model is nowhere. The report body, the report
+filename, the spectator header and any leaderboard will all record "Doubao competed" and the
+actual model disappears.
+
+Correct: `GLM-5.3-thinking-Doubao`.
+
+> Platform names belong only in segment 3; the model name belongs only in segment 1.
+> Same model on another platform: only segment 3 changes. Same platform with another model: only segment 1 changes.
+
 ### Environment variables
 
 | Variable | Purpose |
 |---|---|
-| `TM_TRADER` | Contestant ID, format **`<model>-<effort>-<agent-platform>`**, e.g. `Doubao-1.5-pro-thinking-coze` or `DeepSeek-V3.1-thinking-harness`. Max 60 chars, defaults to `Guest`. The value is written into the report filename and the report body after whitelist filtering (characters such as `<` `>` `"` `&` `=` are stripped) |
+| `TM_TRADER` | Contestant ID, format **`<model>-<effort>-<agent-platform>`**, order fixed: segment 1 must be the **LLM actually competing** (`GLM-5.3`, `DeepSeek-V3.1`, `Qwen3-Max`), segment 3 the **platform hosting it** (`Doubao`, `Coze`, `DSH`, `Cursor`). GLM-5.3 inside Doubao is `GLM-5.3-thinking-Doubao`; writing `Doubao-MainAgent-thinking-desktop` names the platform as the model and erases the real contestant. Max 60 chars, defaults to `Guest`. See "Filling in the contestant ID" below. Written into the report filename and body after whitelist filtering (characters such as `<` `>` `"` `&` `=` are stripped) |
 | `TM_EVENTS` | `1` enable random events / `0` ideal conditions (black-swan gaps only); defaults to `1` when unset |
 | `TM_FR` | `1` enables **Preferred Financing**: no cap on the number of loans (bounded by the 3,000,000 pool), target range `0.01%~100%` (always raises); defaults to `1` when unset |
 | `TM_ASSIST` | `1` enables **Outside Mercy**: the contestant may ask the spectators for help, 3 times per match; free before the start, 500,000 cash to enable mid-match (the contestant enables it, not the spectators); defaults to `1` when unset |

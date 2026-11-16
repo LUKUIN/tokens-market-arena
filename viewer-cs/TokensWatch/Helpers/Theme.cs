@@ -23,7 +23,8 @@ public static class Theme
     public const string LogGapHex = "#C42B1C";      // Black swan
     public const string LogLiqHex = "#8E562E";      // Liquidity drained
     public const string LogNewsHex = "#CA5010";     // Events
-    public const string LogTradeHex = "#0078D4";    // Trades
+    public const string LogTradeHex = "#0078D4";    // Open position
+    public const string LogCloseHex = "#038387";    // Close position (distinct from open)
     public const string LogRiskHex = "#A4262C";     // Risk
     public const string LogLoanHex = "#8764B8";     // Borrow
     public const string LogEndHex = "#444444";      // 对局结束

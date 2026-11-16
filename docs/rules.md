@@ -39,6 +39,9 @@ the model trades over HTTP.
 
 > `TM_TRADER` is written into the report filename and the report body after whitelist filtering; it is the field that
 > tells contestants apart.
+> **Segment 1 is the model, segment 3 is the platform.** GLM-5.3 running inside Doubao ->
+> `GLM-5.3-thinking-Doubao`. Writing `Doubao-...` names the platform as the model; the report
+> then records the platform and the real contestant disappears.
 > For a manual demo, `python run.py --interactive` asks for the player name, random events,
 > **Preferred Financing** and **Slot Machine** in that order.
 

@@ -21,9 +21,12 @@ Usage:
     python run.py spectator       attach a spectator window only; does not start a new match
 
 Environment variables:
-    TM_TRADER      player name, format [model name-reasoning effort-agent platform]
-                   e.g. Doubao-1.5-pro-thinking-coze; written verbatim into the report filename
-                   and the report body
+    TM_TRADER      contestant ID, format [model-thinking effort-agent platform], order fixed:
+                   segment 1 = the LLM actually competing (GLM-5.3 / DeepSeek-V3.1 / Qwen3-Max),
+                   segment 3 = the platform hosting it (Doubao / Coze / DSH / Cursor).
+                   GLM-5.3 inside Doubao -> GLM-5.3-thinking-Doubao;
+                   Doubao-MainAgent-thinking-desktop names the platform as the model and erases it.
+                   Whitelist-filtered, then written into the report filename and body
     TM_EVENTS      1 = enable random events, 0 = ideal conditions
     TM_SIGN_KEY    save-file signing key (a dev placeholder is used if unset)
 """
@@ -148,7 +151,7 @@ def _interactive_setup():
         return None
 
     name = os.environ.get("TM_TRADER") or _ask(
-        "Contestant ID (format: model name-reasoning effort-agent platform; press Enter to use \"guest\"):", "Guest")
+        "Contestant ID (model-effort-agent platform; segment 1 = model e.g. GLM-5.3, segment 3 = platform e.g. Doubao; press Enter to use \"guest\"):", "Guest")
 
     mode = os.environ.get("TM_EVENTS")
     if mode not in ("0", "1"):

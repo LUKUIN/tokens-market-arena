@@ -9,7 +9,7 @@
         UseLayoutRounding="True"
         ShowInTaskbar="False">
 
-    <Grid Margin="12">
+    <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
