@@ -1537,7 +1537,7 @@ class Engine:
         return os.path.join(self.home, ".scratchpad.jsonl")
 
     # ---------------- 外部的怜悯 ----------------
-    ASSIST_PRICE = 500000        # 开局后再开通，从现金扣这个数
+    ASSIST_PRICE = 0             # v1.2.23 起取消局内付费开通；保留常量仅为协议兼容
     ASSIST_ASK_LIMIT = 3         # 整局 AI 向观众席求助的上限
 
     def _assist_push(self, who, text, ticket=None, status=None, kind=None):
@@ -1565,22 +1565,16 @@ class Engine:
                     "price": self.ASSIST_PRICE,
                     "balance": round(self.s["balance"], 2)}
 
-    @_writing
     def assist_enable(self):
-        """开局后再开通，代价 500,000 现金。"""
+        """v1.2.23 起取消：场外援助只能在开局前开启（免费），局内不再提供付费补票。
+
+        保留方法名与 /assist/enable 路由，让老客户端拿到明确错误而不是 404。
+        不再使用 @_writing —— 失败的调用不该刷新防挂机计时。
+        """
         with LOCK:
-            if self.s.get("finished"):
-                return {"ok": False, "error": "本局已结束"}
             if self.s.get("assist_on"):
                 return {"ok": False, "error": "场外援助已经开通"}
-            if self.s["balance"] < self.ASSIST_PRICE:
-                return {"ok": False,
-                        "error": "现金不足：需要 %d，当前 %d" % (self.ASSIST_PRICE, int(self.s["balance"]))}
-            self.s["balance"] -= self.ASSIST_PRICE
-            self.s["assist_on"] = True
-            self.s["assist_spent"] = self.ASSIST_PRICE
-            self._assist_push("system", "观众席以 %d 现金开通了场外援助" % self.ASSIST_PRICE)
-            return {"ok": True, "cost": self.ASSIST_PRICE, "balance": round(self.s["balance"], 2)}
+            return {"ok": False, "error": "场外援助只能在开局前开启，局内不再提供"}
 
     def assist_enable_free(self, why="启动时开启"):
         """开局前/启动时开通，不花钱。"""
@@ -3220,7 +3214,7 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
                 "POST /pause": "暂停 / 继续（无参数，每调一次切换一次）",
                 "POST /trader": {"name": "参赛标识，≤60 字符；只保留中英文、数字、空格与 -_.()（）·"},
                 "POST /shutdown": "立即停止服务（观众席「结束相关进程」用），会先留一份异常退出快照",
-                "POST /assist/enable": "花 500,000 现金开通「外部的怜悯」（局内开通入口）",
+                "POST /assist/enable": "v1.2.23 起已取消：场外援助只能在开局前开启，调用恒返回错误",
                 "GET /assist/pending": "看当前待观众席回复的求助工单",
                 "POST /assist/reply": {"ticket": "工单号", "text": "回复内容（观众席侧调用）"},
                 "POST /assist/reject": {"ticket": "工单号（观众席侧调用）"},

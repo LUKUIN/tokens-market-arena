@@ -67,7 +67,6 @@ class TestIdleAbort(_IdleBase):
             ("scratch_append", lambda e: e.scratch_append("笔记")),
             ("set_trader", lambda e: e.set_trader("回归测试")),
             ("slot", lambda e: e.slot(10000)),
-            ("assist_enable", lambda e: e.assist_enable()),
             ("close_all", lambda e: e.close_all()),
         ]
         for name, call in cases:
