@@ -25,6 +25,21 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 import tm_engine as T  # noqa: E402
 
 
+
+def _summary_path(html_path):
+    """Reports are split by type: HTML under reports/HTML Reports, the JSON under reports/JSON Reports.
+
+    Falls back to the old same-folder layout so historical archives stay readable.
+    """
+    root = os.path.dirname(html_path)
+    if os.path.basename(root) == "HTML Reports":
+        cand = os.path.join(os.path.dirname(root), "JSON Reports",
+                            os.path.splitext(os.path.basename(html_path))[0] + ".json")
+        if os.path.isfile(cand):
+            return cand
+    return os.path.splitext(html_path)[0] + ".json"
+
+
 class ConsistencyCase(unittest.TestCase):
     def make(self):
         home = tempfile.mkdtemp(prefix="tmcons_")
@@ -50,8 +65,8 @@ class ConsistencyCase(unittest.TestCase):
     def read_summary(self, out):
         hp = out.get("report")
         self.assertTrue(hp and os.path.isfile(hp), "the HTML report must be generated")
-        jp = os.path.splitext(hp)[0] + ".json"
-        self.assertTrue(os.path.isfile(jp), "the JSON summary must sit next to the HTML")
+        jp = _summary_path(hp)
+        self.assertTrue(os.path.isfile(jp), "the JSON summary must be generated alongside the HTML")
         with open(jp, encoding="utf-8") as f:
             return json.load(f)
 

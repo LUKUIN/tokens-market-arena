@@ -19,6 +19,21 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 import tm_engine as T  # noqa: E402
 
 
+
+def _summary_path(html_path):
+    """报告按类型分目录：HTML 在 reports/HTML Reports，同名 JSON 在 reports/JSON Reports。
+
+    兼容旧布局（两者同目录），便于读取历史归档。
+    """
+    root = os.path.dirname(html_path)
+    if os.path.basename(root) == "HTML Reports":
+        cand = os.path.join(os.path.dirname(root), "JSON Reports",
+                            os.path.splitext(os.path.basename(html_path))[0] + ".json")
+        if os.path.isfile(cand):
+            return cand
+    return os.path.splitext(html_path)[0] + ".json"
+
+
 class AuditCase(unittest.TestCase):
     def make(self):
         home = tempfile.mkdtemp(prefix="tmaudit_")
@@ -106,7 +121,7 @@ class TestReportSummary(AuditCase):
         out = eng.quit_session()
         hp = out["report"]
         self.assertTrue(hp and os.path.isfile(hp), hp)
-        jp = os.path.splitext(hp)[0] + ".json"
+        jp = _summary_path(hp)
         self.assertTrue(os.path.isfile(jp), jp)
         with open(jp, encoding="utf-8") as f:
             data = json.load(f)

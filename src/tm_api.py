@@ -193,7 +193,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(ENGINE.open_position(b.get("pair"), b.get("side"),
                                                    b.get("lots"), b.get("leverage")))
         if path == "/close":
-            return self._send(ENGINE.close_position(b.get("pair"), b.get("lots")))
+            return self._send(ENGINE.close_position(b.get("pair"), b.get("lots"), b.get("side")))
         if path == "/close_all":
             return self._send(ENGINE.close_all())
         if path == "/loan":

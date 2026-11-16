@@ -871,6 +871,21 @@ class Engine:
         diff = (price - pos["entry"]) if pos["side"] == "LONG" else (pos["entry"] - price)
         return diff * pos["lots"] * LOTS_SIZE
 
+    def _virtual_tick(self):
+        """In-game tick: derived from wall clock, never exceeding the real tick count.
+
+        At normal pace it equals `self.s["tick"]`. Once the target is first hit the engine
+        automatically shortens the interval to `TICK_SECONDS / TAIL_SPEED`, so the same 45
+        minutes yields up to 2160 ticks instead of 540. For the promise that "accelerating
+        only compresses waiting time and changes no result" to hold, costs and the
+        late-session slippage must follow in-game time, not the raw tick count.
+        """
+        try:
+            by_clock = int(self._elapsed()) // int(TICK_SECONDS)
+        except Exception:
+            by_clock = int(self.s.get("tick") or 0)
+        return min(int(self.s.get("tick") or 0), max(0, by_clock))
+
     def _position_margin(self, pos):
         """Margin in use = the value accumulated per fill at open time.
 
@@ -966,7 +981,9 @@ class Engine:
             cap = SLIP_MAX_SHOCK
         # v1.2.0 early-finish incentive: the closer to the close, the more expensive slippage becomes.
         # Nothing is given away -- quitting at tick 0 still returns 0, staying late simply costs more.
-        _late = min(1.0, max(0.0, (self.s["tick"] - LATE_SLIP_START) / 180.0))
+        # Use the virtual tick: otherwise the automatic speed-up starts the "late session"
+        # surcharge three quarters of the way early.
+        _late = min(1.0, max(0.0, (self._virtual_tick() - LATE_SLIP_START) / 180.0))
         _k = SLIP_K * (1.0 + (LATE_SLIP_MAX - 1.0) * _late)
         cost = _k / (2.0 * L) * (after * after - before * before)
         # Events like "quote delay" add another layer of slippage on top of this
@@ -1178,6 +1195,12 @@ class Engine:
                 del self.s["price_history"][sym][:-HISTORY_LEN]
 
     def _charge_costs(self):
+        # Charge once per in-game tick: the post-target speed-up makes real ticks arrive
+        # faster, but in-game time does not, so swap and loan interest must not quadruple.
+        _vt = self._virtual_tick()
+        if _vt <= int(self.s.get("_cost_tick") or 0):
+            return
+        self.s["_cost_tick"] = _vt
         total_swap = 0.0
         for p in self.s["positions"]:
             total_swap += (p["lots"] * LOTS_SIZE * self.s["prices"][p["pair"]]
@@ -2206,7 +2229,7 @@ class Engine:
             return {"ok": True, "position": pos, "state": self._state_light()}
 
     @_writing
-    def close_position(self, pair, lots=None):
+    def close_position(self, pair, lots=None, side=None):
         with LOCK:
             if self.s.get("finished"):
                 return {"ok": False, "error": "Session ended"}
@@ -2221,7 +2244,13 @@ class Engine:
                 return {"ok": False,
                         "error": "Unknown pair: %s (available: %s)"
                                  % (pair, ", ".join(PAIRS.keys()))}
-            idxs = [i for i, p in enumerate(self.s["positions"]) if p["pair"] == pair]
+            # Without side this behaves exactly as before (every position on the pair, newest
+            # first); passing side narrows it so a hedged pair can be closed directionally.
+            _side = (side or "").strip().upper()
+            if _side not in ("LONG", "SHORT"):
+                _side = None
+            idxs = [i for i, p in enumerate(self.s["positions"])
+                    if p["pair"] == pair and (_side is None or p["side"] == _side)]
             if not idxs:
                 return {"ok": False, "error": "No position in %s" % pair}
             if lots in (None, "", 0, "0"):

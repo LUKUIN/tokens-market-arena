@@ -179,7 +179,7 @@ def run_one(seed, policy, outdir, roll_index=None):
         # benchmark wants is the result of a full 540-tick match. Go straight to settlement.
         eng._end_session("benchmark complete")
 
-    reports = os.path.join(home, "reports")
+    reports = _report_json_dir(os.path.join(home, "reports"))
     if not os.path.isdir(reports):
         return None
     jsons = sorted(f for f in os.listdir(reports) if f.endswith(".json"))
@@ -263,13 +263,27 @@ def _print_stats(rows):
               hits, n, bankrupt, n, blown, n, audited, n))
 
 
+def _report_json_dir(root):
+    """报告目录。新布局是 reports/JSON Reports；旧数据可能还在 reports/ 根下。
+
+    返回实际存在 JSON 的那个目录，两个都没有时返回新布局路径（供报错信息用）。
+    """
+    sub = os.path.join(root, "JSON Reports")
+    if os.path.isdir(sub):
+        return sub
+    if os.path.isdir(root):
+        return root
+    return sub
+
+
 def cmd_summary(args):
     rows = []
-    for name in sorted(os.listdir(args.dir)):
+    src = _report_json_dir(args.dir)
+    for name in sorted(os.listdir(src)):
         if not name.endswith(".json"):
             continue
         try:
-            with open(os.path.join(args.dir, name), encoding="utf-8") as f:
+            with open(os.path.join(src, name), encoding="utf-8") as f:
                 rows.append(json.load(f))
         except Exception as exc:
             print("skipping %s: %s" % (name, exc), file=sys.stderr)
