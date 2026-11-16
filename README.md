@@ -199,9 +199,9 @@ instead of pretending the service is dead.
 If the banner never clears, run `launchers\Spectator.bat` to attach another window — with a
 match already running it only opens the window, it does not start a server or seal the sources.
 
-## C# spectator (optional, replaces the tkinter window)
+## C# spectator (the default, with a tkinter fallback)
 
-`viewer-cs/` holds a standalone WPF spectator that replaces the tkinter window in `src/tm_watch_ai.py`. **Not a single line of the Python engine changed** — it only polls the existing `/state` over HTTP.
+`viewer-cs/` holds a standalone WPF spectator that takes the place of the tkinter window in `src/tm_watch_ai.py`. **Once it is built, `python run.py` launches it automatically**; if the exe is missing, the tkinter window is used instead, so a fresh clone still works with no .NET at all. Set `TM_WATCH_IMPL=py` before launching to force the tkinter one. **Not a single line of the Python engine changed** — it only polls the existing `/state` over HTTP.
 
 ### Why it exists
 

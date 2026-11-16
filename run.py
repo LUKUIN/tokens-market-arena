@@ -329,13 +329,30 @@ def _run_ai(interactive=False, port=None):
     base = os.path.dirname(os.path.abspath(__file__))
     spectator = None
     try:
-        spectator = subprocess.Popen(
-            [sys.executable, "-c",
-             "import sys, os; sys.path.insert(0, os.path.join(os.getcwd(), 'src')); "
-             "import tm_watch_ai; tm_watch_ai.main()"],
-            cwd=base,
-            env=dict(os.environ, TM_WATCH_API="http://127.0.0.1:%d" % port))
-        print("  Launching the read-only spectator stand (pid %d)..." % spectator.pid)
+        # Two spectator builds exist. Both are read-only and talk HTTP /state only:
+        #   1) C# / WPF (viewer-cs/): vector rendering, anti-aliased curve. Default.
+        #   2) tkinter (src/tm_watch_ai.py): zero-dependency fallback when 1 is not built.
+        # Force the tkinter one: set TM_WATCH_IMPL=py before launching.
+        cs_exe = os.path.join(
+            base, "viewer-cs", "TokensWatch", "bin", "Release",
+            "net8.0-windows", "TokensWatch.exe")
+        want_py = (os.environ.get("TM_WATCH_IMPL") or "").strip().lower() in (
+            "py", "tk", "tkinter")
+
+        if os.path.isfile(cs_exe) and not want_py:
+            spectator = subprocess.Popen(
+                [cs_exe],
+                cwd=base,
+                env=dict(os.environ, TM_WATCH_API="http://127.0.0.1:%d" % port))
+            print("  Launching the read-only spectator stand (C# build, pid %d)..." % spectator.pid)
+        else:
+            spectator = subprocess.Popen(
+                [sys.executable, "-c",
+                 "import sys, os; sys.path.insert(0, os.path.join(os.getcwd(), 'src')); "
+                 "import tm_watch_ai; tm_watch_ai.main()"],
+                cwd=base,
+                env=dict(os.environ, TM_WATCH_API="http://127.0.0.1:%d" % port))
+            print("  Launching the read-only spectator stand (tkinter build, pid %d)..." % spectator.pid)
     except Exception as exc:
         print("  Spectator failed to start: %s (the match service keeps running)" % exc)
 
