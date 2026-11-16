@@ -234,6 +234,8 @@ Sections, top to bottom:
 | Area | Content |
 |---|---|
 | Dark title bar | market name, contestant identity, mode, global event switches (Preferred Financing / Slot Machine), End processes / Minimize / AI Notes / Outside Mercy |
+
+The window picks its size from the display (`viewer-cs/TokensWatch/Helpers/DisplayProfile.cs`): **1920×1080** on 2K and above, **1600×900** on 1080p, and a proportional fit (never below 1280×720) on smaller screens. The title bar shows the active tier so a screenshot tells you which one is in use. Pin it with `TM_WATCH_SIZE=1600x900` (DIP).
 | KPI cards | equity, total P&L, margin level, progress to target |
 | Status row | credit / cash / borrowed / owed / interest; target / drawdown / Sharpe / trades / win rate / fees; ledger-audit slot; previous-run abnormal-exit banner |
 | Equity curve | primary visual, fixed 500k Y ticks (0 / 1M / 2M land on grid lines) |

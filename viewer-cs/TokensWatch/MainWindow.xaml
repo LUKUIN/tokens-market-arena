@@ -5,6 +5,7 @@
         Title="Tokens Exchange · Spectator"
         Width="1920" Height="1080"
         MinWidth="1280" MinHeight="760"
+        ResizeMode="NoResize"
         Background="{StaticResource Bg}"
         WindowStartupLocation="CenterScreen"
         UseLayoutRounding="True"
@@ -97,18 +98,19 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="12" />
-                <ColumnDefinition Width="400" />
+                <!-- 宽度由 DisplayProfile 按窗口档位设置：1920 档 400，1600 档 360 -->
+                <ColumnDefinition x:Name="ColRight" Width="400" />
             </Grid.ColumnDefinitions>
 
             <!-- ======== 左栏 ========  -->
             <Grid Grid.Column="0">
+                <!-- 曲线行用 * ：窗口高度不够时让它先收缩，报价台必须留在视野里 -->
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />  <!-- 指标卡 -->
+                    <RowDefinition Height="Auto" />  <!-- 状态条 -->
+                    <RowDefinition Height="*" />     <!-- 权益曲线：吃剩余高度，最小 200 -->
+                    <RowDefinition Height="Auto" />  <!-- 持仓明细 -->
+                    <RowDefinition Height="Auto" />  <!-- 报价台 -->
                 </Grid.RowDefinitions>
 
                 <!-- 指标卡：1920 下宽度充裕，四格对称 -->
@@ -155,7 +157,8 @@
 
                 <!-- 权益曲线：主视觉 -->
                 <Border Grid.Row="2" Style="{StaticResource CardBorder}" Padding="14" Margin="0,0,0,10">
-                    <Grid Height="420">
+                    <!-- 原来固定 420：1600×900 下会把报价台顶出窗口。改成最小 200 + 自适应。 -->
+                    <Grid MinHeight="200">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
