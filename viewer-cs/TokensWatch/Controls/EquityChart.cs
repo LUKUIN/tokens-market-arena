@@ -227,6 +227,7 @@ public sealed class EquityChart : FrameworkElement
         double step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10) * mag;
 
         double start = Math.Ceiling(yMin / step) * step;
+        string _lastAxisLabel = "";
         var gridPen = new Pen(Theme.Brush("#EFEFEF"), 1.0);
         gridPen.Freeze();
 
@@ -240,9 +241,14 @@ public sealed class EquityChart : FrameworkElement
             // 消掉负零：.NET 的 (-0.0).ToString("0") 会输出 "-0"，
             // 而 yMin 经 PadRange 后可能是 -0.0，或 |v|<0.5 时四舍五入带出负号。
             double vv = Math.Abs(v) < 0.5 ? 0.0 : v;
-            string label = Math.Abs(vv) >= 1e6 ? $"{vv / 1e6:0.##}M"
-                         : Math.Abs(vv) >= 1e3 ? $"{vv / 1e3:0.#}K"
+            // M/K 保留 3 位：步长很小（例如 500）时，1,000,000 与 1,000,500 都按
+            // 2 位小数会同时输出 "1M"，纵轴出现几个一模一样的标签。
+            string label = Math.Abs(vv) >= 1e6 ? $"{vv / 1e6:0.###}M"
+                         : Math.Abs(vv) >= 1e3 ? $"{vv / 1e3:0.###}K"
                          : $"{vv:0}";
+            // 三连 "1M" 这种四舍五入重合的两档，后一档直接不画，避免重复标签。
+            if (label == _lastAxisLabel) continue;
+            _lastAxisLabel = label;
             DrawText(dc, label, new Point(PadLeft - 8, y - 8), Theme.Muted, 11, alignRight: true);
         }
     }

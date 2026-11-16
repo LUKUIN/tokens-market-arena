@@ -124,6 +124,26 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
+        // 按显示器可用区域挑尺寸：2K 及以上 1920×1080，1080p 换 1600×900（观察员反馈固定
+        // 1920×1080 在 1080p 屏上顶满整屏）。XAML 里的 1920×1080 只是设计基准与设计器预览。
+        var prof = DisplayProfile.Pick();
+        try
+        {
+            System.IO.File.AppendAllText(
+                System.IO.Path.Combine(System.IO.Path.GetTempPath(), "TokensWatch.size.log"),
+                string.Format("{0:HH:mm:ss} TM_WATCH_SIZE='{1}' -> {2} {3:0}x{4:0}{5}",
+                              DateTime.Now,
+                              Environment.GetEnvironmentVariable("TM_WATCH_SIZE") ?? "",
+                              prof.Label, prof.Width, prof.Height, Environment.NewLine));
+        }
+        catch { }
+        Width = prof.Width;
+        Height = prof.Height;
+        // 标题带上档位：观察员反馈分辨率问题时，截图里就能看出用的是哪一档。
+        Title = string.Format("{0} [{1}]", Title, prof.Label);
+        if (ColRight is not null)
+            ColRight.Width = new GridLength(prof.RightColumn);
+
         BuildPriceGrid();
 
         _uiTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(PollMs) };
