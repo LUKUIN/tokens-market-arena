@@ -58,6 +58,7 @@ class LockedIndexTest(_Base):
         e = self.make()
         e.start_roll()
         e.roll_stop()
+        e.challenge_decline()   # 本组用例不测挑战任务：按「不开启」进入正常对局
         e.reset(count=False)
         r = e.roll_stop()
         self.assertEqual(r["index"], 3)
@@ -130,6 +131,7 @@ class ReportIndexTest(_Base):
         e = self.make()
         e.start_roll()
         e.roll_stop()
+        e.challenge_decline()   # 本组用例不测挑战任务：按「不开启」进入正常对局
         self.assertEqual(e._roll_index_text(),
                          ("9", T.GAP_LEVELS[4][0], T.LIQ_LEVELS[1][0]))
 

@@ -34,6 +34,7 @@ class _Base(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.home, True)
         self.e = T.Engine(self.home)
         self.e.roll_stop()
+        self.e.challenge_decline()   # 本组用例不测挑战任务：按「不开启」进入正常对局
 
     def long_curve(self, n=1500):
         return [{"tick": i, "equity": 1000000.0 + (i % 50)} for i in range(n)]

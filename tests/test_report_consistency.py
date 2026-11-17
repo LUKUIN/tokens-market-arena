@@ -46,6 +46,7 @@ class ConsistencyCase(unittest.TestCase):
         self.addCleanup(shutil.rmtree, home, True)
         eng = T.Engine(home)
         eng.roll_stop()
+        eng.challenge_decline()   # 本组用例不测挑战任务：按「不开启」进入正常对局
         return eng
 
     def crash_and_settle(self, eng):
