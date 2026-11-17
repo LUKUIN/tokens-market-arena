@@ -445,6 +445,11 @@ public partial class MainWindow : Window
 
         TxtRisk.Text = $"{mddTxt}|{shp}";
 
+        var hwi = st.HugeWave;
+        TxtHugeWave.Text = hwi is null
+            ? "—"
+            : string.Format("共 {0} 次 · 已触发 {1} · 未触发 {2}", hwi.Total, hwi.Fired, hwi.Left);
+
         // ---------- 曲线 ----------
         ChartEquity.SetData(st.EquityCurve, baseLine: 1_000_000, target: st.Target);
 
@@ -712,9 +717,15 @@ public partial class MainWindow : Window
         if (stage == "ask")
         {
             TxtChallengeHint.Text = string.Format(
-                "等待参赛者决定是否开启…（还剩 {0:0} 秒，超时按不开启处理）", ch.AskLeft);
+                "等待参赛者决定是否开启…（还剩 {0:0} 秒，超时按不开启处理）；开启后将在难度定档时公布三条目标", ch.AskLeft);
             TxtChallengeHint.Visibility = Visibility.Visible;
             TxtChallengeCount.Text = "待确认";
+        }
+        else if (ch.Tasks.Count == 0)
+        {
+            TxtChallengeHint.Text = "已开启，抽完难度后公布三条目标";
+            TxtChallengeHint.Visibility = Visibility.Visible;
+            TxtChallengeCount.Text = "待定档";
         }
         else
         {

@@ -201,6 +201,8 @@ public sealed class EquityPoint
 public sealed class HugeWaveInfo
 {
     [JsonPropertyName("show")] public bool Show { get; set; }
+    /// <summary>本局一共掷到几次（= left + fired，开局定死）。</summary>
+    [JsonPropertyName("total")] public int Total { get; set; }
     /// <summary>本局还没用掉的次数（开局 roll 为 0~2，只减不增）。</summary>
     [JsonPropertyName("left")] public int Left { get; set; }
     /// <summary>本局已触发次数，用于核对界面与报告是否一致。</summary>

@@ -231,12 +231,13 @@ curl -X POST http://127.0.0.1:8734/roll/stop
   "audit": [],                          // 账本自检：空数组=手续费/贷款/持仓三条恒等式全部成立
   "huge_wave": {                        // 「一大波」预警（突发大事件，整局 0~2 次）
     "show": false,                      // 只在预警那一 tick 为 true；下一 tick 自动翻回
+    "total": 2,                         // 本局一共掷到几次（= left + fired，开局定死）
     "left": 1,                          // 本局还没用掉的次数
     "fired": 1,                         // 本局已触发次数
     "text": "一大波异常行情正在接近！"
   },
   "challenge": {                        // 挑战任务（PvZ2 关卡目标移植）
-    "stage": "on",                      // none 未到询问 / ask 等你答复 / on 已开启 / off 已拒绝
+    "stage": "on",                      // ask 开局先问你 / on 已开启 / off 已拒绝
     "ask_left": 0.0,                    // ask 阶段剩余秒数；其余阶段为 0
     "tasks": [                          // 开启时 3 条；未开启为空
       {"key": "pos_cap", "name": "轻装简行", "desc": "同时持仓不超过 4 个货币对",
@@ -254,16 +255,21 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 
 ### 挑战任务的答复窗口
 
-难度定档（`POST /roll/stop` 或抽选超时）之后，`challenge.stage` 变成 `ask`，
-此时 **行情不动、计时冻结**（`tick` 不推进），必须在 `challenge.ask_left` 秒内二选一：
+**开局就要答复**：新局一创建 `challenge.stage` 就是 `ask`（不是先定档再问），
+此时 **行情不动、计时冻结**（`tick` 不推进），盲盒倒计时也还没起步，
+必须在 `challenge.ask_left` 秒内二选一：
 
 ```bash
-curl -X POST http://127.0.0.1:8734/challenge/accept   -d '{}'   # 开启，锁定这三条目标
+curl -X POST http://127.0.0.1:8734/challenge/accept   -d '{}'   # 开启，三条目标稍后公布
 curl -X POST http://127.0.0.1:8734/challenge/decline  -d '{}'   # 不开启，按普通玩法进行
 ```
 
-超时未答复按「不开启」处理，不会卡住整局。答复（或超时）那一刻才重置 45 分钟计时基准，
-所以这段等待不占你的对局时间。
+超时未答复按「不开启」处理，不会卡住整局。答复（或超时）那一刻才启动盲盒倒计时，
+也才重置 45 分钟计时基准，所以这段等待不占你的对局时间。
+
+「要不要开」和「哪三条」是两个时刻：`accept` 之后 `stage` 变 `on` 但 `tasks` 依旧是空数组，
+三条目标要等 `POST /roll/stop` 定档后按该档阈值抽出来才写进 `tasks`。
+所以读 `challenge.tasks` 之前先确认 `difficulty` 已非 null（或 `tasks` 长度大于 0）。
 
 `x` / `√` 的判定由引擎每 tick 执行：过程型目标一旦违反立刻变成 `failed` 且不可逆，
 结果型目标一旦达标立刻变成 `done`。想核对判定口径，读 `challenge.tasks[].desc` 那句话即可，
