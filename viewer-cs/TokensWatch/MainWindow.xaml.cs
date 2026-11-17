@@ -194,13 +194,9 @@ public partial class MainWindow : Window
         {
             var st = await _client.GetStateAsync();
             if (st is null || st.Rolled) return;
-            if (st.Paused)
-            {
-                // 还没开始：按 tkinter 版的顺序 暂停 → 抽难度
-                await _client.RollStartAsync();
-            }
-            var roll = new RollWindow(_client, thenRules: true) { Owner = this };
-            roll.ShowDialog();
+            // 新局先问要不要开挑战任务：答复后才起盲盒，询问期间引擎不计时
+            if (st.Challenge?.Stage == "ask") return;
+            await StartRollFlowAsync();
         }
         catch
         {
@@ -406,6 +402,11 @@ public partial class MainWindow : Window
         }
 
         TxtRisk.Text = $"回撤 {mddTxt} · 夏普 {shp}";
+
+        var hwi = st.HugeWave;
+        TxtHugeWave.Text = hwi is null
+            ? "—"
+            : string.Format("共 {0} 次 · 已触发 {1} · 未触发 {2}", hwi.Total, hwi.Fired, hwi.Left);
 
         // ---------- 曲线 ----------
         ChartEquity.SetData(st.EquityCurve, baseLine: 1_000_000, target: st.Target);
@@ -707,10 +708,16 @@ public partial class MainWindow : Window
         if (stage == "ask")
         {
             TxtChallengeHint.Text = string.Format(
-                "等待参赛者决定是否开启…（还剩 {0:0} 秒，超时按不开启处理）", ch.AskLeft);
+                "等待参赛者决定是否开启…（还剩 {0:0} 秒，超时按不开启处理）；开启后将在难度定档时公布三条目标", ch.AskLeft);
             TxtChallengeHint.Visibility = Visibility.Visible;
             TxtChallengeCount.Text = "待确认";
             ChallengeActions.Visibility = Visibility.Visible;
+        }
+        else if (ch.Tasks.Count == 0)
+        {
+            TxtChallengeHint.Text = "已开启，抽完难度后公布三条目标";
+            TxtChallengeHint.Visibility = Visibility.Visible;
+            TxtChallengeCount.Text = "待定档";
         }
         else
         {
@@ -724,12 +731,35 @@ public partial class MainWindow : Window
     {
         ChallengeActions.Visibility = Visibility.Collapsed;
         await _client.ChallengeAcceptAsync();
+        await StartRollFlowAsync();
     }
 
     private async void OnChallengeDeclineClick(object sender, RoutedEventArgs e)
     {
         ChallengeActions.Visibility = Visibility.Collapsed;
         await _client.ChallengeDeclineAsync();
+        await StartRollFlowAsync();
+    }
+
+    /// <summary>
+    /// 挑战任务答复之后才起难度盲盒 → 规则窗 → begin。
+    /// 询问期间引擎刻意不跑盲盒倒计时，所以这一段必须等玩家先做选择。
+    /// </summary>
+    private async Task StartRollFlowAsync()
+    {
+        try
+        {
+            var st = await _client.GetStateAsync();
+            if (st is null || st.Rolled) return;
+            if (st.Paused) await _client.RollStartAsync();
+            var roll = new RollWindow(_client, thenRules: true) { Owner = this };
+            roll.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            // 盲盒打不开也不能拖死主界面
+            System.Diagnostics.Debug.WriteLine("start roll flow: " + ex.Message);
+        }
     }
 
     private static Brush BrushOf(string hex) =>

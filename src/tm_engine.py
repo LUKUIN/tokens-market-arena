@@ -393,7 +393,7 @@ def _idle_rule_text():
             % (IDLE_ABORT_MINUTES, "、".join(IDLE_ACTION_LABELS)))
 
 
-ENGINE_VERSION = "1.2.25"  # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.26"  # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -605,8 +605,8 @@ def _new_session(seed=None, apply_rng=True, roll_index=None):
         },
         # ---------------- 挑战任务 ----------------
         "challenge": {
-            "stage": "none",     # none -> ask（定档后询问）-> on / off
-            "ask_at": 0.0,
+            "stage": "ask",      # 开局先问要不要开；on/off 之后定档时才抽具体三条
+            "ask_at": time.time(),
             "tasks": [],
             "hold_hits": 0,
             "peak_eq": 0.0,
@@ -850,6 +850,9 @@ class Engine:
 
     @_writing
     def start_roll(self):
+        # 挑战任务还没答复就先别起盲盒倒计时
+        if (self.s.get("challenge") or {}).get("stage") == "ask":
+            return {"ok": False, "error": "challenge ask pending", "roll": self.roll_state()}
         """只启动盲盒倒计时，不解除暂停、不重置会话计时。
 
         首次开局的顺序是：暂停 → 抽难度 → 看规则 → begin()。
@@ -911,19 +914,16 @@ class Engine:
                 self.s["created_at"] = time.time()
                 self._elapsed_watch = 0.0
                 self.s["elapsed_seen"] = 0.0
-            # 定档后先问 AI 要不要开挑战任务：此时开局计时还没走，
-            # 等 accept/decline（或超时）再重置 created_at，询问耗时不占 45 分钟。
+            # 挑战任务：要不要开在开局就问过了，此刻有了档位才按档抽具体三条
             _c = self.s.get("challenge") or {}
-            if _c.get("stage") in (None, "none"):
-                self.s["challenge"]["stage"] = "ask"
-                self.s["challenge"]["ask_at"] = time.time()
+            if _c.get("stage") == "on" and not (_c.get("tasks") or []):
                 self.s["challenge"]["tasks"] = self._challenge_make()
                 self.s["challenge"]["hold_hits"] = 0
                 self.s["challenge"]["peak_eq"] = self.equity()
                 self.s["challenge"]["mdd_pct"] = 0.0
-                self._event("【挑战任务】本局是否开启？三条目标已列出，%d 秒内 "
-                            "POST /challenge/accept 或 /challenge/decline" % CHALLENGE_ASK_SECONDS,
-                            "info")
+                self._event("【挑战任务】已公布三条目标：" + "；".join(
+                    "%s（%s）" % (t["name"], t["desc"]) for t in self.s["challenge"]["tasks"]),
+                    "info")
             self._save()
             return self._difficulty_result()
 
@@ -1075,14 +1075,17 @@ class Engine:
         self.s["elapsed_seen"] = 0.0
         self._elapsed_watch = 0.0
         if accept:
+            c["tasks"] = []
             c["peak_eq"] = self.equity()
             c["mdd_pct"] = 0.0
-            self._event("【挑战任务】已开启：" + "；".join(
-                "%s（%s）" % (t["name"], t["desc"]) for t in (c.get("tasks") or [])), "ok")
+            self._event("【挑战任务】已开启，抽完难度后公布三条目标", "ok")
         else:
             c["tasks"] = []
             self._event("【挑战任务】本局参赛者未开启挑战任务%s"
                         % (("（" + why + "）") if why else ""), "info")
+        # 询问期间不跑盲盒倒计时，答复之后才起步
+        if not self.s.get("difficulty") and not self.s.get("roll_started_at"):
+            self.s["roll_started_at"] = time.time()
 
     @_writing
     def challenge_accept(self):
@@ -1909,7 +1912,9 @@ class Engine:
             self.s["elapsed_seen"] = 0.0
             self._elapsed_watch = 0.0
             # 规则确认后进入难度盲盒：30 秒内不推进行情，等定档
-            if not self.s.get("difficulty"):
+            # 挑战任务询问还没答复时先不起倒计时
+            _cs = (self.s.get("challenge") or {}).get("stage")
+            if not self.s.get("difficulty") and _cs != "ask":
                 self.s["roll_started_at"] = time.time()
             self._save()
             return {"ok": True, "state": self._state_light()}
@@ -3561,6 +3566,8 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
                 # 所以观众席不会因为轮询间隔错过它，也不会重复播放。
                 "huge_wave": {
                     "show": int(self.s["tick"]) == int(self.s.get("huge_wave_show_tick", -1)),
+                    # 本局一共掷到几次：余量只减、已触发只增，两者之和恒等于开局掷出的总数
+                    "total": int(self.s.get("huge_wave_left") or 0) + int(self.s.get("huge_wave_fired") or 0),
                     "left": int(self.s.get("huge_wave_left") or 0),
                     "fired": int(self.s.get("huge_wave_fired") or 0),
                     "text": HUGE_WAVE_TEXT,

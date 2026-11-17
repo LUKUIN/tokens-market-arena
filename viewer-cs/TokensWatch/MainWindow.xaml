@@ -248,6 +248,7 @@
                                 <RowDefinition Height="Auto" />
                                                             <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
 </Grid.RowDefinitions>
 
                             <TextBlock Grid.Row="0" Grid.Column="0" Text="账本自检"
@@ -286,8 +287,13 @@
                                        FontSize="15" Margin="0,0,0,9" />
 
                             <TextBlock Grid.Row="7" Grid.Column="0" Text="回撤 / 夏普"
-                                       Style="{StaticResource Caption}" Margin="0,0,14,0" />
+                                       Style="{StaticResource Caption}" Margin="0,0,14,9" />
                             <TextBlock Grid.Row="7" Grid.Column="1" x:Name="TxtRisk" Text="—"
+                                       FontSize="15" TextWrapping="Wrap" />
+
+                            <TextBlock Grid.Row="8" Grid.Column="0" Text="一大波"
+                                       Style="{StaticResource Caption}" Margin="0,0,14,0" />
+                            <TextBlock Grid.Row="8" Grid.Column="1" x:Name="TxtHugeWave" Text="—"
                                        FontSize="15" TextWrapping="Wrap" />
                         </Grid>
 

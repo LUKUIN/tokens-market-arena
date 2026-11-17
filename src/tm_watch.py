@@ -514,7 +514,8 @@ class Watch:
                 ("gap", "黑天鹅频率"),
                 ("liq", "流动性枯竭"),
                 ("ff", "快进额度"),
-                ("special", "全局事件")):
+                ("special", "全局事件"),
+                ("huge", "一大波冲击")):
             _row = tk.Frame(right, bg=CARD)
             _row.pack(fill="x", padx=14, pady=2)
             tk.Label(_row, text=_title, font=FONT_TINY, bg=CARD, fg=MUTED,
@@ -722,7 +723,7 @@ class Watch:
         ch = st.get("challenge") or {}
         stage = ch.get("stage") or "none"
         tasks = ch.get("tasks") or []
-        sig = (stage, int(ch.get("ask_left") or 0),
+        sig = (stage, int(float(ch.get("ask_left") or 0) // 10),
                tuple((t.get("name"), t.get("status"), t.get("desc"), t.get("note"))
                      for t in tasks))
         if sig == self._challenge_sig:
@@ -762,9 +763,25 @@ class Watch:
             cols.grid_columnconfigure(_c, weight=1)
 
         if stage == "ask":
-            tk.Label(self.challenge_box,
+            if not tasks:
+                tk.Label(self.challenge_box,
+                         text="开启后，系统会在抽完难度时从池子里公布三条目标",
+                         font=FONT_TINY, bg=CARD, fg=MUTED, anchor="w",
+                         justify="left").pack(fill="x", pady=(2, 0))
+            askrow = tk.Frame(self.challenge_box, bg=CARD)
+            askrow.pack(fill="x", pady=(8, 0))
+            tk.Label(askrow,
                      text="等待参赛者决定是否开启…（还剩 %d 秒，超时按不开启处理）"
-                          % int(ch.get("ask_left") or 0),
+                          % int(float(ch.get("ask_left") or 0)),
+                     font=FONT_TINY, bg=CARD, fg=BLUE, anchor="w").pack(side="left")
+            tk.Button(askrow, text="开启挑战任务", font=FONT_TINY,
+                      command=lambda: self._challenge_choice(True)).pack(
+                side="left", padx=(12, 6))
+            tk.Button(askrow, text="不开启，正常玩", font=FONT_TINY,
+                      command=lambda: self._challenge_choice(False)).pack(side="left")
+        elif not tasks:
+            tk.Label(self.challenge_box,
+                     text="已开启，抽完难度后公布三条目标",
                      font=FONT_TINY, bg=CARD, fg=BLUE, anchor="w").pack(
                 fill="x", pady=(8, 0))
         else:
@@ -772,6 +789,27 @@ class Watch:
                      text="%d/%d 已达成" % (ch.get("cleared") or 0, ch.get("total") or 0),
                      font=FONT_TINY, bg=CARD, fg=MUTED, anchor="w").pack(
                 fill="x", pady=(8, 0))
+
+    def _challenge_choice(self, accept):
+        """玩家在挑战任务卡片上做出选择；答复后才有资格进难度盲盒。"""
+        try:
+            post("/challenge/accept" if accept else "/challenge/decline")
+        except Exception as exc:
+            sys.stderr.write("challenge choice: %r\n" % (exc,))
+        self._challenge_sig = None
+        self._start_roll_after_challenge()
+
+    def _start_roll_after_challenge(self):
+        """挑战任务答复完才起盲盒倒计时（询问期间引擎不计时）。"""
+        st = self.st or {}
+        if st.get("rolled") or getattr(self, "_roll_flow_started", False):
+            return
+        self._roll_flow_started = True
+        try:
+            post("/roll/start")
+        except Exception as exc:
+            sys.stderr.write("roll start: %r\n" % (exc,))
+        self._show_roll(then_rules=True, session_id=st.get("session_id") or "")
 
     def _render(self, st):
         self.st = st
@@ -906,6 +944,11 @@ class Watch:
                     text=_fmt_ff(_rm2))
                 _on = [n for n, v in ((FR_NAME, sp.get("fr")), (SLOT_NAME, sp.get("slot"))) if v]
                 _pr["special"].config(text="、".join(_on) if _on else "无")
+                _hw = st.get("huge_wave") or {}
+                _pr["huge"].config(
+                    text="共 %d 次 · 已触发 %d · 未触发 %d" % (
+                        int(_hw.get("total") or 0), int(_hw.get("fired") or 0),
+                        int(_hw.get("left") or 0)))
             except Exception as exc:
                 sys.stderr.write("panel rows: %r\n" % (exc,))
 
@@ -1750,12 +1793,20 @@ class Watch:
                 post("/pause")
             except Exception:
                 pass
-        # 顺序：暂停 → 抽难度 → 看规则 → begin()。
+        # 顺序：暂停 → 挑战任务询问 → 抽难度 → 看规则 → begin()。
+        # 新局开局先问要不要开挑战任务；询问期间引擎不计时、不起盲盒。
+        if (st.get("challenge") or {}).get("stage") == "ask":
+            try:
+                self.root.deiconify()
+            except Exception:
+                pass
+            return
         # 盲盒只走倒计时，不动行情，也不解除暂停。
         try:
             post("/roll/start")
         except Exception:
             pass
+        self._roll_flow_started = True
         self._show_roll(then_rules=True, session_id=sid)
 
     # ------------------------------------------------------------ 投资界面

@@ -207,6 +207,8 @@ public sealed class HugeWaveInfo
 {
     [JsonPropertyName("show")] public bool Show { get; set; }
     /// <summary>Occurrences still left this session (rolled 0-2 at start, only decreases).</summary>
+    /// <summary>本局一共掷到几次（= left + fired，开局定死）。</summary>
+    [JsonPropertyName("total")] public int Total { get; set; }
     [JsonPropertyName("left")] public int Left { get; set; }
     /// <summary>Occurrences fired so far, for cross-checking UI against the report.</summary>
     [JsonPropertyName("fired")] public int Fired { get; set; }
