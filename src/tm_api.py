@@ -242,6 +242,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(ENGINE.roll_stop())
         if path == "/roll/start":
             return self._send(ENGINE.start_roll())
+        if path == "/challenge/accept":
+            return self._send(ENGINE.challenge_accept())
+        if path == "/challenge/decline":
+            return self._send(ENGINE.challenge_decline())
         if path == "/special":
             return self._send(ENGINE.set_special(b.get("name"), b.get("on")))
         if path == "/slot":

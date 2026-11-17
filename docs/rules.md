@@ -201,6 +201,57 @@ Right-click the bat → Properties → tick "Unblock" → OK. Once is enough.
 
 ---
 
+## Challenge tasks (a port of PvZ2 Level Objectives)
+
+Once the difficulty roll is fixed the engine does not start trading right away: it first asks
+**does this round run with challenge tasks?** Answer with `POST /challenge/accept` or
+`POST /challenge/decline` within 75 seconds; no answer means "off".
+
+Enabling draws **3 objectives** that stay fixed for the whole round. Judging runs live:
+breaking an objective marks it × permanently, meeting one marks it √ immediately.
+
+### Objective pool
+
+| Objective | How it is judged | Tiers (low / medium / high difficulty) |
+|---|---|---|
+| No Borrowing | Never borrow from the loan pool | — |
+| No Blow-up | Never get force-liquidated | — |
+| Self-reliant | Never use the Crowd's Mercy | — |
+| No Locked Pairs | Never hold long and short on the same pair | — |
+| Fee Discipline | Cumulative fees stay under X of capital | 1.5% / 1.0% / 0.7% |
+| Drawdown Guard | Max equity drawdown stays under X | 18% / 12% / 8% |
+| Light Footprint | Never hold more than X pairs at once | 4 / 3 / 2 |
+| Margin Cushion | Margin level never drops below X while holding | 150% / 180% / 220% |
+| Patience Pays | Close at least X position(s) held for 5 ticks | 1 / 2 / 3 |
+| Beat the Target | Final equity reaches X of the target | 120% / 150% / 200% |
+
+Drawing rules:
+
+- **At least one result-type objective** (Patience Pays / Beat the Target) is always included:
+  three "do not do X" titles would reduce the round to doing nothing
+- The three are distinct and never contradictory
+- Thresholds follow the difficulty tier: `tier = max(black-swan tier, liquidity tier)`,
+  0-1 uses the loose column, 2 the medium one, 3 the strict one
+
+### Three states
+
+| Mark | Meaning |
+|---|---|
+| √ | cleared (result-type objectives can clear early and then stop changing) |
+| × | broken (a process objective is failed permanently once violated) |
+| · | in progress |
+
+The spectator window's "Challenge Tasks" card shows each objective's name, exact rule,
+current state and the reason it broke; the event feed records entries prefixed
+`[Challenge]`. When the contestant declines, the card reads
+"The contestant did not enable challenge tasks".
+
+Three boundaries:
+
+- **The answering window does not eat the 45 minutes**: the clock is rebased when you answer (or time out)
+- **A broken objective never recovers**: once ×, it stays ×
+- **Settlement is untouched**: challenge tasks are optional extra rules; target equity, cash settlement and the report are unchanged
+
 ## Huge Wave warning (a special event)
 
 One shape of random event stands apart: it fires **at most twice per session**, and the

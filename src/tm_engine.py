@@ -95,6 +95,60 @@ HUGE_WAVE_EXCLUDE_NAMES = ("Ample liquidity", "Market makers return", "Black Swa
                            "Interest-free window", "Fee cut window", "Central bank easing")
 
 
+
+# ==================== Challenge Tasks (a port of PvZ2 Level Objectives) ====================
+# Same design rules as PvZ2 level goals: at most 3 objectives, each one constraining a
+# single thing, never contradicting the others; thresholds scale with difficulty so they
+# stay hard but achievable; status must be visible live, not only after the round.
+CHALLENGE_MAX = 3
+CHALLENGE_ASK_SECONDS = 75      # answer window; on timeout the round runs without tasks
+CHALLENGE_HOLD_TICKS = 5        # what "Patience Pays" counts as a long enough hold (ticks)
+
+# (key, name, kind)  hold = checked every tick, one violation fails it for good
+#                    final = checked every tick, can be cleared early
+CHALLENGE_POOL = [
+    ("no_loan",      "No Borrowing",    "hold"),
+    ("no_blowup",    "No Blow-up",      "hold"),
+    ("no_assist",    "Self-reliant",    "hold"),
+    ("no_dual",      "No Locked Pairs", "hold"),
+    ("fee_cap",      "Fee Discipline",  "hold"),
+    ("dd_cap",       "Drawdown Guard",  "hold"),
+    ("pos_cap",      "Light Footprint", "hold"),
+    ("margin_floor", "Margin Cushion",  "hold"),
+    ("hold_long",    "Patience Pays",   "final"),
+    ("beat_target",  "Beat the Target", "final"),
+]
+
+# Three tiers (0 loose / 1 medium / 2 strict); higher difficulty means tighter limits
+CHALLENGE_TIERS = {
+    "fee_cap":      (0.015, 0.010, 0.007),
+    "dd_cap":       (18.0, 12.0, 8.0),
+    "pos_cap":      (4, 3, 2),
+    "margin_floor": (150.0, 180.0, 220.0),
+    "hold_long":    (1, 2, 3),
+    "beat_target":  (120.0, 150.0, 200.0),
+}
+
+
+def _challenge_desc(key, tier):
+    if key == "fee_cap":
+        return "Cumulative fees stay under %.1f%% of starting capital" % (CHALLENGE_TIERS[key][tier] * 100)
+    if key == "dd_cap":
+        return "Max equity drawdown stays under %.0f%%" % CHALLENGE_TIERS[key][tier]
+    if key == "pos_cap":
+        return "Never hold more than %d pairs at once" % CHALLENGE_TIERS[key][tier]
+    if key == "margin_floor":
+        return "Margin level never drops below %.0f%% while holding" % CHALLENGE_TIERS[key][tier]
+    if key == "hold_long":
+        return "Close at least %d position(s) held for %d ticks" % (
+            CHALLENGE_TIERS[key][tier], CHALLENGE_HOLD_TICKS)
+    if key == "beat_target":
+        return "Final equity reaches %.0f%% of the target" % CHALLENGE_TIERS[key][tier]
+    return {"no_loan": "Never borrow from the loan pool",
+            "no_blowup": "Never get force-liquidated",
+            "no_assist": "Never use the Crowd's Mercy",
+            "no_dual": "Never hold long and short on the same pair"}.get(key, key)
+
 _EVENTS_CACHE = None
 
 
@@ -350,7 +404,7 @@ def _idle_rule_text():
             "activity'. Read-only calls (/state, /prices, /rules) do not count, so "
             "slow thinking is never cut short. TM_IDLE_ABORT tunes it, 0 disables"
             % ("/".join(IDLE_ACTION_LABELS), IDLE_ABORT_MINUTES))
-ENGINE_VERSION = "1.2.24"  # release version: report footer and docs both quote this
+ENGINE_VERSION = "1.2.25"  # release version: report footer and docs both quote this
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -561,6 +615,15 @@ def _new_session(seed=None, apply_rng=True, roll_index=None):
             "slot_plays": 0,                # plays used
             "slot_win": 0.0,                # total slot winnings (drives the target lift)
             "slot_history": [],
+        },
+        # ---------------- challenge tasks ----------------
+        "challenge": {
+            "stage": "none",     # none -> ask (after the roll) -> on / off
+            "ask_at": 0.0,
+            "tasks": [],
+            "hold_hits": 0,
+            "peak_eq": 0.0,
+            "mdd_pct": 0.0,
         },
         "finished": False,
         "paused": False,
@@ -865,6 +928,20 @@ class Engine:
                 self.s["created_at"] = time.time()
                 self._elapsed_watch = 0.0
                 self.s["elapsed_seen"] = 0.0
+            # After the roll, ask the contestant whether to enable challenge tasks.
+            # The round clock has not started yet; accept/decline (or the timeout)
+            # rebases created_at so the answer window is not charged to the 45 minutes.
+            _c = self.s.get("challenge") or {}
+            if _c.get("stage") in (None, "none"):
+                self.s["challenge"]["stage"] = "ask"
+                self.s["challenge"]["ask_at"] = time.time()
+                self.s["challenge"]["tasks"] = self._challenge_make()
+                self.s["challenge"]["hold_hits"] = 0
+                self.s["challenge"]["peak_eq"] = self.equity()
+                self.s["challenge"]["mdd_pct"] = 0.0
+                self._event("[Challenge] Enable challenge tasks for this round? Three objectives "
+                            "listed; POST /challenge/accept or /challenge/decline within %d s"
+                            % CHALLENGE_ASK_SECONDS, "info")
             self._save()
             return self._difficulty_result()
 
@@ -879,6 +956,173 @@ class Engine:
             "liq": lname, "liquidity": lval,
             "index": gi + li * len(GAP_LEVELS),
         }
+
+
+    # ==================== challenge tasks ====================
+    def _challenge_tier(self):
+        d = self.s.get("difficulty") or {}
+        m = max(int(d.get("gap", 2)), int(d.get("liq", 2)))
+        return 0 if m <= 1 else (1 if m == 2 else 2)
+
+    def _challenge_make(self):
+        """Draw three distinct objectives for the current difficulty.
+
+        At least one must be a ``final`` goal: three "do not do X" titles reduce the round
+        to doing nothing, whereas a final goal keeps the contestant attacking.
+        """
+        tier = self._challenge_tier()
+        rng = random.Random((int(self.s.get("seed") or 0) ^ 0x5C3A) + tier * 7919)
+        pool = list(CHALLENGE_POOL)
+        finals = [p for p in pool if p[2] == "final"]
+        first = rng.choice(finals)
+        rest = [p for p in pool if p[0] != first[0]]
+        picks = [first] + rng.sample(rest, CHALLENGE_MAX - 1)
+        return [{"key": k, "name": n, "kind": kind, "tier": tier,
+                 "desc": _challenge_desc(k, tier), "status": "pending", "note": ""}
+                for k, n, kind in picks]
+
+    def _has_dual_side(self):
+        seen = {}
+        for p in self.s["positions"]:
+            seen.setdefault(p["pair"], set()).add(p["side"])
+        return any(len(v) > 1 for v in seen.values())
+
+    def _challenge_view(self):
+        c = self.s.get("challenge") or {}
+        stage = c.get("stage") or "none"
+        tasks = c.get("tasks") or []
+        left = 0.0
+        if stage == "ask":
+            left = max(0.0, CHALLENGE_ASK_SECONDS - (time.time() - float(c.get("ask_at") or 0.0)))
+        return {
+            "stage": stage,
+            "ask_left": round(left, 1),
+            "tasks": [{"key": t["key"], "name": t["name"], "desc": t["desc"],
+                       "status": t["status"], "note": t.get("note", "")} for t in tasks],
+            "cleared": sum(1 for t in tasks if t["status"] == "done"),
+            "failed": sum(1 for t in tasks if t["status"] == "failed"),
+            "total": len(tasks),
+            "hold_hits": int(c.get("hold_hits") or 0),
+            "mdd_pct": round(float(c.get("mdd_pct") or 0.0), 2),
+        }
+
+
+    def _challenge_fail(self, t, why):
+        t["status"] = "failed"
+        t["note"] = why
+        self._event("[Challenge] FAILED %s - %s" % (t["name"], why), "warn")
+
+    def _challenge_done(self, t, why=""):
+        t["status"] = "done"
+        t["note"] = why
+        self._event("[Challenge] CLEARED %s%s" % (t["name"], (" - " + why) if why else ""), "ok")
+
+    def _challenge_hold_hit(self):
+        c = self.s.get("challenge") or {}
+        if c.get("stage") == "on":
+            c["hold_hits"] = int(c.get("hold_hits") or 0) + 1
+
+    def _challenge_update(self):
+        """Run once per tick: violations are permanent, clears are immediate."""
+        c = self.s.get("challenge") or {}
+        if c.get("stage") != "on":
+            return
+        eq = self.equity()
+        peak = float(c.get("peak_eq") or 0.0) or eq
+        if eq > peak:
+            peak = eq
+            c["peak_eq"] = eq
+        if peak > 0:
+            dd = max(0.0, (peak - eq) / peak * 100.0)
+            if dd > float(c.get("mdd_pct") or 0.0):
+                c["mdd_pct"] = dd
+        pos = self.s["positions"]
+        ml = self.margin_level()
+        for t in c.get("tasks") or []:
+            if t["status"] != "pending":
+                continue
+            k, tier = t["key"], int(t.get("tier", 1))
+            if k == "no_loan":
+                if int(self.s["loan"]["loans"]) > 0:
+                    self._challenge_fail(t, "borrowed %d time(s)" % self.s["loan"]["loans"])
+            elif k == "no_blowup":
+                if int(self.s.get("blowups") or 0) > 0:
+                    self._challenge_fail(t, "%d blow-up(s)" % self.s["blowups"])
+            elif k == "no_assist":
+                if int(self.s.get("assist_used") or 0) > 0:
+                    self._challenge_fail(t, "asked the crowd %d time(s)" % self.s["assist_used"])
+            elif k == "no_dual":
+                if self._has_dual_side():
+                    self._challenge_fail(t, "long and short open on one pair")
+            elif k == "fee_cap":
+                cap = CHALLENGE_TIERS["fee_cap"][tier] * float(self.s.get("genesis") or STARTER_CASH)
+                if float(self.s["total_fees"]) > cap:
+                    self._challenge_fail(t, "fees %.0f above cap %.0f" % (self.s["total_fees"], cap))
+            elif k == "dd_cap":
+                lim = CHALLENGE_TIERS["dd_cap"][tier]
+                if float(c.get("mdd_pct") or 0.0) > lim:
+                    self._challenge_fail(t, "drawdown %.1f%% above %.0f%%" % (c["mdd_pct"], lim))
+            elif k == "pos_cap":
+                lim = CHALLENGE_TIERS["pos_cap"][tier]
+                if len(pos) > lim:
+                    self._challenge_fail(t, "%d pairs open, cap is %d" % (len(pos), lim))
+            elif k == "margin_floor":
+                lim = CHALLENGE_TIERS["margin_floor"][tier]
+                if ml is not None and ml * 100.0 < lim:
+                    self._challenge_fail(t, "margin level %.0f%% below %.0f%%" % (ml * 100.0, lim))
+            elif k == "hold_long":
+                need = CHALLENGE_TIERS["hold_long"][tier]
+                if int(c.get("hold_hits") or 0) >= need:
+                    self._challenge_done(t, "%d position(s) held %d ticks" % (need, CHALLENGE_HOLD_TICKS))
+            elif k == "beat_target":
+                ratio = CHALLENGE_TIERS["beat_target"][tier] / 100.0
+                goal = float(self.s.get("target") or TARGET_EQUITY) * ratio
+                if eq >= goal:
+                    self._challenge_done(t, "equity %.0f >= %.0f" % (eq, goal))
+
+
+    def _challenge_settle_ask(self, accept, why=""):
+        """Close the ask window: accept=True locks the three objectives."""
+        c = self.s.setdefault("challenge", {})
+        if c.get("stage") != "ask":
+            return
+        c["stage"] = "on" if accept else "off"
+        c["ask_at"] = 0.0
+        # Answering must not eat into the 45 minutes: rebase the clock on this moment.
+        self.s["created_at"] = time.time()
+        self.s["elapsed_seen"] = 0.0
+        self._elapsed_watch = 0.0
+        if accept:
+            c["peak_eq"] = self.equity()
+            c["mdd_pct"] = 0.0
+            self._event("[Challenge] Enabled: " + "; ".join(
+                "%s (%s)" % (t["name"], t["desc"]) for t in (c.get("tasks") or [])), "ok")
+        else:
+            c["tasks"] = []
+            self._event("[Challenge] The contestant did not enable challenge tasks%s"
+                        % ((" (" + why + ")") if why else ""), "info")
+
+    @_writing
+    def challenge_accept(self):
+        with LOCK:
+            c = self.s.get("challenge") or {}
+            if c.get("stage") != "ask":
+                return {"ok": False, "error": "not in the challenge ask stage",
+                        "challenge": self._challenge_view()}
+            self._challenge_settle_ask(True)
+            self._save()
+            return {"ok": True, "challenge": self._challenge_view()}
+
+    @_writing
+    def challenge_decline(self):
+        with LOCK:
+            c = self.s.get("challenge") or {}
+            if c.get("stage") != "ask":
+                return {"ok": False, "error": "not in the challenge ask stage",
+                        "challenge": self._challenge_view()}
+            self._challenge_settle_ask(False)
+            self._save()
+            return {"ok": True, "challenge": self._challenge_view()}
 
     def _save(self):
         self.s.pop("_sig", None)
@@ -1550,6 +1794,14 @@ class Engine:
         with LOCK:
             if self.s["finished"]:
                 return self.state()
+            _ch = self.s.get("challenge") or {}
+            if _ch.get("stage") == "ask":
+                if CHALLENGE_ASK_SECONDS - (time.time() - float(_ch.get("ask_at") or 0.0)) <= 0:
+                    self._challenge_settle_ask(False, "no answer in time, running without tasks")
+                    self._save()
+                else:
+                    # Waiting for the answer: prices and the clock stay frozen.
+                    return self.state()
             if self.s.get("paused"):
                 # Do not start before rules are confirmed: no tick advance, no quotes, timers frozen
                 return self.state()
@@ -1566,6 +1818,7 @@ class Engine:
             self._charge_costs()
             self._roll_liquidity()
             self._check_margin()
+            self._challenge_update()
             if self._check_negative():
                 return self.state()
             eq = self.equity()
@@ -2391,6 +2644,9 @@ class Engine:
                     p["lots"] -= qty
                 closed.append({"pair": rec["pair"], "side": rec["side"], "lots": qty,
                                "fill": rec["fill"], "pnl": rec["pnl"]})
+                # "Patience Pays": count positions that were held long enough
+                if self.s["tick"] - int(p.get("opened_tick") or self.s["tick"]) >= CHALLENGE_HOLD_TICKS:
+                    self._challenge_hold_hit()
                 self._event("Closed %s %s %.0f lots @%.4f, P&L %+.0f" % (
                     pair, p["side"], qty, rec["fill"], rec["pnl"]), "close")
                 if remaining is not None:
@@ -3341,6 +3597,7 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
                     "fired": int(self.s.get("huge_wave_fired") or 0),
                     "text": HUGE_WAVE_TEXT,
                 },
+                "challenge": self._challenge_view(),
                 "clock_cheat": bool(self.s.get("clock_cheat")),
                 "disqualified": not self._qualified(),
             }
@@ -3395,6 +3652,14 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
             "Commission": "%.3f%% of notional per order" % (FEE_RATE * 100),
             "Loan": "Loan pool %.0f Tokens (may be temporarily scaled by \"Credit crunch / Central bank easing\"); interest %.2f%%/tick (%s); each loan: total target = old target + loan amount × random ratio (the ratio rises with cumulative borrowing: about 4%%~8%% on the first 300k, about 35%%~66%% when borrowing the pool dry; trapezoid integration over the cumulative amount, so ten small loans cost exactly the same as one big one, decided once borrowed)" % (
                 LOAN_POOL, LOAN_RATE_PER_TICK * 100, "Borrow and repay at will; forced clearance at maturity"),
+            "Challenge tasks": ("Asked once the difficulty roll is fixed: the contestant may enable "
+                                "or decline. Enabling draws 3 objectives (always at least one result-type "
+                                "goal) whose thresholds tighten with difficulty. Judged live all round: "
+                                "a violation marks it failed permanently, meeting the goal marks it cleared. "
+                                "Declining simply runs a normal round. Names and exact wording live in "
+                                "GET /state under challenge.tasks. Pool: No Borrowing / No Blow-up / "
+                                "Self-reliant / No Locked Pairs / Fee Discipline / Drawdown Guard / "
+                                "Light Footprint / Margin Cushion / Patience Pays / Beat the Target"),
             "Session length": "%d minutes" % SESSION_MINUTES,
             "Idle abort": _idle_rule_text(),
             "tick interval": "%d seconds" % TICK_SECONDS,

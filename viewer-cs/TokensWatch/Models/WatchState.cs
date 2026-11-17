@@ -39,6 +39,9 @@ public sealed class WatchState
     /// </summary>
     [JsonPropertyName("huge_wave")] public HugeWaveInfo? HugeWave { get; set; }
 
+    /// <summary>Challenge tasks. stage: none / ask / on / off.</summary>
+    [JsonPropertyName("challenge")] public ChallengeInfo? Challenge { get; set; }
+
     [JsonPropertyName("gap_level")] public string? GapLevel { get; set; }
     [JsonPropertyName("liq_level")] public string? LiqLevel { get; set; }
 
@@ -207,4 +210,27 @@ public sealed class HugeWaveInfo
     /// <summary>Occurrences fired so far, for cross-checking UI against the report.</summary>
     [JsonPropertyName("fired")] public int Fired { get; set; }
     [JsonPropertyName("text")] public string Text { get; set; } = "A HUGE WAVE OF VOLATILITY IS APPROACHING!";
+}
+
+
+public sealed class ChallengeTask
+{
+    [JsonPropertyName("key")] public string Key { get; set; } = "";
+    [JsonPropertyName("name")] public string Name { get; set; } = "";
+    [JsonPropertyName("desc")] public string Desc { get; set; } = "";
+    /// <summary>pending in progress / done cleared / failed broken (permanent).</summary>
+    [JsonPropertyName("status")] public string Status { get; set; } = "pending";
+    [JsonPropertyName("note")] public string Note { get; set; } = "";
+}
+
+public sealed class ChallengeInfo
+{
+    [JsonPropertyName("stage")] public string Stage { get; set; } = "none";
+    [JsonPropertyName("ask_left")] public double AskLeft { get; set; }
+    [JsonPropertyName("tasks")] public List<ChallengeTask> Tasks { get; set; } = new();
+    [JsonPropertyName("cleared")] public int Cleared { get; set; }
+    [JsonPropertyName("failed")] public int Failed { get; set; }
+    [JsonPropertyName("total")] public int Total { get; set; }
+    [JsonPropertyName("hold_hits")] public int HoldHits { get; set; }
+    [JsonPropertyName("mdd_pct")] public double MddPct { get; set; }
 }
