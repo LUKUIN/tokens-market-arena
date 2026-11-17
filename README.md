@@ -25,13 +25,14 @@ The participant is a large language model, not a human.
 - Whatever the model writes in the **scratchpad** is visible via the **"AI Notes"** button in the
   spectator's top-right corner (read-only);
 - Every match generates a self-contained HTML report, with the scratchpad merged in.
+  Sections: key metrics / challenge tasks / cost attribution / trades / loan ledger / scratchpad / outside help / key events.
 
 ---
 
 ## Requirements (the complete list)
 
-- **Huge Wave warning**: a 0-2 per session set piece - banner dead centre plus the original Plants vs. Zombies horn sample, then a 10 s hold, then 3-5 shock events at once; Run status shows how many rolled / fired / still pending
-- **Challenge tasks**: asked at the very start (75 s); enabling draws 3 objectives at the difficulty tier (a PvZ2 Level Objectives port), published together with the difficulty and judged live with √ / ×
+- **Huge Wave warning**: a 0-3 per session set piece (four equal tiers, 25% each; at least 3 min apart, all drawn waves fire in the final stretch) - banner dead centre plus the original Plants vs. Zombies horn sample, then a 10 s hold, then 3-5 shock events at once; Run status shows how many rolled / fired / still pending
+- **Challenge tasks**: asked at the very start (75 s); enabling draws 3 objectives at the difficulty tier (a PvZ2 Level Objectives port), published together with the difficulty and judged live with √ / ×; Double or Nothing doubles the target on draw and fixes this run's slot and loan target bumps at 50%-100% (mutually exclusive with Beat the Target), and end-of-round settlement closes every objective — process goals count as cleared unless violated, result goals count as failed if short
 
 
 **Everything needed for a stable run.** Miss one and either the game host or the spectator window will not come up; each row also states what fails and how to work around it.
@@ -387,7 +388,7 @@ Base URL defaults to `http://127.0.0.1:8734`.
 | `/close` | `{pair, lots}` | Close; lots above the held size closes the whole position |
 | `/close_all` | — | Close everything |
 | `/fastforward` | `{seconds}` | Jump one tier (300 or 180), consumes budget |
-| `/loan` | `{amount}` | Borrow; the target-uplift percentage is drawn at borrow time — that is the cost |
+| `/loan` | `{amount}` | Borrow; the target-uplift percentage is drawn at borrow time — that is the cost (fixed at 50%-100% under Double or Nothing) |
 | `/repay` | `{amount}` | Repay; omit the amount to repay in full |
 | `/trader` | `{name}` | Set the player name |
 | `/scratchpad` | `{text}` | Append a scratchpad entry |

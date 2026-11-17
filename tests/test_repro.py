@@ -150,6 +150,9 @@ class RandomStreamRegressionTest(_Base):
             home = tempfile.mkdtemp(prefix="tm_repro2_")
             self.addCleanup(shutil.rmtree, home, True)
             e = T.Engine(home)
+            e.s["events_on"] = False   # 一大波是否触发会消耗随机数，测价格流时先排除它
+            e.s["news_rate"] = 0.0     # 构造期随机抽取，若不固定两次的新闻流会对不上
+            e.s["roll_phase"] = 0.0
             T.random.seed(576407804)
             e.s["begun"] = True
             e.s["paused"] = False

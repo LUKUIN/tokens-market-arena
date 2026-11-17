@@ -76,12 +76,14 @@ NEWS_COOLDOWN = 3          # minimum gap between events (ticks)
 # This port keeps the same three stages on the tick clock: 5 s per tick, so a 2-tick
 # hold is 10 s -- enough to play hugewave.wav (6.57 s) in full and leave a tail.
 HUGE_WAVE_TEXT = "A HUGE WAVE OF VOLATILITY IS APPROACHING!"
-HUGE_WAVE_MAX = 2              # CEILING, not a default. It does not mean "fires twice".
+HUGE_WAVE_MAX = 3              # CEILING, not a default.
+                               # Actual count is rolled once at start: 0 / 1 / 2 / 3, 25% each
                                # The count is rolled once at session start:
                                # 35% none, 45% once, 20% twice.
-HUGE_WAVE_COUNT_W = (0.35, 0.45, 0.20)   # roll weights; together with the line above they
+HUGE_WAVE_COUNT_W = (0.25, 0.25, 0.25, 0.25)   # roll weights: four tiers, equal probability
 HUGE_WAVE_RATE = 0.010         # per-tick chance to fire while budget remains
 HUGE_WAVE_MIN_TICK = 30        # no warning during the first 30 ticks (2.5 min).
+HUGE_WAVE_GAP_TICKS = 36      # minimum gap between two Huge Waves (36 ticks = 3 min) so they never chain back to back
                                # PvZ only raises the flag wave after several waves have
                                # passed: announcing at tick 1 leaves nobody anything to
                                # escape from, so the opening gets a grace period.
@@ -117,6 +119,7 @@ CHALLENGE_POOL = [
     ("margin_floor", "Margin Cushion",  "hold"),
     ("hold_long",    "Patience Pays",   "final"),
     ("beat_target",  "Beat the Target", "final"),
+    ("double_goal",  "Double or Nothing", "final"),
 ]
 
 # Three tiers (0 loose / 1 medium / 2 strict); higher difficulty means tighter limits
@@ -144,6 +147,9 @@ def _challenge_desc(key, tier):
             CHALLENGE_TIERS[key][tier], CHALLENGE_HOLD_TICKS)
     if key == "beat_target":
         return "Final equity reaches %.0f%% of the target" % CHALLENGE_TIERS[key][tier]
+    if key == "double_goal":
+        return ("Final equity reaches the current target (doubled at draw); this run's "
+                "slot and loan target bumps are fixed at 50%%-100%%")
     return {"no_loan": "Never borrow from the loan pool",
             "no_blowup": "Never get force-liquidated",
             "no_assist": "Never use the Crowd's Mercy",
@@ -230,14 +236,12 @@ def _pick_news_rate():
 
 
 def _pick_huge_wave_count():
-    """How many huge waves this session gets: 0 / 1 / 2 at 35% / 45% / 20%.
+    """How many huge waves this session gets: 0 / 1 / 2 / 3, 25% each.
 
-    Most sessions (55%) see at least one, but roughly a third see none -- if it fired
-    every session it would stop being an event and become a script the player rehearses.
+    Equal tiers mean a quarter of sessions get none, and a quarter get all three;
+    the ceiling is still clamped by HUGE_WAVE_MAX.
     """
-    # min() clamps to the ceiling: the weights may later be tilted toward "more often",
-    # but HUGE_WAVE_MAX still caps every session.
-    return min(HUGE_WAVE_MAX, random.choices([0, 1, 2], weights=HUGE_WAVE_COUNT_W)[0])
+    return min(HUGE_WAVE_MAX, random.choices([0, 1, 2, 3], weights=HUGE_WAVE_COUNT_W)[0])
 SAFE_HAVEN = ("FROST/CORE", "AMBER/CORE")
 
 # Design principles:
@@ -574,6 +578,7 @@ def _new_session(seed=None, apply_rng=True, roll_index=None):
         "huge_wave_warn_until": 0,   # non-zero means the hold runs; burst fires at this tick
         "huge_wave_show_tick": -1,   # the tick that raised the banner; viewer keys on this
         "huge_wave_fired": 0,        # occurrences so far, for report and /state cross-check
+        "huge_wave_last_tick": -10 ** 6,   # 上次预警起始 tick；强制两波间隔
         "halt_orders": False,
         "halt_loan_until": 0,    # risk review: no borrowing before this tick (negative-cash rescue excepted)
         "halt_close_until": 0,   # exchange maintenance: no closing before this tick (forced liquidation unaffected)
@@ -977,9 +982,23 @@ class Engine:
         first = rng.choice(finals)
         rest = [p for p in pool if p[0] != first[0]]
         picks = [first] + rng.sample(rest, CHALLENGE_MAX - 1)
-        return [{"key": k, "name": n, "kind": kind, "tier": tier,
-                 "desc": _challenge_desc(k, tier), "status": "pending", "note": ""}
-                for k, n, kind in picks]
+        # 「孤注一掷」与「更上层楼」互斥：目标翻倍后再叠 200% 就是 4 倍，同局出现等于必败。
+        # 抽中两条时把「更上层楼」换成池里未入选的过程型目标。
+        _picked = {p[0] for p in picks}
+        if "double_goal" in _picked and "beat_target" in _picked:
+            _spare = [p for p in pool if p[0] not in _picked and p[2] != "final"]
+            picks = [rng.choice(_spare) if p[0] == "beat_target" else p for p in picks]
+        tasks = [{"key": k, "name": n, "kind": kind, "tier": tier,
+                  "desc": _challenge_desc(k, tier), "status": "pending", "note": ""}
+                 for k, n, kind in picks]
+        for t in tasks:
+            if t["key"] == "double_goal":
+                # 抽到即生效：目标翻倍，本局老虎机 / 借款的目标上浮区间统一收紧到 50%~100%
+                self.s["target"] = float(self.s.get("target") or TARGET_EQUITY) * 2.0
+                t["goal"] = float(self.s["target"])
+                self.s.setdefault("challenge", {}).setdefault("rules", {})["double_goal"] = True
+                self._event("[Challenge] Double or Nothing is live: target doubled to %.0f, slot / loan bumps fixed at 50%%-100%%" % self.s["target"], "warn")
+        return tasks
 
     def _has_dual_side(self):
         seen = {}
@@ -1006,6 +1025,45 @@ class Engine:
             "mdd_pct": round(float(c.get("mdd_pct") or 0.0), 2),
         }
 
+
+    def _challenge_report_html(self):
+        """Render this run's challenge tasks as one report section."""
+        ch = self._challenge_view()
+        stage = ch.get("stage") or "none"
+        tasks = ch.get("tasks") or []
+        if stage != "on" or not tasks:
+            return ('<section id="p8"><h2>Challenge Tasks</h2>'
+                    '<div class="note">Challenge tasks were not enabled this run '
+                    '(the player declined, or the 75 s prompt timed out).</div>'
+                    '</section>')
+        cleared = int(ch.get("cleared") or 0)
+        failed = int(ch.get("failed") or 0)
+        total = len(tasks)
+        pending = max(0, total - cleared - failed)
+        if cleared >= total:
+            verdict = '<b class="up">all cleared</b>'
+        elif failed:
+            verdict = '<b class="down">not all cleared</b>'
+        else:
+            verdict = '<b>in progress</b>'
+        rows = []
+        for t in tasks:
+            st = t.get("status")
+            if st == "done":
+                mark = '<span class="up">&#10003; cleared</span>'
+            elif st == "failed":
+                note = t.get("note") or ""
+                mark = '<span class="down">&#10007; failed</span>' + (
+                    ' (%s)' % note if note else "")
+            else:
+                mark = '<span class="muted">&middot; not triggered</span>'
+            rows.append('<div class="kv"><span>%s &mdash; %s</span><span>%s</span></div>'
+                        % (t.get("name"), t.get("desc"), mark))
+        return ('<section id="p8"><h2>Challenge Tasks (%d &middot; %s)</h2>'
+                '<div class="kvbox">%s</div>'
+                '<div class="note">Challenge tasks were enabled: %d cleared, '
+                '%d failed, %d not triggered.</div></section>'
+                % (total, verdict, "".join(rows), cleared, failed, pending))
 
     def _challenge_fail(self, t, why):
         t["status"] = "failed"
@@ -1074,12 +1132,67 @@ class Engine:
                 need = CHALLENGE_TIERS["hold_long"][tier]
                 if int(c.get("hold_hits") or 0) >= need:
                     self._challenge_done(t, "%d position(s) held %d ticks" % (need, CHALLENGE_HOLD_TICKS))
+            elif k == "double_goal":
+                goal = float(self.s.get("target") or TARGET_EQUITY)
+                if eq >= goal:
+                    self._challenge_done(t, "equity %.0f >= %.0f" % (eq, goal))
             elif k == "beat_target":
                 ratio = CHALLENGE_TIERS["beat_target"][tier] / 100.0
                 goal = float(self.s.get("target") or TARGET_EQUITY) * ratio
                 if eq >= goal:
                     self._challenge_done(t, "equity %.0f >= %.0f" % (eq, goal))
 
+
+    def _challenge_rule(self, key):
+        """本局开局生效的挑战规则开关（目前只有 double_goal）。"""
+        c = self.s.get("challenge") or {}
+        return bool((c.get("rules") or {}).get(key))
+
+    def _challenge_settle_end(self):
+        """局终清算，保证每条任务都有结局。
+
+        hold 类（不借款 / 不爆仓 / 不求助 / 不对锁 / 手续费 / 回撤 / 持仓数 / 保证金）
+        只会在破功时被判失败，若全程没破功，到结算时必须补记为达成；
+        final 类（按兵不动 / 更上层楼 / 孤注一掷）没达标就是未达成。
+        幂等：只处理仍为 pending 的任务，重复调用结果不变。
+        """
+        c = self.s.get("challenge") or {}
+        if c.get("stage") != "on":
+            return
+        tasks = c.get("tasks") or []
+        if not tasks:
+            return
+        eq = self.equity()
+        for t in tasks:
+            if t.get("status") != "pending":
+                continue
+            k, tier = t["key"], int(t.get("tier", 1))
+            if k == "double_goal":
+                goal = float(self.s.get("target") or TARGET_EQUITY)
+                if eq >= goal:
+                    self._challenge_done(t, "equity %.0f >= %.0f" % (eq, goal))
+                else:
+                    self._challenge_fail(t, "equity %.0f below the doubled target %.0f" % (eq, goal))
+            elif k == "beat_target":
+                ratio = CHALLENGE_TIERS["beat_target"][tier] / 100.0
+                goal = float(self.s.get("target") or TARGET_EQUITY) * ratio
+                if eq >= goal:
+                    self._challenge_done(t, "equity %.0f >= %.0f" % (eq, goal))
+                else:
+                    self._challenge_fail(t, "equity %.0f below %.0f" % (eq, goal))
+            elif k == "hold_long":
+                need = CHALLENGE_TIERS["hold_long"][tier]
+                if int(c.get("hold_hits") or 0) >= need:
+                    self._challenge_done(t, "%d 笔满 %d tick" % (need, CHALLENGE_HOLD_TICKS))
+                else:
+                    self._challenge_fail(t, "only %d of %d closes reached %d ticks"
+                                      % (int(c.get("hold_hits") or 0), need, CHALLENGE_HOLD_TICKS))
+            else:
+                # 其余全是一路监控的 hold 类，没破功即达成
+                self._challenge_done(t, "no violation during the whole run")
+        cleared = sum(1 for t in tasks if t.get("status") == "done")
+        self._event("[Challenge] settlement: %d/%d cleared" % (cleared, len(tasks)),
+                    "ok" if cleared == len(tasks) else "news")
 
     def _challenge_settle_ask(self, accept, why=""):
         """Close the ask window: accept=True locks the three objectives."""
@@ -1433,13 +1546,27 @@ class Engine:
         # ---- 1) warning: past grace, budget left, and the dice agree ----
         if t < HUGE_WAVE_MIN_TICK:
             return False
-        if int(self.s.get("huge_wave_left") or 0) <= 0:
+        left = int(self.s.get("huge_wave_left") or 0)
+        if left <= 0:
             return False
-        if random.random() >= HUGE_WAVE_RATE:
+        # 余量必须在 45 分钟内全部放完：剩余时间只够放完时进入冲刺段，
+        # 压缩两波间隔并把概率提到 100%，不再靠 1%/tick 的随机。
+        # 最后 3 分钟进入冲刺窗口：窗口长 180 秒，够放完 3 次（每次占 3 tick ≈ 15 秒）
+        _remain = SESSION_MINUTES * 60 - float(self._elapsed())
+        _rush = _remain <= 180.0
+        if _rush:
+            # 冲刺段把余量均匀铺到剩余时间里（180 秒 ÷ 余量），既保证放完又不挤成一串
+            _gap = max(HUGE_WAVE_WARN_TICKS + 1, int(_remain / max(1, left) / TICK_SECONDS))
+        else:
+            _gap = HUGE_WAVE_GAP_TICKS
+        if t - int(self.s.get("huge_wave_last_tick") or -10 ** 6) < _gap:
+            return False
+        if not _rush and random.random() >= HUGE_WAVE_RATE:
             return False
 
         self.s["huge_wave_left"] = int(self.s["huge_wave_left"]) - 1
         self.s["huge_wave_fired"] = int(self.s.get("huge_wave_fired") or 0) + 1
+        self.s["huge_wave_last_tick"] = t     # 两波间隔从预警起点算
         self.s["huge_wave_warn_until"] = t + HUGE_WAVE_WARN_TICKS
         self.s["huge_wave_show_tick"] = t     # the viewer keys the banner off this tick
         self.s["last_news_tick"] = t
@@ -2248,7 +2375,8 @@ class Engine:
             "fr_paid": round(float(sp.get("fr_paid", 0.0)), 2),
             "slot_paid": round(float(sp.get("slot_paid", 0.0)), 2),
             "fr_lo_pct": (FR_LO_BOUND if fr else LOAN_BUMP_LO_DEFAULT) * 100,
-            "slot_win_range": [SLOT_WIN_LO * 100, SLOT_WIN_HI * 100],
+            "slot_win_range": ([50.0, 100.0] if self._challenge_rule("double_goal")
+                               else [SLOT_WIN_LO * 100, SLOT_WIN_HI * 100]),
         }
 
     @_writing
@@ -2347,7 +2475,10 @@ class Engine:
             if payout > 0:
                 self.s["balance"] += payout
                 sp["slot_win"] = float(sp.get("slot_win", 0.0)) + payout
-                bump_pct = random.uniform(SLOT_WIN_LO, SLOT_WIN_HI)
+                if self._challenge_rule("double_goal"):
+                    bump_pct = random.uniform(0.50, 1.00)
+                else:
+                    bump_pct = random.uniform(SLOT_WIN_LO, SLOT_WIN_HI)
                 bump = payout * bump_pct
                 self.s["target"] = self.s.get("target", TARGET_EQUITY) + bump
                 self.s["target_bonus"] = self.s.get("target_bonus", 0.0) + bump
@@ -2404,7 +2535,10 @@ class Engine:
             _r1 = min(1.0, max(0.0, (_drawn + amount) / LOAN_POOL))
             _ratio = (_r0 + _r1) / 2.0
             _base = _lo + (1.0 - _lo) * _ratio
-            pct = min(1.0, max(_lo, _base * random.uniform(0.7, 1.3)))
+            if self._challenge_rule("double_goal"):
+                pct = random.uniform(0.50, 1.00)
+            else:
+                pct = min(1.0, max(_lo, _base * random.uniform(0.7, 1.3)))
             bump = amount * pct
             _relief = pct < 0
             self.s["target"] = self.s.get("target", TARGET_EQUITY) + bump
@@ -2930,6 +3064,7 @@ class Engine:
         try:
             import datetime
             import re as _re
+            self._challenge_settle_end()
             m = self._metrics(final_eq)
             fmt = lambda v: "{:,.2f}".format(v)
             trader = _re.sub(r"[^\w\u4e00-\u9fa5-]", "", self.s.get("trader", "visitor"))[:60] or "visitor"
@@ -3155,6 +3290,7 @@ class Engine:
         "abn": str(int(self.s.get("abnormal_exits", 0))),
                 "borrowed_txt": fmt(self.s["loan"]["borrowed"]),
                 "rows": "".join(rows) or '<tr><td colspan="10" class="muted">No trades</td></tr>',
+                "chalblock": self._challenge_report_html(),
                 "loanblock": _loan_block,
                 "scrows": "".join(_sc_rows) or '<div class="muted">No content</div>',
                 "asrows": "".join(_as_rows) or '<div class="muted">not used this match</div>',
@@ -3261,7 +3397,7 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
 </header>
 <nav class="toc">
   <a href="#p1">Key metrics</a><a href="#p2">Cost attribution</a><a href="#p3">Trade details</a>
-  <a href="#p4">Loan ledger</a><a href="#p5">Scratchpad</a><a href="#p7">Outside Mercy</a><a href="#p6">Key events</a>
+  <a href="#p8">Challenge Tasks</a><a href="#p4">Loan ledger</a><a href="#p5">Scratchpad</a><a href="#p7">Outside Mercy</a><a href="#p6">Key events</a>
 </nav>
 <div class="cards">
   <div class="card"><div class="k">Final equity</div><div class="v">{finaleq}</div></div>
@@ -3291,6 +3427,7 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
   <div class="kv"><span>Total borrowed</span><span>{borrowed_txt}</span></div>
 </div>
 <div class="note" style="color:{auditcolor}">{auditline}</div></section>
+{chalblock}
 <section id="p2"><h2>Cost attribution</h2><div class="kvbox">{attrib}</div>
 <div class="note">Net P&L = gross P&L − slippage − spread − commission − overnight interest + Slot Machine payouts. Gross P&L covers direction calls and gap shocks: what you should have made or lost if costs did not exist.</div></section>
 <section id="p3"><h2>Trade details ({rowsn} rows)</h2>

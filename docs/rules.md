@@ -227,12 +227,14 @@ breaking an objective marks it × permanently, meeting one marks it √ immediat
 | Margin Cushion | Margin level never drops below X while holding | 150% / 180% / 220% |
 | Patience Pays | Close at least X position(s) held for 5 ticks | 1 / 2 / 3 |
 | Beat the Target | Final equity reaches X of the target | 120% / 150% / 200% |
+| Double or Nothing | Final equity reaches the current target (doubled when drawn) | Target x2; slot and loan target bumps fixed at 50%-100% |
 
 Drawing rules:
 
-- **At least one result-type objective** (Patience Pays / Beat the Target) is always included:
+- **At least one result-type objective** (Patience Pays / Beat the Target / Double or Nothing) is always included:
   three "do not do X" titles would reduce the round to doing nothing
-- The three are distinct and never contradictory
+- The three are distinct; Double or Nothing and Beat the Target are mutually exclusive
+  (the target is already doubled, stacking 200% would make it 4x and the round a certain loss)
 - Thresholds follow the difficulty tier: `tier = max(black-swan tier, liquidity tier)`,
   0-1 uses the loose column, 2 the medium one, 3 the strict one
 
@@ -243,6 +245,9 @@ Drawing rules:
 | √ | cleared (result-type objectives can clear early and then stop changing) |
 | × | broken (a process objective is failed permanently once violated) |
 | · | in progress |
+
+End-of-round settlement closes every objective: process objectives that were never violated are
+recorded as cleared; result objectives still short of their goal are recorded as failed.
 
 The spectator window's "Challenge Tasks" card shows each objective's name, exact rule,
 current state and the reason it broke; the event feed records entries prefixed
@@ -257,9 +262,15 @@ Three boundaries:
 
 ## Huge Wave warning (a special event)
 
-One shape of random event stands apart: it fires **at most twice per session**, and the
-count is rolled, not fixed. At session start the engine draws once - 35% of sessions see
-none, 45% see exactly one, 20% see two. Nothing fires during the first 2.5 minutes.
+One shape of random event stands apart: it fires **0 to 3 times per session**, and the
+count is rolled, not fixed. At session start the engine draws once from four equal tiers -
+0, 1, 2 or 3 times at 25% each. Nothing fires during the first 2.5 minutes.
+Two Huge Waves are at least 3 minutes (36 ticks) apart. That is a **cooldown**, not a fixed
+metronome: once it expires the trigger stays random at 1% per tick, so it may fire right
+away or much later. In the final 3 minutes the engine falls back to a 100% trigger and
+spreads whatever is left evenly over the remaining time, so every drawn wave fires
+before the 45 minutes end.
+
 
 When it does fire it runs in three stages, timed after Plants vs. Zombies' "a huge wave of
 zombies is approaching":
