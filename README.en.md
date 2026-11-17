@@ -174,7 +174,7 @@ Sections, top to bottom:
 | KPI cards | equity, total P&L, margin level, progress to target |
 | Status row | credit / cash / borrowed / owed / interest; target / drawdown / Sharpe / trades / win rate / fees; ledger-audit slot; previous-run abnormal-exit banner |
 | Equity curve | primary visual, fixed 500k Y ticks (0 / 1M / 2M land on grid lines) |
-| Runtime status | ledger audit, black-swan rate, liquidity, fast-forward, global events |
+| Runtime status | ledger audit, black-swan rate, liquidity, fast-forward, global events, Huge Wave (rolled / fired / pending) |
 | Positions | fixed 7 rows with a scrollbar; a `More` button appears above 7 rows and opens a live full table; explicit empty state when flat |
 | Prices | 7 pairs with price, change and a sparkline drawn from `price_history` |
 | Event feed | filters: all / black swan / liquidity / random events / open-close / risk |
@@ -189,8 +189,10 @@ Sections, top to bottom:
 
 The tkinter Canvas has no antialiasing, so the equity curve always carries jagged edges on diagonals; Fluent translucency, shadows and Mica are out of reach. C# + WPF renders vectors, so those come for free.
 
-### Requirements- **Huge Wave warning**: a 0-2 per session set piece - banner dead centre plus the original horn sample, then a 10 s hold, then 3-5 shock events at once
-- **Challenge tasks**: asked after the difficulty roll; enabling draws 3 objectives (a PvZ2 Level Objectives port) judged live with √ / ×
+### Requirements
+
+- **Huge Wave warning**: a 0-2 per session set piece - banner dead centre plus the original Plants vs. Zombies horn sample, then a 10 s hold, then 3-5 shock events at once; Run status shows how many rolled / fired / still pending
+- **Challenge tasks**: asked at the very start (75 s); enabling draws 3 objectives at the difficulty tier (a PvZ2 Level Objectives port), published together with the difficulty and judged live with √ / ×
 
 
 - Windows 10 1809 or newer
@@ -221,11 +223,16 @@ Both spectators can run at once: the new build uses the `Global\\TokensWatchView
    demo only — an agent must not use it, because a backgrounded process reads `input()` as EOF and
    silently turns all three switches off.
    **Both global switches are decided before the difficulty draw.**
-1. The server starts and the spectator window appears, titled "drawing difficulty".
-2. 30-second difficulty draw: the model may call `POST /roll/stop` to lock it early, otherwise it
-   locks automatically when the countdown ends.
-3. The clock starts the moment difficulty is locked — the 30 seconds of drawing do not count
-   against the 45 minutes.
+1. The server starts and the first thing the round does is ask **"does this round run with
+   challenge tasks?"** — `challenge.stage == "ask"`, prices frozen, `tick` does not advance. Answer
+   with `POST /challenge/accept` or `/challenge/decline` within `challenge.ask_left` seconds (75);
+   timing out counts as "off". Until you answer, `POST /roll/start` is refused and the draw
+   countdown does not run.
+2. After the answer the title switches to "drawing difficulty" and the 30-second draw begins: the
+   model may call `POST /roll/stop` to lock it early, otherwise it locks when the countdown ends.
+3. Locking does two things at once: the clock starts (the 30 seconds of drawing do not count against
+   the 45 minutes), and — if step 1 answered "accept" — the engine draws three challenge objectives
+   at that tier. `challenge.tasks` stays empty until this moment.
 4. Trading begins: `/state` to read the board → `/open` `/close` to trade → `/fastforward` to advance time.
 5. The match settles on one of: 45 minutes elapsed, a blow-up, or `POST /quit`. Hitting the target
    does **not** end the match by itself: `/quit` at or above the target is a **valid early exit**
@@ -467,7 +474,7 @@ TokensMarket-OpenSource-AI-v97/
 | Opening positions | HTTP `/open` | Buttons |
 | Fast-forward | `/fastforward` | Two step buttons (5 min / 3 min) |
 | Scratchpad | Yes | No |
-| Resolution | Fixed 1920×1080 layout | Four options with scaling |
+| Resolution | Picked from the display (1920×1080 / 1600×900 / proportional) | Same, both editions share `DisplayProfile.cs` |
 | Process cleanup script | Yes | No |
 
 ---
