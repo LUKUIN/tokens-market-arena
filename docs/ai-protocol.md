@@ -235,9 +235,39 @@ curl -X POST http://127.0.0.1:8734/roll/stop
     "fired": 1,                         // 本局已触发次数
     "text": "一大波异常行情正在接近！"
   },
+  "challenge": {                        // 挑战任务（PvZ2 关卡目标移植）
+    "stage": "on",                      // none 未到询问 / ask 等你答复 / on 已开启 / off 已拒绝
+    "ask_left": 0.0,                    // ask 阶段剩余秒数；其余阶段为 0
+    "tasks": [                          // 开启时 3 条；未开启为空
+      {"key": "pos_cap", "name": "轻装简行", "desc": "同时持仓不超过 4 个货币对",
+       "status": "pending", "note": ""} // status: pending 进行中 / done 已达成 / failed 已破功
+    ],
+    "cleared": 0,                       // 已达成条数
+    "failed": 0,                        // 已破功条数
+    "total": 3,
+    "hold_hits": 0,                     // 「沉得住气」已累计的合格平仓笔数
+    "mdd_pct": 0.0                      // 挑战口径的净值最大回撤（%），与报告里的 max_drawdown 独立
+  },
   "events": [ ... ]                     // 最近事件，含完整文案
 }
 ```
+
+### 挑战任务的答复窗口
+
+难度定档（`POST /roll/stop` 或抽选超时）之后，`challenge.stage` 变成 `ask`，
+此时 **行情不动、计时冻结**（`tick` 不推进），必须在 `challenge.ask_left` 秒内二选一：
+
+```bash
+curl -X POST http://127.0.0.1:8734/challenge/accept   -d '{}'   # 开启，锁定这三条目标
+curl -X POST http://127.0.0.1:8734/challenge/decline  -d '{}'   # 不开启，按普通玩法进行
+```
+
+超时未答复按「不开启」处理，不会卡住整局。答复（或超时）那一刻才重置 45 分钟计时基准，
+所以这段等待不占你的对局时间。
+
+`x` / `√` 的判定由引擎每 tick 执行：过程型目标一旦违反立刻变成 `failed` 且不可逆，
+结果型目标一旦达标立刻变成 `done`。想核对判定口径，读 `challenge.tasks[].desc` 那句话即可，
+它就是引擎实际比较的规则。
 
 ### 七个判断点
 

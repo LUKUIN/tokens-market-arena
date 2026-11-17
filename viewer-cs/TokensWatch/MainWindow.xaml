@@ -227,6 +227,8 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="12" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="12" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
@@ -310,8 +312,24 @@
                     </StackPanel>
                 </Border>
 
-                <!-- 活动流：整列剩余高度，最新在上，可滚动 -->
+                   <!-- 挑战任务：难度定档后询问参赛者是否开启；开启则实时显示三条目标的达成状态。
+                     PvZ2 的 Level Objectives 移植：√ 达成 / × 破功 / · 进行中。 -->
                 <Border Grid.Row="2" Style="{StaticResource CardBorder}" Padding="16,14">
+                    <StackPanel>
+                        <Grid Margin="0,0,0,10">
+                            <TextBlock Text="挑战任务" Style="{StaticResource SectionTitle}"
+                                       VerticalAlignment="Center" />
+                            <TextBlock x:Name="TxtChallengeCount" HorizontalAlignment="Right"
+                                       VerticalAlignment="Center" FontSize="13" Foreground="#6B6B6B" />
+                        </Grid>
+                        <StackPanel x:Name="ChallengeList" />
+                        <TextBlock x:Name="TxtChallengeHint" Style="{StaticResource Caption}"
+                                   TextWrapping="Wrap" Text="本局游戏参赛者未开启挑战任务" />
+                    </StackPanel>
+                </Border>
+
+             <!-- 活动流：整列剩余高度，最新在上，可滚动 -->
+                <Border Grid.Row="4" Style="{StaticResource CardBorder}" Padding="16,14">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -339,15 +357,18 @@
         <!-- ============================================================
              一大波预警横幅 —— PvZ「A HUGE WAVE OF ZOMBIES IS APPROACHING」的移植。
              三条硬要求：① 出现在 GUI 正中间；② 红字黑阴影；③ 无底色（透明）。
-             出现动画不是从上而下、也不是从左到右，而是以屏幕正中为轴左右同时展开。
+             出现动画：等比收拢（1.55 → 1.0）340ms + 淡入（0 → 1）160ms。
+             锚点在底边中心（RenderTransformOrigin 0.5,1）：底边钉住、字从上方压下来落定，
+             这是按原始录像逐帧量的（原版 60fps 下 12 帧完成，底边 y 恒为 354）。
+             是等比缩放，横向纵向同一比例，不会把字压扁。
              IsHitTestVisible=False：横幅只负责吓人，不能挡住下面的按钮。
              ============================================================ -->
         <Grid x:Name="HugeWaveLayer" Visibility="Collapsed" IsHitTestVisible="False">
             <Grid x:Name="HugeWaveBanner"
                   HorizontalAlignment="Center" VerticalAlignment="Center"
-                  RenderTransformOrigin="0.5,0.5" Opacity="0">
+                  RenderTransformOrigin="0.5,1.0" Opacity="0">
                 <Grid.RenderTransform>
-                    <ScaleTransform x:Name="HugeWaveScale" ScaleX="0.05" ScaleY="0.92" />
+                    <ScaleTransform x:Name="HugeWaveScale" ScaleX="1.55" ScaleY="1.55" />
                 </Grid.RenderTransform>
 
                 <!-- 黑描边：WPF 的 TextBlock 没有 Stroke，用零偏移大模糊的阴影向外扩一圈 -->

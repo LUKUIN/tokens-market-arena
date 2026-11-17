@@ -249,9 +249,39 @@ Every endpoint lives at `http://127.0.0.1:8734`.
     "fired": 1,                         // occurrences fired so far
     "text": "A HUGE WAVE OF VOLATILITY IS APPROACHING!"
   },
+  "challenge": {                        // Challenge tasks (a PvZ2 Level Objectives port)
+    "stage": "on",                      // none / ask (waiting for you) / on / off
+    "ask_left": 0.0,                    // seconds left while stage == "ask"
+    "tasks": [                          // 3 when enabled, empty otherwise
+      {"key": "pos_cap", "name": "Light Footprint", "desc": "Never hold more than 4 pairs at once",
+       "status": "pending", "note": ""} // status: pending / done / failed
+    ],
+    "cleared": 0,
+    "failed": 0,
+    "total": 3,
+    "hold_hits": 0,                     // positions already closed long enough for "Patience Pays"
+    "mdd_pct": 0.0                      // challenge-scope drawdown (%); independent of max_drawdown
+  },
   "events": [ ... ]                     // recent events, full text included
 }
 ```
+
+### The challenge answering window
+
+Once the difficulty roll is fixed (`POST /roll/stop`, or the roll timing out), `challenge.stage`
+becomes `ask`: **prices and the clock freeze** until you answer within `challenge.ask_left` seconds.
+
+```bash
+curl -X POST http://127.0.0.1:8734/challenge/accept   -d '{}'   # enable, locks the three objectives
+curl -X POST http://127.0.0.1:8734/challenge/decline  -d '{}'   # decline, run a normal round
+```
+
+No answer in time means "off" and the round simply proceeds. The 45-minute clock is rebased when
+you answer (or time out), so the waiting window is never charged to your session.
+
+Judging runs every tick: a process objective turns `failed` the moment it is violated and never
+recovers; a result objective turns `done` the moment it is met. The rule the engine actually
+compares is the sentence in `challenge.tasks[].desc`.
 
 ### Seven things to check
 

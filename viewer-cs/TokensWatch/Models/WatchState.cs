@@ -35,6 +35,9 @@ public sealed class WatchState
     /// <summary>「一大波」预警状态。老引擎不返回该字段时为 null，界面按「没有预警」处理。</summary>
     [JsonPropertyName("huge_wave")] public HugeWaveInfo? HugeWave { get; set; }
 
+    /// <summary>挑战任务。stage: none / ask（等参赛者答复）/ on / off。</summary>
+    [JsonPropertyName("challenge")] public ChallengeInfo? Challenge { get; set; }
+
     [JsonPropertyName("gap_level")] public string? GapLevel { get; set; }
     [JsonPropertyName("liq_level")] public string? LiqLevel { get; set; }
 
@@ -203,4 +206,26 @@ public sealed class HugeWaveInfo
     /// <summary>本局已触发次数，用于核对界面与报告是否一致。</summary>
     [JsonPropertyName("fired")] public int Fired { get; set; }
     [JsonPropertyName("text")] public string Text { get; set; } = "一大波异常行情正在接近！";
+}
+
+public sealed class ChallengeTask
+{
+    [JsonPropertyName("key")] public string Key { get; set; } = "";
+    [JsonPropertyName("name")] public string Name { get; set; } = "";
+    [JsonPropertyName("desc")] public string Desc { get; set; } = "";
+    /// <summary>pending 进行中 / done 已达成 / failed 已破功（不可逆）。</summary>
+    [JsonPropertyName("status")] public string Status { get; set; } = "pending";
+    [JsonPropertyName("note")] public string Note { get; set; } = "";
+}
+
+public sealed class ChallengeInfo
+{
+    [JsonPropertyName("stage")] public string Stage { get; set; } = "none";
+    [JsonPropertyName("ask_left")] public double AskLeft { get; set; }
+    [JsonPropertyName("tasks")] public List<ChallengeTask> Tasks { get; set; } = new();
+    [JsonPropertyName("cleared")] public int Cleared { get; set; }
+    [JsonPropertyName("failed")] public int Failed { get; set; }
+    [JsonPropertyName("total")] public int Total { get; set; }
+    [JsonPropertyName("hold_hits")] public int HoldHits { get; set; }
+    [JsonPropertyName("mdd_pct")] public double MddPct { get; set; }
 }

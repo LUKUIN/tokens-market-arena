@@ -127,7 +127,16 @@ public partial class MainWindow : Window
     // 用 tick 号记录「已经为哪一 tick 播过」，防止两件事：
     //   ① 轮询慢于 tick 推进时同一条预警被连续两帧读到（会重复播音效）；
     //   ② 用户把窗口最小化再还原、界面重建时重播。
-    private int _hugeWaveShownTick = -999;
+        private bool _hugeWaveShowLatch;   // 上一次渲染时 show 的值，用于取上升沿
+
+    // 出场动画的两个时长（毫秒），只在这里改。
+    // 参考：PvZ 原版文字缩放到位实测是 200ms（60fps 下 12 帧），但那是 800×600 的画面；
+    // 放到 1920 宽的观众席上观感偏急，按用户反馈放慢到 620/260。
+    // 注意 hugewave.ogg 本身长 6.5709 秒，那是「音效 + 停留」的总长，不是缩放时长，
+    // 横幅停留时间由下面的 10 秒定时器控制，已经覆盖。
+    private const int HugeWaveScaleMs = 620;
+    private const int HugeWaveFadeMs = 260;
+
     private DispatcherTimer? _hugeWaveTimer;
     private readonly SoundPlayer _hugeWavePlayer = new();
     private bool _hugeWaveAudioReady;
@@ -272,6 +281,9 @@ public partial class MainWindow : Window
         // ---------- 一大波预警（PvZ 演出移植）----------
         // 放在最前面：预警是全屏级事件，任何其它数据都不该抢先写它。
         RenderHugeWave(st);
+
+        // ---------- 挑战任务（PvZ2 Level Objectives 移植）----------
+        RenderChallenge(st);
 
         // ---------- 顶栏 ----------
         TxtTrader.Text = string.IsNullOrEmpty(st.Trader) ? "访客" : st.Trader;
@@ -653,16 +665,129 @@ public partial class MainWindow : Window
     private void RenderHugeWave(WatchState st)
     {
         var hw = st.HugeWave;
-        if (hw is null) return;          // 老引擎不返回该字段：当作本局没有预警
+        if (hw is null) { _hugeWaveShowLatch = false; return; }   // 老引擎不返回该字段：当作本局没有预警
 
         // 只处理「该出场」的那一 tick。收起交给 ShowHugeWave 起的 10 秒定时器，
         // 不靠 show 翻回 false 来收 —— 否则下一 tick（5 秒后）横幅就被自己掐掉，
         // 演出时长会缩水成半截，音效还在响画面已经没了。
-        if (!hw.Show) return;
-        if (_hugeWaveShownTick == st.Tick) return;   // 这一 tick 已经播过，不重播
-        _hugeWaveShownTick = st.Tick;
+        // 只在 show 的「上升沿」播一次。引擎侧理论上只把一个 tick 的 show 置真，
+        // 但实测数据源连续两个 tick 都返回 show=true 时，按 tick 去重会连播第二遍
+        // （用户实测就撞到过）。上升沿用布尔锁存判断，与 tick 编号无关，最稳。
+        bool rising = hw.Show && !_hugeWaveShowLatch;
+        _hugeWaveShowLatch = hw.Show;
+        if (!rising) return;
 
         ShowHugeWave(string.IsNullOrWhiteSpace(hw.Text) ? "一大波异常行情正在接近！" : hw.Text);
+    }
+
+
+    /// <summary>
+    /// 挑战任务卡片。四种 stage：
+    ///   none —— 还没定档，按「未开启」显示；
+    ///   ask  —— 定档后等参赛者决定，三条候选已经列出并带倒计时；
+    ///   on   —— 已开启，逐条显示 √ / × / ·；
+    ///   off  —— 参赛者选择不开启。
+    /// 判定与破功由引擎负责，这里只负责把状态画出来，不参与任何计算。
+    /// </summary>
+    private void RenderChallenge(WatchState st)
+    {
+        var ch = st.Challenge;
+        ChallengeList.Children.Clear();
+
+        string stage = ch?.Stage ?? "none";
+        if (ch is null || (stage != "ask" && stage != "on"))
+        {
+            string reason = "本局游戏参赛者未开启挑战任务";
+            // off 且带过理由时，引擎会在 events 里写；卡片本身保持固定一句话，
+            // 免得同一句文案在两个地方各写一遍还要对不上。
+            TxtChallengeHint.Text = reason;
+            TxtChallengeHint.Visibility = Visibility.Visible;
+            TxtChallengeCount.Text = "";
+            return;
+        }
+
+        foreach (var t in ch.Tasks)
+            ChallengeList.Children.Add(BuildChallengeRow(t));
+
+        if (stage == "ask")
+        {
+            TxtChallengeHint.Text = string.Format(
+                "等待参赛者决定是否开启…（还剩 {0:0} 秒，超时按不开启处理）", ch.AskLeft);
+            TxtChallengeHint.Visibility = Visibility.Visible;
+            TxtChallengeCount.Text = "待确认";
+        }
+        else
+        {
+            TxtChallengeHint.Visibility = Visibility.Collapsed;
+            TxtChallengeCount.Text = string.Format("{0}/{1} 已达成", ch.Cleared, ch.Total);
+        }
+    }
+
+    private static Brush BrushOf(string hex) =>
+        new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+
+    private UIElement BuildChallengeRow(ChallengeTask t)
+    {
+        var grid = new Grid { Margin = new Thickness(0, 0, 0, 9) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        string mark;
+        string hex;
+        switch (t.Status)
+        {
+            case "done": mark = "√"; hex = Theme.GreenHex; break;   // √
+            case "failed": mark = "×"; hex = Theme.RedHex; break;  // ×
+            default: mark = "·"; hex = Theme.MutedHex; break;      // ·
+        }
+
+        var tick = new TextBlock
+        {
+            Text = mark,
+            FontFamily = new FontFamily(Theme.UiFont),
+            FontSize = 17,
+            FontWeight = FontWeights.Bold,
+            Foreground = BrushOf(hex),
+            Margin = new Thickness(0, -1, 11, 0),
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+        Grid.SetColumn(tick, 0);
+        grid.Children.Add(tick);
+
+        var box = new StackPanel();
+        box.Children.Add(new TextBlock
+        {
+            Text = t.Name,
+            FontFamily = new FontFamily(Theme.UiFont),
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = BrushOf(t.Status == "failed" ? Theme.MutedHex : Theme.TextHex),
+            TextWrapping = TextWrapping.Wrap,
+        });
+        box.Children.Add(new TextBlock
+        {
+            Text = t.Desc,
+            FontFamily = new FontFamily(Theme.UiFont),
+            FontSize = 12.5,
+            Foreground = BrushOf(Theme.MutedHex),
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 1, 0, 0),
+        });
+        if (!string.IsNullOrEmpty(t.Note) && t.Status != "pending")
+        {
+            box.Children.Add(new TextBlock
+            {
+                Text = t.Note,
+                FontFamily = new FontFamily(Theme.UiFont),
+                FontSize = 12,
+                Foreground = BrushOf(hex),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 1, 0, 0),
+            });
+        }
+        Grid.SetColumn(box, 1);
+        grid.Children.Add(box);
+        return grid;
     }
 
     private void ShowHugeWave(string text)
@@ -672,21 +797,21 @@ public partial class MainWindow : Window
         HugeWaveOutline.Text = text;
         HugeWaveLayer.Visibility = Visibility.Visible;
 
-        // ---- 出现动画：以屏幕正中为轴，横向左右同时展开 ----
-        // PvZ 的横幅不是从上方掉下来、也不是从左往右扫过，而是「啪」地从中间撑开。
-        // 实现上是 ScaleX 0.05→1（RenderTransformOrigin = 0.5,0.5），
-        // ScaleY 只从 0.92 轻微回弹，让字有厚度而不是纯拉伸。
+        // ---- 出现动画：由大到小等比收拢 + 淡入 ----
+        // 起始 1.55 倍，收拢到 1.0 定住；时长取 HugeWaveScaleMs / HugeWaveFadeMs 两个常量。
+        // 数值来自原版录像逐帧测量：34.083s 出现 → 34.283s 到位（12 帧），
+        // 峰值宽度约 1.5 倍成品宽，且底边 y=354 全程不动。
+        // ScaleX 与 ScaleY 同步，等比缩放，字不会被压扁。
         var easeOut = new CubicEase { EasingMode = EasingMode.EaseOut };
-        var backOut = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.35 };
 
         HugeWaveBanner.BeginAnimation(UIElement.OpacityProperty,
-            new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(130)));
+            new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(HugeWaveFadeMs)) { EasingFunction = easeOut });
 
         HugeWaveScale.BeginAnimation(ScaleTransform.ScaleXProperty,
-            new DoubleAnimation(0.05, 1.0, TimeSpan.FromMilliseconds(280)) { EasingFunction = easeOut });
+            new DoubleAnimation(1.55, 1.0, TimeSpan.FromMilliseconds(HugeWaveScaleMs)) { EasingFunction = easeOut });
 
         HugeWaveScale.BeginAnimation(ScaleTransform.ScaleYProperty,
-            new DoubleAnimation(0.92, 1.0, TimeSpan.FromMilliseconds(340)) { EasingFunction = backOut });
+            new DoubleAnimation(1.55, 1.0, TimeSpan.FromMilliseconds(HugeWaveScaleMs)) { EasingFunction = easeOut });
 
         PlayHugeWaveSound();
 
@@ -705,18 +830,18 @@ public partial class MainWindow : Window
 
     private void HideHugeWave()
     {
-        // 收场同样做动画：淡出 + 轻微外扩，不做硬切
+        // 收场：淡出，不做硬切（用户已确认这一版消失动画是对的，保持不动）
         var fade = new DoubleAnimation(1.0, 0.0, TimeSpan.FromMilliseconds(220));
         fade.Completed += (_, _) =>
         {
             HugeWaveLayer.Visibility = Visibility.Collapsed;
-            // 复位，让下一次展开从 ScaleX=0.05 重新开始（否则第二次不会播动画）
+            // 复位，让下一次重新从 1.55 倍 / 透明开始（否则第二次不会播动画）
             HugeWaveBanner.BeginAnimation(UIElement.OpacityProperty, null);
             HugeWaveBanner.Opacity = 0;
             HugeWaveScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-            HugeWaveScale.ScaleX = 0.05;
+            HugeWaveScale.ScaleX = 1.55;
             HugeWaveScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-            HugeWaveScale.ScaleY = 0.92;
+            HugeWaveScale.ScaleY = 1.55;
         };
         HugeWaveBanner.BeginAnimation(UIElement.OpacityProperty, fade);
     }
