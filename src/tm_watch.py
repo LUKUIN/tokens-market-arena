@@ -946,7 +946,7 @@ class Watch:
                 _pr["special"].config(text="、".join(_on) if _on else "无")
                 _hw = st.get("huge_wave") or {}
                 _pr["huge"].config(
-                    text="共 %d 次 · 已触发 %d · 未触发 %d" % (
+                    text="共 %d 次 | 已触发 %d | 未触发 %d" % (
                         int(_hw.get("total") or 0), int(_hw.get("fired") or 0),
                         int(_hw.get("left") or 0)))
             except Exception as exc:
