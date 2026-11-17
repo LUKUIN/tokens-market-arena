@@ -224,6 +224,8 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="12" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="12" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
@@ -308,7 +310,32 @@
                 </Border>
 
                 <!-- 活动流：整列剩余高度，最新在上，可滚动 -->
+                <!-- 挑战任务：难度定档后询问参赛者是否开启；开启则实时显示三条目标的达成状态。
+                     PvZ2 的 Level Objectives 移植：√ 达成 / × 破功 / · 进行中。 -->
                 <Border Grid.Row="2" Style="{StaticResource CardBorder}" Padding="16,14">
+                    <StackPanel>
+                        <Grid Margin="0,0,0,10">
+                            <TextBlock Text="挑战任务" Style="{StaticResource SectionTitle}"
+                                       VerticalAlignment="Center" />
+                            <TextBlock x:Name="TxtChallengeCount" HorizontalAlignment="Right"
+                                       VerticalAlignment="Center" FontSize="13" Foreground="#6B6B6B" />
+                        </Grid>
+                        <StackPanel x:Name="ChallengeList" />
+                        <TextBlock x:Name="TxtChallengeHint" Style="{StaticResource Caption}"
+                                   TextWrapping="Wrap" Text="本局游戏参赛者未开启挑战任务" />
+                        <!-- 询问阶段的确认入口：主界面直接给，不必再翻规则窗 -->
+                        <StackPanel x:Name="ChallengeActions" Orientation="Horizontal"
+                                    Margin="0,10,0,0" Visibility="Collapsed">
+                            <Button Content="开启挑战任务" Style="{StaticResource PrimaryButton}"
+                                    Padding="16,6" Margin="0,0,10,0"
+                                    Click="OnChallengeAcceptClick" />
+                            <Button Content="不开启，正常玩" Style="{StaticResource GhostButton}"
+                                    Padding="16,6" Click="OnChallengeDeclineClick" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Row="4" Style="{StaticResource CardBorder}" Padding="16,14">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -337,16 +364,19 @@
              Three hard requirements: (1) dead centre of the GUI; (2) red text with a
              black shadow; (3) no background plate at all - the original banner is bare
              text pressed straight onto the lawn, and a card would turn it into a notice.
-             The entrance is neither a drop from above nor a left-to-right wipe: it opens
-             horizontally from the screen centre outward, in step with hugewave.wav.
+             Entrance scales down uniformly (1.55 -> 1.0) over 340 ms with a 160 ms fade-in.
+             Anchor is bottom-centre (RenderTransformOrigin 0.5,1): the baseline stays pinned and
+             the text drops into place from above - measured frame by frame from the original footage
+             (12 frames at 60 fps; the bottom edge y=354 never moves).
+             The scale is uniform on both axes, so the glyphs are never squashed.
              IsHitTestVisible=False: the banner is meant to startle, not to block clicks.
              ============================================================ -->
         <Grid x:Name="HugeWaveLayer" Visibility="Collapsed" IsHitTestVisible="False">
             <Grid x:Name="HugeWaveBanner"
                   HorizontalAlignment="Center" VerticalAlignment="Center"
-                  RenderTransformOrigin="0.5,0.5" Opacity="0">
+                  RenderTransformOrigin="0.5,1.0" Opacity="0">
                 <Grid.RenderTransform>
-                    <ScaleTransform x:Name="HugeWaveScale" ScaleX="0.05" ScaleY="0.92" />
+                    <ScaleTransform x:Name="HugeWaveScale" ScaleX="1.55" ScaleY="1.55" />
                 </Grid.RenderTransform>
 
                 <!-- Black outline: WPF TextBlock has no Stroke, so a zero-offset blurry

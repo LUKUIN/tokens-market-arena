@@ -97,7 +97,20 @@ RESOLUTIONS = [
 
 
 def _pick_resolution():
-    """开局前先选窗口尺寸，确定后本局不再改变。"""
+    """开局前先选窗口尺寸，确定后本局不再改变。
+
+    TM_WATCH_SIZE=1920x1080 可直接跳过选择框：与 C# 观众席同名同义，
+    自动化跑局（验收、录屏）时不必再点按钮。
+    """
+    _env = (os.environ.get("TM_WATCH_SIZE") or "").strip().lower()
+    if "x" in _env:
+        try:
+            _w, _h = [int(x) for x in _env.split("x", 1)]
+            if _w >= 1200 and _h >= 700:
+                _UI_SCALE["v"] = _ui_font_factor(_w)
+                return (_w, _h)
+        except Exception:
+            pass
     root = tk.Tk()
     root.title("选择窗口尺寸 | Tokens 交易市场")
     root.geometry("560x340+640+300")
@@ -511,6 +524,16 @@ class Watch:
             _val.pack(anchor="w")
             self._panel_rows[_key] = _val
 
+        # ---------- 挑战任务（全宽，位于运行状态之后、活动流之前） ----------
+        # 右栏只有 300 宽且高度被曲线卡吃掉，三条目标挤不进去；
+        # 改成横排全宽卡片，与 C# 观众席的纵向卡片是同一套信息。
+        chcard = card(root)
+        chcard.pack(fill="x", padx=14, pady=(0, 6))
+        self._section_title(chcard, "挑战任务")
+        self.challenge_box = tk.Frame(chcard, bg=CARD)
+        self.challenge_box.pack(fill="x", padx=14, pady=(0, 12))
+        self._challenge_sig = None
+
         # ---------- 持仓明细（全宽） ----------
         hold = card(root)
         hold.pack(fill="x", padx=14, pady=(0, 6))
@@ -689,8 +712,70 @@ class Watch:
         except Exception:
             pass
 
+
+    def _render_challenge(self, st):
+        """挑战任务：三种展示态（未开启 / 询问中 / 已开启）。
+
+        判定与破功全部由引擎负责，这里只画它给的状态，不参与任何计算。
+        用签名比对避免每 tick 重建控件（重建会打断鼠标悬停、也会闪）。
+        """
+        ch = st.get("challenge") or {}
+        stage = ch.get("stage") or "none"
+        tasks = ch.get("tasks") or []
+        sig = (stage, int(ch.get("ask_left") or 0),
+               tuple((t.get("name"), t.get("status"), t.get("desc"), t.get("note"))
+                     for t in tasks))
+        if sig == self._challenge_sig:
+            return
+        self._challenge_sig = sig
+
+        for w in self.challenge_box.winfo_children():
+            w.destroy()
+
+        if stage not in ("ask", "on"):
+            tk.Label(self.challenge_box, text="本局游戏参赛者未开启挑战任务",
+                     font=FONT_SMALL, bg=CARD, fg=MUTED, anchor="w",
+                     justify="left").pack(fill="x")
+            return
+
+        cols = tk.Frame(self.challenge_box, bg=CARD)
+        cols.pack(fill="x")
+        for i, t in enumerate(tasks):
+            cell = tk.Frame(cols, bg=CARD)
+            cell.grid(row=0, column=i, sticky="nw", padx=(0, 26))
+            head = tk.Frame(cell, bg=CARD)
+            head.pack(fill="x")
+            mark = {"done": "√", "failed": "×"}.get(t.get("status"), "·")
+            color = {"done": GREEN, "failed": RED}.get(t.get("status"), MUTED)
+            tk.Label(head, text=mark, font=FONT_SMALL, bg=CARD, fg=color,
+                     width=2, anchor="n").pack(side="left", anchor="n")
+            tk.Label(head, text=t.get("name") or "", font=FONT_SMALL, bg=CARD,
+                     fg=TEXT, anchor="w").pack(side="left")
+            tk.Label(cell, text=t.get("desc") or "", font=FONT_TINY, bg=CARD,
+                     fg=MUTED, anchor="w", justify="left",
+                     wraplength=300).pack(fill="x", padx=(18, 0))
+            if t.get("note") and t.get("status") != "pending":
+                tk.Label(cell, text=t.get("note"), font=FONT_TINY, bg=CARD,
+                         fg=color, anchor="w", justify="left",
+                         wraplength=300).pack(fill="x", padx=(18, 0))
+        for _c in range(len(tasks)):
+            cols.grid_columnconfigure(_c, weight=1)
+
+        if stage == "ask":
+            tk.Label(self.challenge_box,
+                     text="等待参赛者决定是否开启…（还剩 %d 秒，超时按不开启处理）"
+                          % int(ch.get("ask_left") or 0),
+                     font=FONT_TINY, bg=CARD, fg=BLUE, anchor="w").pack(
+                fill="x", pady=(8, 0))
+        else:
+            tk.Label(self.challenge_box,
+                     text="%d/%d 已达成" % (ch.get("cleared") or 0, ch.get("total") or 0),
+                     font=FONT_TINY, bg=CARD, fg=MUTED, anchor="w").pack(
+                fill="x", pady=(8, 0))
+
     def _render(self, st):
         self.st = st
+        self._render_challenge(st)
         trader = st.get("trader") or "访客"
         mode = "已开启随机事件" if st.get("events_on", True) else "理想情况"
         # 抽到的难度也进标题：一眼能看到这局是什么天气

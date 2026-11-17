@@ -132,7 +132,16 @@ public partial class MainWindow : Window
     //   1) the same warning being read on two consecutive polls (which would replay the
     //      sound) when polling is slower than the tick clock;
     //   2) a replay after the window is minimised and restored and the UI is rebuilt.
-    private int _hugeWaveShownTick = -999;
+        private bool _hugeWaveShowLatch;   // 上一次渲染时 show 的值，用于取上升沿
+
+    // 出场动画的两个时长（毫秒），只在这里改。
+    // 参考：PvZ 原版文字缩放到位实测是 200ms（60fps 下 12 帧），但那是 800×600 的画面；
+    // 放到 1920 宽的观众席上观感偏急，按用户反馈放慢到 620/260。
+    // 注意 hugewave.ogg 本身长 6.5709 秒，那是「音效 + 停留」的总长，不是缩放时长，
+    // 横幅停留时间由下面的 10 秒定时器控制，已经覆盖。
+    private const int HugeWaveScaleMs = 620;
+    private const int HugeWaveFadeMs = 260;
+
     private DispatcherTimer? _hugeWaveTimer;
     private readonly SoundPlayer _hugeWavePlayer = new();
     private bool _hugeWaveAudioReady;
@@ -163,6 +172,7 @@ public partial class MainWindow : Window
 
             _uiTimer.Start();
             _assistTimer.Start();
+            _ = RunStartupFlowAsync();
         };
 
         Closed += (_, _) =>
@@ -171,6 +181,31 @@ public partial class MainWindow : Window
             _assistTimer.Stop();
             _client.Dispose();
         };
+    }
+
+    /// <summary>
+    /// 开局流程：难度盲盒 → 规则窗 → begin。
+    /// 只在「本局还没定档」时走一遍；已经定档（例如中途重开窗口）就直接进主界面，
+    /// 否则每次刷新都要玩家再看一次 30 秒转盘。
+    /// </summary>
+    private async Task RunStartupFlowAsync()
+    {
+        try
+        {
+            var st = await _client.GetStateAsync();
+            if (st is null || st.Rolled) return;
+            if (st.Paused)
+            {
+                // 还没开始：按 tkinter 版的顺序 暂停 → 抽难度
+                await _client.RollStartAsync();
+            }
+            var roll = new RollWindow(_client, thenRules: true) { Owner = this };
+            roll.ShowDialog();
+        }
+        catch
+        {
+            // 盲盒打不开也不能把主界面拖死：下面照常轮询，玩家仍可用「查看规则」
+        }
     }
 
     // ==================== 轮询 ====================
@@ -218,6 +253,9 @@ public partial class MainWindow : Window
         // ---------- Huge Wave warning (PvZ port) ----------
         // First, because it is a full-screen event: nothing else may outrank it.
         RenderHugeWave(st);
+
+        // ---------- 挑战任务（PvZ2 Level Objectives 移植）----------
+        RenderChallenge(st);
 
         // ---------- 顶栏 ----------
         TxtTrader.Text = string.IsNullOrEmpty(st.Trader) ? "访客" : st.Trader;
@@ -627,12 +665,137 @@ public partial class MainWindow : Window
         // Only act on the tick that should raise the banner. Dismissal is owned by the
         // 10 s timer started in ShowHugeWave, not by show flipping back -- otherwise the
         // next tick (5 s later) would cut the set piece in half while the sound is still playing.
-        if (!hw.Show) return;
-        if (_hugeWaveShownTick == st.Tick) return;   // already played for this tick
-        _hugeWaveShownTick = st.Tick;
+        // Play on the RISING EDGE of show only. The engine nominally raises show for a
+        // single tick, but a data source that keeps show=true across two consecutive
+        // ticks made the old per-tick de-duplication play the banner twice (observed on
+        // real data). A boolean latch is independent of tick numbering and cannot misfire.
+        bool rising = hw.Show && !_hugeWaveShowLatch;
+        _hugeWaveShowLatch = hw.Show;
+        if (!rising) return;
 
         ShowHugeWave(string.IsNullOrWhiteSpace(hw.Text)
             ? "A HUGE WAVE OF VOLATILITY IS APPROACHING!" : hw.Text);
+    }
+
+
+    /// <summary>
+    /// 挑战任务卡片。四种 stage：
+    ///   none —— 还没定档，按「未开启」显示；
+    ///   ask  —— 定档后等参赛者决定，三条候选已经列出并带倒计时；
+    ///   on   —— 已开启，逐条显示 √ / × / ·；
+    ///   off  —— 参赛者选择不开启。
+    /// 判定与破功由引擎负责，这里只负责把状态画出来，不参与任何计算。
+    /// </summary>
+    private void RenderChallenge(WatchState st)
+    {
+        var ch = st.Challenge;
+        ChallengeList.Children.Clear();
+
+        string stage = ch?.Stage ?? "none";
+        if (ch is null || (stage != "ask" && stage != "on"))
+        {
+            TxtChallengeHint.Text = "本局游戏参赛者未开启挑战任务";
+            TxtChallengeHint.Visibility = Visibility.Visible;
+            TxtChallengeCount.Text = "";
+            ChallengeActions.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        foreach (var t in ch.Tasks)
+            ChallengeList.Children.Add(BuildChallengeRow(t));
+
+        if (stage == "ask")
+        {
+            TxtChallengeHint.Text = string.Format(
+                "等待参赛者决定是否开启…（还剩 {0:0} 秒，超时按不开启处理）", ch.AskLeft);
+            TxtChallengeHint.Visibility = Visibility.Visible;
+            TxtChallengeCount.Text = "待确认";
+            ChallengeActions.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            TxtChallengeHint.Visibility = Visibility.Collapsed;
+            TxtChallengeCount.Text = string.Format("{0}/{1} 已达成", ch.Cleared, ch.Total);
+            ChallengeActions.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private async void OnChallengeAcceptClick(object sender, RoutedEventArgs e)
+    {
+        ChallengeActions.Visibility = Visibility.Collapsed;
+        await _client.ChallengeAcceptAsync();
+    }
+
+    private async void OnChallengeDeclineClick(object sender, RoutedEventArgs e)
+    {
+        ChallengeActions.Visibility = Visibility.Collapsed;
+        await _client.ChallengeDeclineAsync();
+    }
+
+    private static Brush BrushOf(string hex) =>
+        new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+
+    private UIElement BuildChallengeRow(ChallengeTask t)
+    {
+        var grid = new Grid { Margin = new Thickness(0, 0, 0, 9) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        string mark, hex;
+        switch (t.Status)
+        {
+            case "done": mark = "√"; hex = Theme.GreenHex; break;
+            case "failed": mark = "×"; hex = Theme.RedHex; break;
+            default: mark = "·"; hex = Theme.MutedHex; break;
+        }
+
+        var tick = new TextBlock
+        {
+            Text = mark,
+            FontFamily = new FontFamily(Theme.UiFont),
+            FontSize = 17,
+            FontWeight = FontWeights.Bold,
+            Foreground = BrushOf(hex),
+            Margin = new Thickness(0, -1, 11, 0),
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+        Grid.SetColumn(tick, 0);
+        grid.Children.Add(tick);
+
+        var box = new StackPanel();
+        box.Children.Add(new TextBlock
+        {
+            Text = t.Name,
+            FontFamily = new FontFamily(Theme.UiFont),
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = BrushOf(t.Status == "failed" ? Theme.MutedHex : Theme.TextHex),
+            TextWrapping = TextWrapping.Wrap,
+        });
+        box.Children.Add(new TextBlock
+        {
+            Text = t.Desc,
+            FontFamily = new FontFamily(Theme.UiFont),
+            FontSize = 12.5,
+            Foreground = BrushOf(Theme.MutedHex),
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 1, 0, 0),
+        });
+        if (!string.IsNullOrEmpty(t.Note) && t.Status != "pending")
+        {
+            box.Children.Add(new TextBlock
+            {
+                Text = t.Note,
+                FontFamily = new FontFamily(Theme.UiFont),
+                FontSize = 12,
+                Foreground = BrushOf(hex),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 1, 0, 0),
+            });
+        }
+        Grid.SetColumn(box, 1);
+        grid.Children.Add(box);
+        return grid;
     }
 
     private void ShowHugeWave(string text)
@@ -642,22 +805,21 @@ public partial class MainWindow : Window
         HugeWaveOutline.Text = text;
         HugeWaveLayer.Visibility = Visibility.Visible;
 
-        // ---- Entrance: open horizontally outward from the screen centre ----
-        // PvZ's banner neither drops from above nor wipes left to right; it snaps open
-        // from the middle. Implemented as ScaleX 0.05 -> 1 with RenderTransformOrigin
-        // 0.5,0.5, while ScaleY only eases 0.92 -> 1 so the glyphs gain slab weight
-        // instead of just stretching.
+        // ---- Entrance: uniform scale-down + fade-in ----
+        // Starts at 1.55x and settles at 1.0; durations come from the HugeWaveScaleMs / HugeWaveFadeMs constants.
+        // Numbers measured frame by frame from the original footage: appears 34.083s,
+        // settles 34.283s (12 frames at 60 fps), peak width ~1.5x, bottom edge y=354 fixed.
+        // in about 400 ms. ScaleX and ScaleY move together, so glyphs are never squashed.
         var easeOut = new CubicEase { EasingMode = EasingMode.EaseOut };
-        var backOut = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.35 };
 
         HugeWaveBanner.BeginAnimation(UIElement.OpacityProperty,
-            new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(130)));
+            new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(HugeWaveFadeMs)) { EasingFunction = easeOut });
 
         HugeWaveScale.BeginAnimation(ScaleTransform.ScaleXProperty,
-            new DoubleAnimation(0.05, 1.0, TimeSpan.FromMilliseconds(280)) { EasingFunction = easeOut });
+            new DoubleAnimation(1.55, 1.0, TimeSpan.FromMilliseconds(HugeWaveScaleMs)) { EasingFunction = easeOut });
 
         HugeWaveScale.BeginAnimation(ScaleTransform.ScaleYProperty,
-            new DoubleAnimation(0.92, 1.0, TimeSpan.FromMilliseconds(340)) { EasingFunction = backOut });
+            new DoubleAnimation(1.55, 1.0, TimeSpan.FromMilliseconds(HugeWaveScaleMs)) { EasingFunction = easeOut });
 
         PlayHugeWaveSound();
 
@@ -681,14 +843,14 @@ public partial class MainWindow : Window
         fade.Completed += (_, _) =>
         {
             HugeWaveLayer.Visibility = Visibility.Collapsed;
-            // Reset so the next entrance starts from ScaleX = 0.05 again; without this the
-            // second warning would appear instantly with no animation at all.
+            // Reset so the next entrance starts from 1.55x / transparent again; without this
+            // the second warning would appear instantly with no animation at all.
             HugeWaveBanner.BeginAnimation(UIElement.OpacityProperty, null);
             HugeWaveBanner.Opacity = 0;
             HugeWaveScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-            HugeWaveScale.ScaleX = 0.05;
+            HugeWaveScale.ScaleX = 1.55;
             HugeWaveScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-            HugeWaveScale.ScaleY = 0.92;
+            HugeWaveScale.ScaleY = 1.55;
         };
         HugeWaveBanner.BeginAnimation(UIElement.OpacityProperty, fade);
     }
@@ -866,7 +1028,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (sp.SlotLeft <= 0)
+        if ((sp.SlotLeft ?? 0) <= 0)
         {
             MessageBox.Show(this,
                 "本局老虎机次数已用完。",

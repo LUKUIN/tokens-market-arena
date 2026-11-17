@@ -91,6 +91,61 @@ HUGE_WAVE_EXCLUDE_NAMES = ("流动性充裕", "做市商回归", "黑天鹅静�
                            "限时降费", "央行放水")
 
 
+# ==================== 挑战任务（PvZ2 Level Objectives 的移植） ====================
+# 设计对齐 PvZ2 的关卡目标：① 最多 3 条，一眼看完；② 每条只约束一件事，互相不打架；
+# ③ 阈值随难度抬高（难度越大越宽），保证「难但不是不可能」；
+# ④ 达成状态必须能实时看见，不能等赛后才知道。
+CHALLENGE_MAX = 3
+CHALLENGE_ASK_SECONDS = 75      # 询问 AI 的等待上限；超时按「不开启」处理，不拖住整局
+CHALLENGE_HOLD_TICKS = 5        # 「按兵不动」认可的持仓时长门槛（tick）
+
+# (key, 名称, 类型)  hold = 逐 tick 盯，破功即失败；final = 达标即打勾（可提前）
+CHALLENGE_POOL = [
+    ("no_loan",        "两袖清风", "hold"),
+    ("no_blowup",      "毫发无伤", "hold"),
+    ("no_assist",      "自食其力", "hold"),
+    ("no_dual",        "从一而终", "hold"),
+    ("fee_cap",        "精打细算", "hold"),
+    ("dd_cap",         "稳如磐石", "hold"),
+    ("pos_cap",        "轻装上阵", "hold"),
+    ("margin_floor",   "留有余地", "hold"),
+    ("hold_long",      "按兵不动", "final"),
+    ("beat_target",    "更上层楼", "final"),
+]
+
+# 人类版没有「外部的怜悯」（这是 AI 版向观众席求助的功能，人类版玩家自己就是自己），
+# 所以 no_assist 在人类版永远不可能违反 —— 留着就是一条永远打不了勾的空目标。
+CHALLENGE_EXCLUDE = ("no_assist",)
+
+# 三档阈值（0 宽松 / 1 中度 / 2 严苛），难度越高越紧
+CHALLENGE_TIERS = {
+    "fee_cap":      (0.015, 0.010, 0.007),
+    "dd_cap":       (18.0, 12.0, 8.0),
+    "pos_cap":      (4, 3, 2),
+    "margin_floor": (150.0, 180.0, 220.0),
+    "hold_long":    (1, 2, 3),
+    "beat_target":  (120.0, 150.0, 200.0),
+}
+
+
+def _challenge_desc(key, tier):
+    if key == "fee_cap":
+        return "累计手续费不超过本金的 %.1f%%" % (CHALLENGE_TIERS[key][tier] * 100)
+    if key == "dd_cap":
+        return "净值最大回撤不超过 %.0f%%" % CHALLENGE_TIERS[key][tier]
+    if key == "pos_cap":
+        return "同时持仓不超过 %d 个货币对" % CHALLENGE_TIERS[key][tier]
+    if key == "margin_floor":
+        return "有持仓时保证金水平从不低于 %.0f%%" % CHALLENGE_TIERS[key][tier]
+    if key == "hold_long":
+        return "至少 %d 笔平仓持仓满 %d tick" % (CHALLENGE_TIERS[key][tier], CHALLENGE_HOLD_TICKS)
+    if key == "beat_target":
+        return "最终净值达到目标的 %.0f%%" % CHALLENGE_TIERS[key][tier]
+    return {"no_loan": "全程不向贷款池借入资金",
+            "no_blowup": "全程不触发强制平仓",
+            "no_assist": "不使用「外部的怜悯」求助",
+            "no_dual": "同一货币对不得同时持有多空"}.get(key, key)
+
 _EVENTS_CACHE = None
 
 
@@ -338,7 +393,7 @@ def _idle_rule_text():
             % (IDLE_ABORT_MINUTES, "、".join(IDLE_ACTION_LABELS)))
 
 
-ENGINE_VERSION = "1.2.24"  # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.25"  # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -547,6 +602,15 @@ def _new_session(seed=None, apply_rng=True, roll_index=None):
             "slot_plays": 0,                # 老虎机已用次数
             "slot_win": 0.0,                # 老虎机累计返还（用于目标上浮）
             "slot_history": [],
+        },
+        # ---------------- 挑战任务 ----------------
+        "challenge": {
+            "stage": "none",     # none -> ask（定档后询问）-> on / off
+            "ask_at": 0.0,
+            "tasks": [],
+            "hold_hits": 0,
+            "peak_eq": 0.0,
+            "mdd_pct": 0.0,
         },
         "finished": False,
         "paused": False,
@@ -847,6 +911,19 @@ class Engine:
                 self.s["created_at"] = time.time()
                 self._elapsed_watch = 0.0
                 self.s["elapsed_seen"] = 0.0
+            # 定档后先问 AI 要不要开挑战任务：此时开局计时还没走，
+            # 等 accept/decline（或超时）再重置 created_at，询问耗时不占 45 分钟。
+            _c = self.s.get("challenge") or {}
+            if _c.get("stage") in (None, "none"):
+                self.s["challenge"]["stage"] = "ask"
+                self.s["challenge"]["ask_at"] = time.time()
+                self.s["challenge"]["tasks"] = self._challenge_make()
+                self.s["challenge"]["hold_hits"] = 0
+                self.s["challenge"]["peak_eq"] = self.equity()
+                self.s["challenge"]["mdd_pct"] = 0.0
+                self._event("【挑战任务】本局是否开启？三条目标已列出，%d 秒内 "
+                            "POST /challenge/accept 或 /challenge/decline" % CHALLENGE_ASK_SECONDS,
+                            "info")
             self._save()
             return self._difficulty_result()
 
@@ -861,6 +938,174 @@ class Engine:
             "liq": lname, "liquidity": lval,
             "index": gi + li * len(GAP_LEVELS),
         }
+
+
+    # ==================== 挑战任务 ====================
+    def _challenge_tier(self):
+        d = self.s.get("difficulty") or {}
+        m = max(int(d.get("gap", 2)), int(d.get("liq", 2)))
+        return 0 if m <= 1 else (1 if m == 2 else 2)
+
+    def _challenge_make(self):
+        """按难度抽 3 条互不重复的目标。
+
+        必含至少一条结果型（按兵不动 / 更上层楼）：三条全是「不许做某事」会把
+        玩法压成什么都不做，结果型保证这局仍然要有进攻动作。
+        """
+        tier = self._challenge_tier()
+        rng = random.Random((int(self.s.get("seed") or 0) ^ 0x5C3A) + tier * 7919)
+        pool = [p for p in CHALLENGE_POOL if p[0] not in CHALLENGE_EXCLUDE]
+        finals = [p for p in pool if p[2] == "final"]
+        first = rng.choice(finals)
+        rest = [p for p in pool if p[0] != first[0]]
+        picks = [first] + rng.sample(rest, CHALLENGE_MAX - 1)
+        return [{"key": k, "name": n, "kind": kind, "tier": tier,
+                 "desc": _challenge_desc(k, tier), "status": "pending", "note": ""}
+                for k, n, kind in picks]
+
+    def _has_dual_side(self):
+        seen = {}
+        for p in self.s["positions"]:
+            seen.setdefault(p["pair"], set()).add(p["side"])
+        return any(len(v) > 1 for v in seen.values())
+
+    def _challenge_view(self):
+        c = self.s.get("challenge") or {}
+        stage = c.get("stage") or "none"
+        tasks = c.get("tasks") or []
+        left = 0.0
+        if stage == "ask":
+            left = max(0.0, CHALLENGE_ASK_SECONDS - (time.time() - float(c.get("ask_at") or 0.0)))
+        return {
+            "stage": stage,
+            "ask_left": round(left, 1),
+            "tasks": [{"key": t["key"], "name": t["name"], "desc": t["desc"],
+                       "status": t["status"], "note": t.get("note", "")} for t in tasks],
+            "cleared": sum(1 for t in tasks if t["status"] == "done"),
+            "failed": sum(1 for t in tasks if t["status"] == "failed"),
+            "total": len(tasks),
+            "hold_hits": int(c.get("hold_hits") or 0),
+            "mdd_pct": round(float(c.get("mdd_pct") or 0.0), 2),
+        }
+
+
+    def _challenge_fail(self, t, why):
+        t["status"] = "failed"
+        t["note"] = why
+        self._event("【挑战任务】× %s —— %s" % (t["name"], why), "warn")
+
+    def _challenge_done(self, t, why=""):
+        t["status"] = "done"
+        t["note"] = why
+        self._event("【挑战任务】√ %s%s" % (t["name"], (" —— " + why) if why else ""), "ok")
+
+    def _challenge_hold_hit(self):
+        c = self.s.get("challenge") or {}
+        if c.get("stage") == "on":
+            c["hold_hits"] = int(c.get("hold_hits") or 0) + 1
+
+    def _challenge_update(self):
+        """每 tick 判定一次：破功不可逆，达标立刻打勾。"""
+        c = self.s.get("challenge") or {}
+        if c.get("stage") != "on":
+            return
+        eq = self.equity()
+        peak = float(c.get("peak_eq") or 0.0) or eq
+        if eq > peak:
+            peak = eq
+            c["peak_eq"] = eq
+        if peak > 0:
+            dd = max(0.0, (peak - eq) / peak * 100.0)
+            if dd > float(c.get("mdd_pct") or 0.0):
+                c["mdd_pct"] = dd
+        pos = self.s["positions"]
+        ml = self.margin_level()
+        for t in c.get("tasks") or []:
+            if t["status"] != "pending":
+                continue
+            k, tier = t["key"], int(t.get("tier", 1))
+            if k == "no_loan":
+                if int(self.s["loan"]["loans"]) > 0:
+                    self._challenge_fail(t, "已借款 %d 笔" % self.s["loan"]["loans"])
+            elif k == "no_blowup":
+                if int(self.s.get("blowups") or 0) > 0:
+                    self._challenge_fail(t, "爆仓 %d 次" % self.s["blowups"])
+            elif k == "no_assist":
+                if int(self.s.get("assist_used") or 0) > 0:
+                    self._challenge_fail(t, "已求助 %d 次" % self.s["assist_used"])
+            elif k == "no_dual":
+                if self._has_dual_side():
+                    self._challenge_fail(t, "同品种出现多空对锁")
+            elif k == "fee_cap":
+                cap = CHALLENGE_TIERS["fee_cap"][tier] * float(self.s.get("genesis") or STARTER_CASH)
+                if float(self.s["total_fees"]) > cap:
+                    self._challenge_fail(t, "手续费 %.0f 超过上限 %.0f" % (self.s["total_fees"], cap))
+            elif k == "dd_cap":
+                lim = CHALLENGE_TIERS["dd_cap"][tier]
+                if float(c.get("mdd_pct") or 0.0) > lim:
+                    self._challenge_fail(t, "回撤 %.1f%% 超过 %.0f%%" % (c["mdd_pct"], lim))
+            elif k == "pos_cap":
+                lim = CHALLENGE_TIERS["pos_cap"][tier]
+                if len(pos) > lim:
+                    self._challenge_fail(t, "同时持仓 %d 个，上限 %d 个" % (len(pos), lim))
+            elif k == "margin_floor":
+                lim = CHALLENGE_TIERS["margin_floor"][tier]
+                if ml is not None and ml * 100.0 < lim:
+                    self._challenge_fail(t, "保证金水平 %.0f%% 低于 %.0f%%" % (ml * 100.0, lim))
+            elif k == "hold_long":
+                need = CHALLENGE_TIERS["hold_long"][tier]
+                if int(c.get("hold_hits") or 0) >= need:
+                    self._challenge_done(t, "%d 笔满 %d tick" % (need, CHALLENGE_HOLD_TICKS))
+            elif k == "beat_target":
+                ratio = CHALLENGE_TIERS["beat_target"][tier] / 100.0
+                goal = float(self.s.get("target") or TARGET_EQUITY) * ratio
+                if eq >= goal:
+                    self._challenge_done(t, "净值 %.0f >= %.0f" % (eq, goal))
+
+
+    def _challenge_settle_ask(self, accept, why=""):
+        """结束询问阶段：accept=True 锁定三条目标，False 记作未开启。"""
+        c = self.s.setdefault("challenge", {})
+        if c.get("stage") != "ask":
+            return
+        c["stage"] = "on" if accept else "off"
+        c["ask_at"] = 0.0
+        # 询问耗时不占 45 分钟：计时基准挪到此刻
+        self.s["created_at"] = time.time()
+        self.s["elapsed_seen"] = 0.0
+        self._elapsed_watch = 0.0
+        if accept:
+            c["peak_eq"] = self.equity()
+            c["mdd_pct"] = 0.0
+            self._event("【挑战任务】已开启：" + "；".join(
+                "%s（%s）" % (t["name"], t["desc"]) for t in (c.get("tasks") or [])), "ok")
+        else:
+            c["tasks"] = []
+            self._event("【挑战任务】本局参赛者未开启挑战任务%s"
+                        % (("（" + why + "）") if why else ""), "info")
+
+    @_writing
+    def challenge_accept(self):
+        with LOCK:
+            c = self.s.get("challenge") or {}
+            if c.get("stage") != "ask":
+                return {"ok": False, "error": "当前不是挑战任务询问阶段",
+                        "challenge": self._challenge_view()}
+            self._challenge_settle_ask(True)
+            self._save()
+            return {"ok": True, "challenge": self._challenge_view()}
+
+    @_writing
+    def challenge_decline(self):
+        with LOCK:
+            c = self.s.get("challenge") or {}
+            if c.get("stage") != "ask":
+                return {"ok": False, "error": "当前不是挑战任务询问阶段",
+                        "challenge": self._challenge_view()}
+            self._challenge_settle_ask(False)
+            self._save()
+            return {"ok": True, "challenge": self._challenge_view()}
+
 
     def _save(self):
         self.s.pop("_sig", None)
@@ -1520,6 +1765,14 @@ class Engine:
         with LOCK:
             if self.s["finished"]:
                 return self.state()
+            _ch = self.s.get("challenge") or {}
+            if _ch.get("stage") == "ask":
+                if CHALLENGE_ASK_SECONDS - (time.time() - float(_ch.get("ask_at") or 0.0)) <= 0:
+                    self._challenge_settle_ask(False, "超时未答复，按不开启处理")
+                    self._save()
+                else:
+                    # 等答复期间行情不动、计时冻结
+                    return self.state()
             if self.s.get("paused"):
                 # 规则确认前不开始：tick 不推进、行情不动、计时冻结
                 return self.state()
@@ -1536,6 +1789,7 @@ class Engine:
             self._charge_costs()
             self._roll_liquidity()
             self._check_margin()
+            self._challenge_update()
             if self._check_negative():
                 return self.state()
             eq = self.equity()
@@ -2350,6 +2604,9 @@ class Engine:
                     p["lots"] -= qty
                 closed.append({"pair": rec["pair"], "side": rec["side"], "lots": qty,
                                "fill": rec["fill"], "pnl": rec["pnl"]})
+                # 挑战任务「按兵不动」：记一笔够时长的平仓
+                if self.s["tick"] - int(p.get("opened_tick") or self.s["tick"]) >= CHALLENGE_HOLD_TICKS:
+                    self._challenge_hold_hit()
                 self._event("平仓 %s %s %.0f 手 @%.4f，盈亏 %+.0f" % (
                     pair, p["side"], qty, rec["fill"], rec["pnl"]), "close")
                 if remaining is not None:
@@ -3308,6 +3565,7 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
                     "fired": int(self.s.get("huge_wave_fired") or 0),
                     "text": HUGE_WAVE_TEXT,
                 },
+                "challenge": self._challenge_view(),
                 "clock_cheat": bool(self.s.get("clock_cheat")),
                 "disqualified": not self._qualified(),
             }
@@ -3362,6 +3620,9 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
             "手续费": "名义价值 %.3f%% / 次" % (FEE_RATE * 100),
             "贷款": "贷款池 %.0f Tokens（可能被「信贷紧缩 / 央行放水」临时缩放）；利率 %.2f%%/tick（%s）；每借一笔：总目标 = 原目标 + 该笔金额 × 随机比例（比例随累计借款额上升，首借 30 万约 4%%~8%%，一次借满约 35%%~66%%；按累计额做梯形积分，拆成十笔与一次借满等价；借完才定）" % (
                 LOAN_POOL, LOAN_RATE_PER_TICK * 100, "随借随还，到期强制清算"),
+            "挑战任务": ("难度定档后询问参赛者是否开启；开启则随机给出 3 条目标（必含至少一条"
+                        "结果型），难度越高阈值越紧。全程实时判定：破了打 ×（不可逆），达标打 √。"
+                        "不开启即普通玩法。三条目标的名称与判定口径见 GET /state 的 challenge.tasks。"),
             "会话时长": "%d 分钟" % SESSION_MINUTES,
             "无活动自动收尾": _idle_rule_text(),
             "tick 间隔": "%d 秒" % TICK_SECONDS,

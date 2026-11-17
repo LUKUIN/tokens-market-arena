@@ -39,6 +39,9 @@ public sealed class WatchState
     /// </summary>
     [JsonPropertyName("huge_wave")] public HugeWaveInfo? HugeWave { get; set; }
 
+    /// <summary>挑战任务。stage: none / ask / on / off。</summary>
+    [JsonPropertyName("challenge")] public ChallengeInfo? Challenge { get; set; }
+
     [JsonPropertyName("gap_level")] public string? GapLevel { get; set; }
     [JsonPropertyName("liq_level")] public string? LiqLevel { get; set; }
 
@@ -73,6 +76,8 @@ public sealed class WatchState
     [JsonPropertyName("price_history")] public Dictionary<string, List<double>>? PriceHistory { get; set; }
 
     [JsonPropertyName("rolled")] public bool Rolled { get; set; }
+    /// <summary>规则未确认前为 true：此时行情与计时都不走，开局流程还没结束。</summary>
+    [JsonPropertyName("paused")] public bool Paused { get; set; }
     [JsonPropertyName("roll_left")] public double? RollLeft { get; set; }
 
     [JsonPropertyName("finished")] public bool Finished { get; set; }
@@ -158,7 +163,9 @@ public sealed class SpecialFlags
     [JsonPropertyName("fr")] public bool Fr { get; set; }
     [JsonPropertyName("fr_left")] public JsonElement? FrLeft { get; set; }
     [JsonPropertyName("slot")] public bool Slot { get; set; }
-    [JsonPropertyName("slot_left")] public int SlotLeft { get; set; }
+    // 老虎机没开启时引擎返回 null（不是 0）；用 null 表示「本局没有这个玩法」，
+    // 写成非可空 int 会让整个 /state 反序列化失败 —— 观众席就只剩「连接失败」。
+    [JsonPropertyName("slot_left")] public int? SlotLeft { get; set; }
     [JsonPropertyName("slot_win")] public double SlotWin { get; set; }
     [JsonPropertyName("fr_lo_pct")] public double FrLoPct { get; set; }
 }
@@ -204,4 +211,27 @@ public sealed class HugeWaveInfo
     /// <summary>Occurrences fired so far, for cross-checking UI against the report.</summary>
     [JsonPropertyName("fired")] public int Fired { get; set; }
     [JsonPropertyName("text")] public string Text { get; set; } = "A HUGE WAVE OF VOLATILITY IS APPROACHING!";
+}
+
+
+public sealed class ChallengeTask
+{
+    [JsonPropertyName("key")] public string Key { get; set; } = "";
+    [JsonPropertyName("name")] public string Name { get; set; } = "";
+    [JsonPropertyName("desc")] public string Desc { get; set; } = "";
+    /// <summary>pending 进行中 / done 已达成 / failed 已破功（不可逆）。</summary>
+    [JsonPropertyName("status")] public string Status { get; set; } = "pending";
+    [JsonPropertyName("note")] public string Note { get; set; } = "";
+}
+
+public sealed class ChallengeInfo
+{
+    [JsonPropertyName("stage")] public string Stage { get; set; } = "none";
+    [JsonPropertyName("ask_left")] public double AskLeft { get; set; }
+    [JsonPropertyName("tasks")] public List<ChallengeTask> Tasks { get; set; } = new();
+    [JsonPropertyName("cleared")] public int Cleared { get; set; }
+    [JsonPropertyName("failed")] public int Failed { get; set; }
+    [JsonPropertyName("total")] public int Total { get; set; }
+    [JsonPropertyName("hold_hits")] public int HoldHits { get; set; }
+    [JsonPropertyName("mdd_pct")] public double MddPct { get; set; }
 }

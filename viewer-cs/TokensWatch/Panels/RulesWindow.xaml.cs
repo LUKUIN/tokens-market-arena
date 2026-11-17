@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
 using TokensWatch.Helpers;
 using TokensWatch.Services;
 
@@ -18,11 +20,14 @@ public partial class RulesWindow : Window
     private readonly StateClient _client;
     private readonly string _mode;
 
-    public RulesWindow(StateClient client, string mode = "")
+    private readonly Action? _onAck;
+
+    public RulesWindow(StateClient client, string mode = "", Action? onAck = null)
     {
         InitializeComponent();
         _client = client;
         _mode = mode;
+        _onAck = onAck;
 
         SourceInitialized += (_, _) => WindowChrome.Apply(this);
         Loaded += async (_, _) => await LoadAsync();
@@ -41,9 +46,86 @@ public partial class RulesWindow : Window
         }
 
         Body.ScrollToHome();
+        await LoadChallengeAsync();
     }
 
     // ---------------- 排版 ----------------
+
+
+    /// <summary>
+    /// 挑战任务：难度定档后引擎会进入 ask 阶段，玩家在这里做一次决定。
+    /// 没进入 ask（老引擎 / 已答复 / 不在人类版流程里）就整块隐藏，不占版面。
+    /// </summary>
+    private async Task LoadChallengeAsync()
+    {
+        try
+        {
+            var st = await _client.GetStateAsync();
+            var ch = st?.Challenge;
+            if (ch is null || ch.Stage != "ask" || ch.Tasks.Count == 0)
+            {
+                ChallengeCard.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            ChallengeList.Children.Clear();
+            foreach (var t in ch.Tasks)
+            {
+                var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
+                row.Children.Add(new TextBlock
+                {
+                    Text = "·",
+                    FontSize = 15,
+                    Width = 14,
+                    Foreground = (Brush)FindResource("Muted"),
+                    VerticalAlignment = VerticalAlignment.Top,
+                });
+                var box = new StackPanel();
+                box.Children.Add(new TextBlock
+                {
+                    Text = t.Name,
+                    FontSize = 14,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = (Brush)FindResource("Ink"),
+                });
+                box.Children.Add(new TextBlock
+                {
+                    Text = t.Desc,
+                    FontSize = 12.5,
+                    Foreground = (Brush)FindResource("Muted"),
+                    TextWrapping = TextWrapping.Wrap,
+                    MaxWidth = 600,
+                });
+                row.Children.Add(box);
+                ChallengeList.Children.Add(row);
+            }
+
+            TxtChallengeNote.Text = string.Format(
+                "本局是否开启？开启后这三条目标全程实时判定，破功打 ×（不可逆），达标打 √。"
+                + "还剩 {0:0} 秒，超时按不开启处理。", ch.AskLeft);
+            ChallengeCard.Visibility = Visibility.Visible;
+        }
+        catch
+        {
+            ChallengeCard.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private async void OnChallengeAcceptClick(object sender, RoutedEventArgs e)
+    {
+        BtnChallengeOn.IsEnabled = false;
+        BtnChallengeOff.IsEnabled = false;
+        await _client.ChallengeAcceptAsync();
+        ChallengeCard.Visibility = Visibility.Collapsed;
+    }
+
+    private async void OnChallengeDeclineClick(object sender, RoutedEventArgs e)
+    {
+        BtnChallengeOn.IsEnabled = false;
+        BtnChallengeOff.IsEnabled = false;
+        await _client.ChallengeDeclineAsync();
+        ChallengeCard.Visibility = Visibility.Collapsed;
+    }
 
     private static string G(JsonElement r, string key, string fallback = "")
     {
@@ -146,5 +228,9 @@ public partial class RulesWindow : Window
         return sb.ToString();
     }
 
-    private void OnCloseClick(object sender, RoutedEventArgs e) => Close();
+    private void OnCloseClick(object sender, RoutedEventArgs e)
+    {
+        Close();
+        _onAck?.Invoke();
+    }
 }

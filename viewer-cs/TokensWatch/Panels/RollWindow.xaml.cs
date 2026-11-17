@@ -172,7 +172,8 @@ public partial class RollWindow : Window
 
         if (_thenRules)
         {
-            var rules = new RulesWindow(_client) { Owner = Owner };
+            // 规则窗点「知道了」才真正开局（与 tkinter 版 _show_rules 的顺序一致）
+            var rules = new RulesWindow(_client, "", () => { _ = _client.BeginAsync(); }) { Owner = Owner };
             rules.Show();
         }
 

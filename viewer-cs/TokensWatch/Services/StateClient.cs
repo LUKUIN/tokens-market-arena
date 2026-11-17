@@ -115,6 +115,26 @@ public sealed class StateClient : IDisposable
     public Task<(bool Ok, string Error)> FastForwardAsync(int seconds, CancellationToken ct = default)
         => PostActionAsync("/fastforward", new { seconds }, ct);
 
+    /// <summary>接受本局挑战任务（难度定档后的询问阶段有效）。</summary>
+    public Task<(bool Ok, string Error)> ChallengeAcceptAsync(CancellationToken ct = default)
+        => PostActionAsync("/challenge/accept", new { }, ct);
+
+    /// <summary>不开启挑战任务，按普通玩法进行。</summary>
+    public Task<(bool Ok, string Error)> ChallengeDeclineAsync(CancellationToken ct = default)
+        => PostActionAsync("/challenge/decline", new { }, ct);
+
+    /// <summary>正式开始：解除暂停并把 45 分钟计时基准设到此刻（人类版开局流程最后一步）。</summary>
+    public Task<(bool Ok, string Error)> BeginAsync(CancellationToken ct = default)
+        => PostActionAsync("/begin", new { }, ct);
+
+    /// <summary>开始难度盲盒（30 秒倒计时，期间行情不动）。</summary>
+    public Task<(bool Ok, string Error)> RollStartAsync(CancellationToken ct = default)
+        => PostActionAsync("/roll/start", new { }, ct);
+
+    /// <summary>暂停对局（规则未确认前的初始态）。</summary>
+    public Task<(bool Ok, string Error)> PauseAsync(CancellationToken ct = default)
+        => PostActionAsync("/pause", new { }, ct);
+
     /// <summary>叫停难度盲盒：定档后返回本局的黑天鹅/流动性等级。</summary>
     public async Task<RollResult> RollStopAsync(CancellationToken ct = default)
     {
