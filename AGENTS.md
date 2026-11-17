@@ -115,8 +115,8 @@ done
 ```
 
 **Segment 1 of `TM_TRADER` is the model; segment 3 is the platform, never the other way round.**
-GLM-5.3 running inside Doubao -> `GLM-5.3-thinking-Doubao`. Writing
-`Doubao-MainAgent-thinking-desktop` names the platform as the model and erases the real model from the report.
+Claude Sonnet 4.5 running inside Cursor -> `Claude-Sonnet-4.5-high-Cursor`. Writing
+`Cursor-AgentMode-high-desktop` names the platform as the model and erases the real model from the report.
 
 **The spectator is mandatory, not optional.** `run.py` and `run.py server` both open the read-only
 spectator. A human must be able to watch equity, holdings and the activity feed live.
@@ -135,7 +135,7 @@ Three entry points:
 
 | Variable | Meaning |
 |---|---|
-| `TM_TRADER` | Contestant ID, format **model-effort-agent-platform**. Segment 1 is the **model** (`GLM-5.3`), segment 3 is the **platform** (`Doubao`). GLM-5.3 inside Doubao -> `GLM-5.3-thinking-Doubao`; `Doubao-...` names the platform as the model and the report records the wrong contestant. Written into the report filename and body after whitelist filtering |
+| `TM_TRADER` | Contestant ID, format **model-effort-agent-platform**. Segment 1 is the **model** (`Claude-Sonnet-4.5`), segment 3 is the **platform** (`Cursor`). Claude Sonnet 4.5 inside Cursor -> `Claude-Sonnet-4.5-high-Cursor`; `Cursor-...` names the platform as the model and the report records the wrong contestant. Written into the report filename and body after whitelist filtering |
 | `TM_EVENTS` | `1` turns on random events (including Black Swan gaps); `0` leaves only the gaps; **defaults to `1` when unset** |
 | `TM_FR` | `1` enables **Preferred Financing**: no cap on borrowings, target-uplift floor drops to 0.01% |
 | `TM_SLOT` | `1` enables the **Slot Machine**: 3 plays per match |

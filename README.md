@@ -624,9 +624,6 @@ Six large models each played one match under the same rules (45 minutes / 1,000,
 | DeepSeek-Flash | 163,587 | −83.64% | ✗ |
 | Space Bunny (separate single match) | −1,298,657 | −229.87% | ✗ blew through the account |
 
-> The model names are recorded exactly as the matches were run and are historical data, not sample values. The last row is a separate
-> single match kept for reference.
-
 ---
 
 ## Settlement and liquidation
