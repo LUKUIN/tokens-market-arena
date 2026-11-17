@@ -28,8 +28,8 @@ The participant is a large language model, not a human.
 
 ---
 
-## Requirements (the complete list)- **Huge Wave warning**: a 0-2 per session set piece - banner dead centre plus the original horn sample, then a 10 s hold, then 3-5 shock events at once
-- **Challenge tasks**: asked after the difficulty roll; enabling draws 3 objectives (a PvZ2 Level Objectives port) judged live with √ / ×
+## Requirements (the complete list)- **Huge Wave warning**: a 0-2 per session set piece - banner dead centre plus the original horn sample, then a 10 s hold, then 3-5 shock events at once; Run status shows how many rolled / fired / still pending
+- **Challenge tasks**: asked at the very start (75 s); enabling draws 3 objectives at the difficulty tier (a PvZ2 Level Objectives port), published together with the difficulty and judged live with √ / ×
 
 
 **Everything needed for a stable run.** Miss one and either the game host or the spectator window will not come up; each row also states what fails and how to work around it.

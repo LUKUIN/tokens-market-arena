@@ -203,11 +203,14 @@ Right-click the bat → Properties → tick "Unblock" → OK. Once is enough.
 
 ## Challenge tasks (a port of PvZ2 Level Objectives)
 
-Once the difficulty roll is fixed the engine does not start trading right away: it first asks
-**does this round run with challenge tasks?** Answer with `POST /challenge/accept` or
-`POST /challenge/decline` within 75 seconds; no answer means "off".
+**The very first thing a round asks** is: **does this round run with challenge tasks?**
+Answer with `POST /challenge/accept` or `POST /challenge/decline` within 75 seconds;
+no answer means "off". Prices, the round clock and the difficulty roll all wait during that
+window, so the answer never costs you time.
 
-Enabling draws **3 objectives** that stay fixed for the whole round. Judging runs live:
+Only after you enable does the engine roll the difficulty; **the moment it is fixed**, three
+objectives are drawn with that tier's thresholds and published together with it, staying fixed
+for the rest of the round. Judging runs live:
 breaking an objective marks it × permanently, meeting one marks it √ immediately.
 
 ### Objective pool

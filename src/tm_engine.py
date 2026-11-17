@@ -404,7 +404,7 @@ def _idle_rule_text():
             "activity'. Read-only calls (/state, /prices, /rules) do not count, so "
             "slow thinking is never cut short. TM_IDLE_ABORT tunes it, 0 disables"
             % ("/".join(IDLE_ACTION_LABELS), IDLE_ABORT_MINUTES))
-ENGINE_VERSION = "1.2.25"  # release version: report footer and docs both quote this
+ENGINE_VERSION = "1.2.26"  # release version: report footer and docs both quote this
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -618,8 +618,8 @@ def _new_session(seed=None, apply_rng=True, roll_index=None):
         },
         # ---------------- challenge tasks ----------------
         "challenge": {
-            "stage": "none",     # none -> ask (after the roll) -> on / off
-            "ask_at": 0.0,
+            "stage": "ask",      # ask first at kickoff; on/off, then three objectives drawn at roll stop
+            "ask_at": time.time(),
             "tasks": [],
             "hold_hits": 0,
             "peak_eq": 0.0,
@@ -866,6 +866,9 @@ class Engine:
 
     @_writing
     def start_roll(self):
+        # 挑战任务还没答复就先别起盲盒倒计时
+        if (self.s.get("challenge") or {}).get("stage") == "ask":
+            return {"ok": False, "error": "challenge ask pending", "roll": self.roll_state()}
         """Starts only the difficulty draw countdown; does not unpause or reset the session timer.
 
         First start order: pause -> draw difficulty -> read rules -> begin().
@@ -928,20 +931,17 @@ class Engine:
                 self.s["created_at"] = time.time()
                 self._elapsed_watch = 0.0
                 self.s["elapsed_seen"] = 0.0
-            # After the roll, ask the contestant whether to enable challenge tasks.
-            # The round clock has not started yet; accept/decline (or the timeout)
-            # rebases created_at so the answer window is not charged to the 45 minutes.
+            # Challenge opt-in was already answered at kickoff; now that the tier is
+            # known, draw the three concrete objectives.
             _c = self.s.get("challenge") or {}
-            if _c.get("stage") in (None, "none"):
-                self.s["challenge"]["stage"] = "ask"
-                self.s["challenge"]["ask_at"] = time.time()
+            if _c.get("stage") == "on" and not (_c.get("tasks") or []):
                 self.s["challenge"]["tasks"] = self._challenge_make()
                 self.s["challenge"]["hold_hits"] = 0
                 self.s["challenge"]["peak_eq"] = self.equity()
                 self.s["challenge"]["mdd_pct"] = 0.0
-                self._event("[Challenge] Enable challenge tasks for this round? Three objectives "
-                            "listed; POST /challenge/accept or /challenge/decline within %d s"
-                            % CHALLENGE_ASK_SECONDS, "info")
+                self._event("[Challenge] Objectives published: " + "; ".join(
+                    "%s (%s)" % (t["name"], t["desc"]) for t in self.s["challenge"]["tasks"]),
+                    "info")
             self._save()
             return self._difficulty_result()
 
@@ -1093,14 +1093,17 @@ class Engine:
         self.s["elapsed_seen"] = 0.0
         self._elapsed_watch = 0.0
         if accept:
+            c["tasks"] = []
             c["peak_eq"] = self.equity()
             c["mdd_pct"] = 0.0
-            self._event("[Challenge] Enabled: " + "; ".join(
-                "%s (%s)" % (t["name"], t["desc"]) for t in (c.get("tasks") or [])), "ok")
+            self._event("[Challenge] Enabled; three objectives will be published right after the roll", "ok")
         else:
             c["tasks"] = []
             self._event("[Challenge] The contestant did not enable challenge tasks%s"
                         % ((" (" + why + ")") if why else ""), "info")
+        # The roll countdown starts only after the ask window closes.
+        if not self.s.get("difficulty") and not self.s.get("roll_started_at"):
+            self.s["roll_started_at"] = time.time()
 
     @_writing
     def challenge_accept(self):
@@ -1940,7 +1943,8 @@ class Engine:
             self.s["elapsed_seen"] = 0.0
             self._elapsed_watch = 0.0
             # After rules confirmation comes the difficulty draw: quotes hold for 30 seconds until lock-in
-            if not self.s.get("difficulty"):
+            _cs = (self.s.get("challenge") or {}).get("stage")
+            if not self.s.get("difficulty") and _cs != "ask":
                 self.s["roll_started_at"] = time.time()
             self._save()
             return {"ok": True, "state": self._state_light()}
@@ -3593,6 +3597,8 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
                 # alone, so a slow poll cannot miss it and a second poll cannot replay it.
                 "huge_wave": {
                     "show": int(self.s["tick"]) == int(self.s.get("huge_wave_show_tick", -1)),
+                    # 本局一共掷到几次：余量只减、已触发只增，两者之和恒等于开局掷出的总数
+                    "total": int(self.s.get("huge_wave_left") or 0) + int(self.s.get("huge_wave_fired") or 0),
                     "left": int(self.s.get("huge_wave_left") or 0),
                     "fired": int(self.s.get("huge_wave_fired") or 0),
                     "text": HUGE_WAVE_TEXT,

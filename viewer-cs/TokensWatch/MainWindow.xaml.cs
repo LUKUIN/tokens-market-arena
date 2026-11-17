@@ -434,6 +434,11 @@ public partial class MainWindow : Window
 
         TxtRisk.Text = $"{mddTxt}|{shp}";
 
+        var hwi = st.HugeWave;
+        TxtHugeWave.Text = hwi is null
+            ? "—"
+            : string.Format("Total {0} · fired {1} · pending {2}", hwi.Total, hwi.Fired, hwi.Left);
+
         // ---------- 曲线 ----------
         ChartEquity.SetData(st.EquityCurve, baseLine: 1_000_000, target: st.Target);
 
@@ -714,6 +719,12 @@ public partial class MainWindow : Window
         {
             TxtChallengeHint.Text = string.Format(
                 "Waiting for the contestant to decide... ({0:0}s left, runs without tasks on timeout)", ch.AskLeft);
+            TxtChallengeHint.Visibility = Visibility.Visible;
+            TxtChallengeCount.Text = "Pending";
+        }
+        else if (ch.Tasks.Count == 0)
+        {
+            TxtChallengeHint.Text = "Enabled; three objectives will appear once the difficulty is locked";
             TxtChallengeHint.Visibility = Visibility.Visible;
             TxtChallengeCount.Text = "Pending";
         }

@@ -245,12 +245,13 @@ Every endpoint lives at `http://127.0.0.1:8734`.
   "audit": [],                          // ledger audit: empty array means cash/positions/loan/equity all reconcile
   "huge_wave": {                        // Huge Wave warning (0-2 per session)
     "show": false,                      // true only on the warning tick; drops next tick
+    "total": 2,                         // times rolled for this session (= left + fired)
     "left": 1,                          // occurrences still available this session
     "fired": 1,                         // occurrences fired so far
     "text": "A HUGE WAVE OF VOLATILITY IS APPROACHING!"
   },
   "challenge": {                        // Challenge tasks (a PvZ2 Level Objectives port)
-    "stage": "on",                      // none / ask (waiting for you) / on / off
+    "stage": "on",                      // ask when the round opens / on enabled / off declined
     "ask_left": 0.0,                    // seconds left while stage == "ask"
     "tasks": [                          // 3 when enabled, empty otherwise
       {"key": "pos_cap", "name": "Light Footprint", "desc": "Never hold more than 4 pairs at once",
@@ -268,16 +269,23 @@ Every endpoint lives at `http://127.0.0.1:8734`.
 
 ### The challenge answering window
 
-Once the difficulty roll is fixed (`POST /roll/stop`, or the roll timing out), `challenge.stage`
-becomes `ask`: **prices and the clock freeze** until you answer within `challenge.ask_left` seconds.
+**Answer first, roll second**: a freshly created round starts with `challenge.stage == "ask"`
+(it is no longer asked after the roll). **Prices and the clock freeze** and the roll countdown has
+not started either, so answer within `challenge.ask_left` seconds:
 
 ```bash
-curl -X POST http://127.0.0.1:8734/challenge/accept   -d '{}'   # enable, locks the three objectives
+curl -X POST http://127.0.0.1:8734/challenge/accept   -d '{}'   # enable; objectives come later
 curl -X POST http://127.0.0.1:8734/challenge/decline  -d '{}'   # decline, run a normal round
 ```
 
-No answer in time means "off" and the round simply proceeds. The 45-minute clock is rebased when
-you answer (or time out), so the waiting window is never charged to your session.
+No answer in time means "off" and the round simply proceeds. The roll countdown starts when you
+answer (or time out), and the 45-minute clock is rebased then, so the waiting window is never
+charged to your session.
+
+"Whether to enable" and "which three" are two separate moments: after `accept` the `stage` turns
+`on` while `tasks` is still an empty array. The three objectives are drawn with that tier's
+thresholds once `POST /roll/stop` fixes the difficulty. Check that `difficulty` is non-null
+(or `tasks` is non-empty) before reading `challenge.tasks`.
 
 Judging runs every tick: a process objective turns `failed` the moment it is violated and never
 recovers; a result objective turns `done` the moment it is met. The rule the engine actually
