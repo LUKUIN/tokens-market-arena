@@ -74,11 +74,12 @@ NEWS_COOLDOWN = 3          # 两次事件的最小间隔（tick）
 # 这里按同样的三段式移植，用 tick 计时：5 秒/tick，2 tick = 10 秒，
 # 正好包住 hugewave.ogg 的 6.57 秒时长并留出余韵。
 HUGE_WAVE_TEXT = "一大波异常行情正在接近！"   # 横幅文案；对齐原版 "A HUGE WAVE OF ZOMBIES IS APPROACHING!"
-HUGE_WAVE_MAX = 2              # 每局**上限**，不是默认次数。这是天花板，不是"来两次"
-                               # 实际次数开局掷一次骰：35% 不来、45% 来 1 次、20% 来 2 次
-HUGE_WAVE_COUNT_W = (0.35, 0.45, 0.20)   # 掷骰权重，与上一行共同决定分布
+HUGE_WAVE_MAX = 3              # 每局**上限**，不是默认次数。
+                               # 实际次数开局掷一次骰：0 / 1 / 2 / 3 次，四档等概率各 25%
+HUGE_WAVE_COUNT_W = (0.25, 0.25, 0.25, 0.25)   # 掷骰权重：四档等概率
 HUGE_WAVE_RATE = 0.010         # 尚有余量时，每 tick 触发预警的概率
 HUGE_WAVE_MIN_TICK = 30        # 开局前 30 tick（2.5 分钟）不触发。
+HUGE_WAVE_GAP_TICKS = 36      # 两次「一大波」之间的最小间隔（36 tick = 3 分钟），防止一波刚完又来一波
                                # 对应 PvZ 的「打过几波才有旗波」：开局就宣告会让人无从应对，
                                # 预警的意义是给已经建好仓位的人一次逃生机会，不是开局吓唬人。
 HUGE_WAVE_WARN_TICKS = 2       # 演出期长度（tick）：2 × 5 秒 = 10 秒
@@ -112,6 +113,7 @@ CHALLENGE_POOL = [
     ("margin_floor",   "留有余地", "hold"),
     ("hold_long",      "按兵不动", "final"),
     ("beat_target",    "更上层楼", "final"),
+    ("double_goal",    "孤注一掷", "final"),
 ]
 
 # 三档阈值（0 宽松 / 1 中度 / 2 严苛），难度越高越紧
@@ -138,6 +140,9 @@ def _challenge_desc(key, tier):
         return "至少 %d 笔平仓持仓满 %d tick" % (CHALLENGE_TIERS[key][tier], CHALLENGE_HOLD_TICKS)
     if key == "beat_target":
         return "最终净值达到目标的 %.0f%%" % CHALLENGE_TIERS[key][tier]
+    if key == "double_goal":
+        return ("最终净值达到当前目标的 200%%（目标直接翻倍）；本局老虎机与借款的"
+                "目标上浮比例固定落在 50%%~100%%")
     return {"no_loan": "全程不向贷款池借入资金",
             "no_blowup": "全程不触发强制平仓",
             "no_assist": "不使用「外部的怜悯」求助",
@@ -220,13 +225,12 @@ def _pick_news_rate():
 
 
 def _pick_huge_wave_count():
-    """本局会来几次「一大波」：0 / 1 / 2，权重 35% / 45% / 20%。
+    """本局会来几次「一大波」：0 / 1 / 2 / 3，四档等概率，各 25%。
 
-    大多数局（55%）至少来一次，但有两成多的局一次都不来——
-    「一大波」若每局必现就退化成固定节目，玩家会按剧本应对，张力全失。
+    四档均分意味着 25% 的局一次都不来，也有 25% 的局来满三次；
+    次数上限仍然由 HUGE_WAVE_MAX 卡住。
     """
-    # min() 把结果夹在上限内：掷骰权重以后可以往「更多次」调，天花板仍由 HUGE_WAVE_MAX 卡住
-    return min(HUGE_WAVE_MAX, random.choices([0, 1, 2], weights=HUGE_WAVE_COUNT_W)[0])
+    return min(HUGE_WAVE_MAX, random.choices([0, 1, 2, 3], weights=HUGE_WAVE_COUNT_W)[0])
 
 
 SAFE_HAVEN = ("FROST/CORE", "AMBER/CORE")
@@ -560,6 +564,7 @@ def _new_session(seed=None, apply_rng=True, roll_index=None):
         "huge_wave_warn_until": 0,   # 非 0 表示正处于演出期，到该 tick 才爆发
         "huge_wave_show_tick": -1,   # 预警横幅出现的那一 tick；观众席只认这一个 tick
         "huge_wave_fired": 0,        # 已触发次数，供报告与 /state 核对
+        "huge_wave_last_tick": -10 ** 6,   # 上次预警起始 tick；强制两波间隔
         "halt_orders": False,
         "halt_loan_until": 0,    # 风控审查：到该 tick 之前禁止借款（负现金自救窗口例外）
         "halt_close_until": 0,   # 交易所维护：到该 tick 之前禁止平仓（爆仓强平不受影响）
@@ -958,9 +963,23 @@ class Engine:
         first = rng.choice(finals)
         rest = [p for p in pool if p[0] != first[0]]
         picks = [first] + rng.sample(rest, CHALLENGE_MAX - 1)
-        return [{"key": k, "name": n, "kind": kind, "tier": tier,
-                 "desc": _challenge_desc(k, tier), "status": "pending", "note": ""}
-                for k, n, kind in picks]
+        # 「孤注一掷」与「更上层楼」互斥：目标翻倍后再叠 200% 就是 4 倍，同局出现等于必败。
+        # 抽中两条时把「更上层楼」换成池里未入选的过程型目标。
+        _picked = {p[0] for p in picks}
+        if "double_goal" in _picked and "beat_target" in _picked:
+            _spare = [p for p in pool if p[0] not in _picked and p[2] != "final"]
+            picks = [rng.choice(_spare) if p[0] == "beat_target" else p for p in picks]
+        tasks = [{"key": k, "name": n, "kind": kind, "tier": tier,
+                  "desc": _challenge_desc(k, tier), "status": "pending", "note": ""}
+                 for k, n, kind in picks]
+        for t in tasks:
+            if t["key"] == "double_goal":
+                # 抽到即生效：目标翻倍，本局老虎机 / 借款的目标上浮区间统一收紧到 50%~100%
+                self.s["target"] = float(self.s.get("target") or TARGET_EQUITY) * 2.0
+                t["goal"] = float(self.s["target"])
+                self.s.setdefault("challenge", {}).setdefault("rules", {})["double_goal"] = True
+                self._event("【挑战任务】孤注一掷生效：目标翻倍到 %.0f，老虎机 / 借款上浮固定 50%%~100%%" % self.s["target"], "warn")
+        return tasks
 
     def _has_dual_side(self):
         seen = {}
@@ -987,6 +1006,44 @@ class Engine:
             "mdd_pct": round(float(c.get("mdd_pct") or 0.0), 2),
         }
 
+
+    def _challenge_report_html(self):
+        """把本局挑战任务渲染成战报里的一个 section。未开启时给一句说明。"""
+        ch = self._challenge_view()
+        stage = ch.get("stage") or "none"
+        tasks = ch.get("tasks") or []
+        if stage != "on" or not tasks:
+            return ('<section id="p8"><h2>挑战任务</h2>'
+                    '<div class="note">本局未开启挑战任务——参赛者在开局 75 秒内'
+                    '选择了「不开启」，或超时未答复。</div></section>')
+        cleared = int(ch.get("cleared") or 0)
+        failed = int(ch.get("failed") or 0)
+        total = len(tasks)
+        pending = max(0, total - cleared - failed)
+        if cleared >= total:
+            verdict = '<b class="up">全部达成</b>'
+        elif failed:
+            verdict = '<b class="down">未全部达成</b>'
+        else:
+            verdict = '<b>进行中</b>'
+        rows = []
+        for t in tasks:
+            st = t.get("status")
+            if st == "done":
+                mark = '<span class="up">✓ 达成</span>'
+            elif st == "failed":
+                note = t.get("note") or ""
+                mark = '<span class="down">✗ 未达成</span>' + (
+                    '（%s）' % note if note else "")
+            else:
+                mark = '<span class="muted">· 未触发</span>'
+            rows.append('<div class="kv"><span>%s —— %s</span><span>%s</span></div>'
+                        % (t.get("name"), t.get("desc"), mark))
+        return ('<section id="p8"><h2>挑战任务（%d 条 · %s）</h2>'
+                '<div class="kvbox">%s</div>'
+                '<div class="note">本局开启挑战任务：达成 %d 条，'
+                '未达成 %d 条，未触发 %d 条。</div></section>'
+                % (total, verdict, "".join(rows), cleared, failed, pending))
 
     def _challenge_fail(self, t, why):
         t["status"] = "failed"
@@ -1055,12 +1112,67 @@ class Engine:
                 need = CHALLENGE_TIERS["hold_long"][tier]
                 if int(c.get("hold_hits") or 0) >= need:
                     self._challenge_done(t, "%d 笔满 %d tick" % (need, CHALLENGE_HOLD_TICKS))
+            elif k == "double_goal":
+                goal = float(self.s.get("target") or TARGET_EQUITY)
+                if eq >= goal:
+                    self._challenge_done(t, "净值 %.0f >= %.0f" % (eq, goal))
             elif k == "beat_target":
                 ratio = CHALLENGE_TIERS["beat_target"][tier] / 100.0
                 goal = float(self.s.get("target") or TARGET_EQUITY) * ratio
                 if eq >= goal:
                     self._challenge_done(t, "净值 %.0f >= %.0f" % (eq, goal))
 
+
+    def _challenge_rule(self, key):
+        """本局开局生效的挑战规则开关（目前只有 double_goal）。"""
+        c = self.s.get("challenge") or {}
+        return bool((c.get("rules") or {}).get(key))
+
+    def _challenge_settle_end(self):
+        """局终清算，保证每条任务都有结局。
+
+        hold 类（不借款 / 不爆仓 / 不求助 / 不对锁 / 手续费 / 回撤 / 持仓数 / 保证金）
+        只会在破功时被判失败，若全程没破功，到结算时必须补记为达成；
+        final 类（按兵不动 / 更上层楼 / 孤注一掷）没达标就是未达成。
+        幂等：只处理仍为 pending 的任务，重复调用结果不变。
+        """
+        c = self.s.get("challenge") or {}
+        if c.get("stage") != "on":
+            return
+        tasks = c.get("tasks") or []
+        if not tasks:
+            return
+        eq = self.equity()
+        for t in tasks:
+            if t.get("status") != "pending":
+                continue
+            k, tier = t["key"], int(t.get("tier", 1))
+            if k == "double_goal":
+                goal = float(self.s.get("target") or TARGET_EQUITY)
+                if eq >= goal:
+                    self._challenge_done(t, "净值 %.0f >= %.0f" % (eq, goal))
+                else:
+                    self._challenge_fail(t, "净值 %.0f 未达翻倍目标 %.0f" % (eq, goal))
+            elif k == "beat_target":
+                ratio = CHALLENGE_TIERS["beat_target"][tier] / 100.0
+                goal = float(self.s.get("target") or TARGET_EQUITY) * ratio
+                if eq >= goal:
+                    self._challenge_done(t, "净值 %.0f >= %.0f" % (eq, goal))
+                else:
+                    self._challenge_fail(t, "净值 %.0f 未达 %.0f" % (eq, goal))
+            elif k == "hold_long":
+                need = CHALLENGE_TIERS["hold_long"][tier]
+                if int(c.get("hold_hits") or 0) >= need:
+                    self._challenge_done(t, "%d 笔满 %d tick" % (need, CHALLENGE_HOLD_TICKS))
+                else:
+                    self._challenge_fail(t, "%d 笔满 %d tick 未完成（实际 %d 笔）"
+                                      % (need, CHALLENGE_HOLD_TICKS, int(c.get("hold_hits") or 0)))
+            else:
+                # 其余全是一路监控的 hold 类，没破功即达成
+                self._challenge_done(t, "全程未破功")
+        cleared = sum(1 for t in tasks if t.get("status") == "done")
+        self._event("【挑战任务】结算：%d/%d 达成" % (cleared, len(tasks)),
+                    "ok" if cleared == len(tasks) else "news")
 
     def _challenge_settle_ask(self, accept, why=""):
         """结束询问阶段：accept=True 锁定三条目标，False 记作未开启。"""
@@ -1404,13 +1516,27 @@ class Engine:
         # ---- ① 预警：开局缓冲已过、尚有余量、且随机命中 ----
         if t < HUGE_WAVE_MIN_TICK:
             return False
-        if int(self.s.get("huge_wave_left") or 0) <= 0:
+        left = int(self.s.get("huge_wave_left") or 0)
+        if left <= 0:
             return False
-        if random.random() >= HUGE_WAVE_RATE:
+        # 余量必须在 45 分钟内全部放完：剩余时间只够放完时进入冲刺段，
+        # 压缩两波间隔并把概率提到 100%，不再靠 1%/tick 的随机。
+        # 最后 3 分钟进入冲刺窗口：窗口长 180 秒，够放完 3 次（每次占 3 tick ≈ 15 秒）
+        _remain = SESSION_MINUTES * 60 - float(self._elapsed())
+        _rush = _remain <= 180.0
+        if _rush:
+            # 冲刺段把余量均匀铺到剩余时间里（180 秒 ÷ 余量），既保证放完又不挤成一串
+            _gap = max(HUGE_WAVE_WARN_TICKS + 1, int(_remain / max(1, left) / TICK_SECONDS))
+        else:
+            _gap = HUGE_WAVE_GAP_TICKS
+        if t - int(self.s.get("huge_wave_last_tick") or -10 ** 6) < _gap:
+            return False
+        if not _rush and random.random() >= HUGE_WAVE_RATE:
             return False
 
         self.s["huge_wave_left"] = int(self.s["huge_wave_left"]) - 1
         self.s["huge_wave_fired"] = int(self.s.get("huge_wave_fired") or 0) + 1
+        self.s["huge_wave_last_tick"] = t     # 两波间隔从预警起点算
         self.s["huge_wave_warn_until"] = t + HUGE_WAVE_WARN_TICKS
         self.s["huge_wave_show_tick"] = t     # 观众席靠这一个 tick 判断「该出横幅了」
         self.s["last_news_tick"] = t
@@ -2213,7 +2339,8 @@ class Engine:
             "fr_paid": round(float(sp.get("fr_paid", 0.0)), 2),
             "slot_paid": round(float(sp.get("slot_paid", 0.0)), 2),
             "fr_lo_pct": (FR_LO_BOUND if fr else LOAN_BUMP_LO_DEFAULT) * 100,
-            "slot_win_range": [SLOT_WIN_LO * 100, SLOT_WIN_HI * 100],
+            "slot_win_range": ([50.0, 100.0] if self._challenge_rule("double_goal")
+                               else [SLOT_WIN_LO * 100, SLOT_WIN_HI * 100]),
         }
 
     @_writing
@@ -2310,7 +2437,10 @@ class Engine:
             if payout > 0:
                 self.s["balance"] += payout
                 sp["slot_win"] = float(sp.get("slot_win", 0.0)) + payout
-                bump_pct = random.uniform(SLOT_WIN_LO, SLOT_WIN_HI)
+                if self._challenge_rule("double_goal"):
+                    bump_pct = random.uniform(0.50, 1.00)
+                else:
+                    bump_pct = random.uniform(SLOT_WIN_LO, SLOT_WIN_HI)
                 bump = payout * bump_pct
                 self.s["target"] = self.s.get("target", TARGET_EQUITY) + bump
                 self.s["target_bonus"] = self.s.get("target_bonus", 0.0) + bump
@@ -2366,7 +2496,10 @@ class Engine:
             _r1 = min(1.0, max(0.0, (_drawn + amount) / LOAN_POOL))
             _ratio = (_r0 + _r1) / 2.0
             _base = _lo + (1.0 - _lo) * _ratio
-            pct = min(1.0, max(_lo, _base * random.uniform(0.7, 1.3)))
+            if self._challenge_rule("double_goal"):
+                pct = random.uniform(0.50, 1.00)
+            else:
+                pct = min(1.0, max(_lo, _base * random.uniform(0.7, 1.3)))
             bump = amount * pct
             _relief = pct < 0
             self.s["target"] = self.s.get("target", TARGET_EQUITY) + bump
@@ -2889,6 +3022,7 @@ class Engine:
         try:
             import datetime
             import re as _re
+            self._challenge_settle_end()
             m = self._metrics(final_eq)
             fmt = lambda v: "{:,.2f}".format(v)
             trader = _re.sub(r"[^\w\u4e00-\u9fa5-]", "", self.s.get("trader", "visitor"))[:60] or "visitor"
@@ -3125,6 +3259,7 @@ class Engine:
         "abn": str(int(self.s.get("abnormal_exits", 0))),
                 "borrowed_txt": fmt(self.s["loan"]["borrowed"]),
                 "rows": "".join(rows) or '<tr><td colspan="10" class="muted">无交易</td></tr>',
+                "chalblock": self._challenge_report_html(),
                 "loanblock": _loan_block,
                 "scrows": "".join(_sc_rows) or '<div class="muted">无内容</div>',
                 "asrows": "".join(_as_rows) or '<div class="muted">本局未开启或未使用</div>',
@@ -3230,7 +3365,7 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
 </header>
 <nav class="toc">
   <a href="#p1">关键指标</a><a href="#p2">成本归因</a><a href="#p3">交易明细</a>
-  <a href="#p4">借贷账目</a><a href="#p5">草稿纸</a><a href="#p7">场外援助</a><a href="#p6">关键事件</a>
+  <a href="#p8">挑战任务</a><a href="#p4">借贷账目</a><a href="#p5">草稿纸</a><a href="#p7">场外援助</a><a href="#p6">关键事件</a>
 </nav>
 <div class="cards">
   <div class="card"><div class="k">最终权益</div><div class="v">{finaleq}</div></div>
@@ -3260,6 +3395,7 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
   <div class="kv"><span>累计借款</span><span>{borrowed_txt}</span></div>
 </div>
 <div class="note" style="color:{auditcolor}">{auditline}</div></section>
+{chalblock}
 <section id="p2"><h2>成本归因</h2><div class="kvbox">{attrib}</div>
 <div class="note">净盈亏 = 毛盈亏 − 滑点 − 点差 − 手续费 − 隔夜利息 − 老虎机投入 + 老虎机返还。毛盈亏只含方向判断与跳空冲击，是「不看成本时本该赚/亏多少」——老虎机的任何流水都不会出现在这一行。</div></section>
 <section id="p3"><h2>交易明细（共 {rowsn} 条）</h2>

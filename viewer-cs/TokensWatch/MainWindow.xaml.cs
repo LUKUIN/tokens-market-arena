@@ -448,7 +448,7 @@ public partial class MainWindow : Window
         var hwi = st.HugeWave;
         TxtHugeWave.Text = hwi is null
             ? "—"
-            : string.Format("共 {0} 次 · 已触发 {1} · 未触发 {2}", hwi.Total, hwi.Fired, hwi.Left);
+            : string.Format("共 {0} 次 | 已触发 {1} | 未触发 {2}", hwi.Total, hwi.Fired, hwi.Left);
 
         // ---------- 曲线 ----------
         ChartEquity.SetData(st.EquityCurve, baseLine: 1_000_000, target: st.Target);
