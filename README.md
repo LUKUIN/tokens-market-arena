@@ -30,7 +30,7 @@ The participant is a large language model, not a human.
 
 ## Requirements (the complete list)
 
-- **Huge Wave warning**: a 0-2 per session set piece - banner dead centre plus the original horn sample, then a 10 s hold, then 3-5 shock events at once; Run status shows how many rolled / fired / still pending
+- **Huge Wave warning**: a 0-2 per session set piece - banner dead centre plus the original Plants vs. Zombies horn sample, then a 10 s hold, then 3-5 shock events at once; Run status shows how many rolled / fired / still pending
 - **Challenge tasks**: asked at the very start (75 s); enabling draws 3 objectives at the difficulty tier (a PvZ2 Level Objectives port), published together with the difficulty and judged live with √ / ×
 
 
@@ -246,14 +246,15 @@ Sections, top to bottom:
 |---|---|
 | Dark title bar | market name, contestant identity, mode, global event switches (Preferred Financing / Slot Machine), End processes / Minimize / AI Notes / Outside Mercy |
 
-The window picks its size from the display (`viewer-cs/TokensWatch/Helpers/DisplayProfile.cs`): **1920×1080** on 2K and above, **1600×900** on 1080p, and a proportional fit (never below 1280×720) on smaller screens. The title bar shows the active tier so a screenshot tells you which one is in use. Pin it with `TM_WATCH_SIZE=1600x900` (DIP).
 | KPI cards | equity, total P&L, margin level, progress to target |
 | Status row | credit / cash / borrowed / owed / interest; target / drawdown / Sharpe / trades / win rate / fees; ledger-audit slot; previous-run abnormal-exit banner |
 | Equity curve | primary visual, fixed 500k Y ticks (0 / 1M / 2M land on grid lines) |
-| Runtime status | ledger audit, black-swan rate, liquidity, fast-forward, global events |
+| Runtime status | ledger audit, black-swan rate, liquidity, fast-forward, global events, Huge Wave (rolled / fired / pending) |
 | Positions | the main window draws at most 7 rows; the `More` button appears from the **2nd** position on and opens a live full table (unpaged); explicit empty state when flat |
 | Prices | 7 pairs with price, change and a sparkline drawn from `price_history` |
 | Event feed | filters: all / black swan / liquidity / random events / open-close / risk |
+
+The window picks its size from the display (`viewer-cs/TokensWatch/Helpers/DisplayProfile.cs`): **1920×1080** on 2K and above, **1600×900** on 1080p, and a proportional fit (never below 1280×720) on smaller screens. The title bar shows the active tier so a screenshot tells you which one is in use. Pin it with `TM_WATCH_SIZE=1600x900` (DIP).
 
 > Every number comes from `/state`; nothing is simulated. Full detail lives in the HTML report.
 
@@ -327,11 +328,18 @@ Both spectators can run at once: the new build uses the `Global\TokensWatchViewe
    demo only — an agent must not use it, because a backgrounded process reads `input()` as EOF and
    silently turns all three switches off.
    **Both global switches are decided before the difficulty draw.**
-1. The server starts and the spectator window appears, titled "drawing difficulty".
-2. 30-second difficulty draw: the model may call `POST /roll/stop` to lock it early, otherwise it
-   locks automatically when the countdown ends.
-3. The clock starts the moment difficulty is locked — the 30 seconds of drawing do not count
-   against the 45 minutes.
+1. The server starts and the first thing the round does is ask **"does this round run with
+   challenge tasks?"** — `challenge.stage == "ask"`, prices frozen, `tick` does not advance. Answer
+   with `POST /challenge/accept` or `/challenge/decline` within `challenge.ask_left` seconds (75);
+   timing out counts as "off". Until you answer, `POST /roll/start` is refused and the draw
+   countdown does not run.
+2. After the answer the title switches to "drawing difficulty" and the 30-second difficulty draw
+   begins: the model may call `POST /roll/stop` to lock it early, otherwise it locks automatically
+   when the countdown ends.
+3. Locking does two things at once: the clock starts (the 30 seconds of drawing do not count against
+   the 45 minutes), and — if step 1 answered "accept" — the engine draws three challenge objectives
+   at that tier. `challenge.tasks` is empty until this moment, and the viewer card switches from
+   "pending" to the real entries.
 4. Trading begins: `/state` to read the board → `/open` `/close` to trade → `/fastforward` to advance time.
 5. The match settles on one of: 45 minutes elapsed, a blow-up, or `POST /quit`. Hitting the target
    does **not** end the match by itself: `/quit` at or above the target is a **valid early exit**
@@ -384,7 +392,8 @@ Base URL defaults to `http://127.0.0.1:8734`.
 | `/special` | `{name, on}` | Toggle a global switch (`fr` / `slot`); **start of match only**, rejected once the match has begun |
 | `/slot` | `{amount}` | Slot bet: `1~200000`, ≤ current equity, 3 plays per match |
 | `/pause` / `/begin` | — | Freeze / resume the clock |
-| `/roll/start` / `/roll/stop` | — | Start / lock the difficulty draw |
+| `/roll/start` / `/roll/stop` | — | Start / lock the difficulty draw; `/roll/start` returns `ok:false` while the challenge ask is pending |
+| `/challenge/accept` / `/challenge/decline` | — | Answer "does this round run with challenge tasks?"; only valid while `stage == "ask"`. Objectives are drawn when the difficulty locks |
 | `/reset` | — | Start over (clears `data/` except `reports/`) |
 | `/quit` | — | Early exit: at/above target with nothing open -> `Target reached - early exit` (counts); at/above with positions -> `ok:false`, call `/close_all` first; below target -> `Abandoned below target` (counts as nothing, positions force-closed). Response carries `settled` / `warnings` |
 | `/shutdown` | — | Stop immediately (leaves an abnormal-exit report) |
@@ -410,7 +419,11 @@ You are a contestant in Tokens Trading Market, a 45-minute leveraged trading sim
 Setup
 - The server answers at http://127.0.0.1:8734 (the launcher prints the real port).
 - Starting equity is 1,000,000; the target is reported by /state.
-- POST /roll/stop locks the difficulty early; otherwise it locks when the 30-second draw ends.
+- First answer one question: POST /challenge/accept or /challenge/decline (75 s; timing out counts as off).
+  Until you answer, /roll/start is refused and the draw does not start by itself.
+- Then POST /roll/start to open the draw; POST /roll/stop locks the difficulty early, otherwise it
+  locks when the 30-second draw ends. If you accepted challenge tasks, the three objectives are
+  published at that moment.
 
 Interface
 - GET /rules, /state, /health, /prices
@@ -573,7 +586,7 @@ TokensMarket-OpenSource-AI-EN-v97/
 | Opening positions | HTTP `/open` | Buttons |
 | Fast-forward | `/fastforward` | Two step buttons (5 min / 3 min) |
 | Scratchpad | Yes | No |
-| Resolution | Fixed 1920×1080 layout | Four options with scaling |
+| Resolution | Picked from the display (1920×1080 / 1600×900 / proportional) | Same, both editions share `DisplayProfile.cs` |
 | Process cleanup script | Yes | No |
 
 ---
