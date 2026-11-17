@@ -322,12 +322,14 @@ Both spectators can run at once: the new build uses the `Global\TokensWatchViewe
 
 ## How a match runs
 
-0. **Nothing is asked.** Contestant ID, random events, **Preferred Financing** and **Slot Machine**
-   all come from environment variables; an unset key falls back to its default.
-   `python run.py --interactive` does ask five questions in that order, but it exists for a human
-   demo only — an agent must not use it, because a backgrounded process reads `input()` as EOF and
-   silently turns all three switches off.
-   **Both global switches are decided before the difficulty draw.**
+**Before anything else: nothing is asked.** Contestant ID, random events, **Preferred Financing** and
+**Slot Machine** all come from environment variables; an unset key falls back to its default.
+`python run.py --interactive` does ask five questions in that order, but it exists for a human
+demo only — an agent must not use it, because a backgrounded process reads `input()` as EOF and
+silently turns all three switches off.
+**Both global switches are decided before the difficulty draw**; the only runtime question is the
+challenge ask in step 1, and it must be answered.
+
 1. The server starts and the first thing the round does is ask **"does this round run with
    challenge tasks?"** — `challenge.stage == "ask"`, prices frozen, `tick` does not advance. Answer
    with `POST /challenge/accept` or `/challenge/decline` within `challenge.ask_left` seconds (75);
