@@ -42,6 +42,7 @@ class _IdleBase(unittest.TestCase):
         self.addCleanup(shutil.rmtree, home, True)
         eng = T.Engine(home)
         eng.roll_stop()          # 定档后才开始计时
+        eng.challenge_decline()   # 本组用例不测挑战任务：按「不开启」进入正常对局
         return eng
 
     def push_idle(self, eng):
@@ -124,6 +125,7 @@ class TestIdleDisabled(unittest.TestCase):
         self.addCleanup(shutil.rmtree, home, True)
         eng = T.Engine(home)
         eng.roll_stop()
+        eng.challenge_decline()   # 本组用例不测挑战任务：按「不开启」进入正常对局
         for _ in range(200):
             eng.tick()
         self.assertFalse(eng.s["finished"])

@@ -39,6 +39,7 @@ class AuditCase(unittest.TestCase):
         self.addCleanup(shutil.rmtree, home, True)
         eng = T.Engine(home)
         eng.roll_stop()
+        eng.challenge_decline()   # 本组用例不测挑战任务：按「不开启」进入正常对局
         return eng
 
 
@@ -136,11 +137,13 @@ class TestSeededReset(AuditCase):
         eng_a = self.make()
         eng_a.reset(count=False, seed=123456)
         eng_a.roll_stop()
+        eng_a.challenge_decline()   # 本组用例不测挑战任务：按「不开启」进入正常对局
         a = eng_a.state()["prices"]
 
         eng_b = self.make()
         eng_b.reset(count=False, seed=123456)
         eng_b.roll_stop()
+        eng_b.challenge_decline()   # 本组用例不测挑战任务：按「不开启」进入正常对局
         b = eng_b.state()["prices"]
 
         self.assertEqual(eng_a.s["seed"], 123456)
@@ -155,9 +158,11 @@ class TestSeededReset(AuditCase):
         eng_a = self.make()
         eng_a.reset(count=False, seed=1)
         eng_a.roll_stop()
+        eng_a.challenge_decline()   # 本组用例不测挑战任务：按「不开启」进入正常对局
         eng_b = self.make()
         eng_b.reset(count=False, seed=2)
         eng_b.roll_stop()
+        eng_b.challenge_decline()   # 本组用例不测挑战任务：按「不开启」进入正常对局
         for _ in range(3):
             eng_a.tick()
             eng_b.tick()
