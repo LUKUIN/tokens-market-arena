@@ -196,6 +196,9 @@ curl -X POST http://127.0.0.1:8734/roll/stop
   "equity": 1043251.2,        // 净值 = 现金 + 浮盈 − 欠款
   "balance": 1200000.0,       // 现金
   "pnl_pct": 4.33,            // 相对初始本金
+  "closed_n": 12,             // 已平仓笔数
+  "win_n": 7,                 // 其中盈利的笔数
+  "profit_factor": 2.69,      // 盈利因子 = 总盈利 / 总亏损；还没平仓、或一笔亏损都没有时为 null
 
   // 同一 pair 可能同时出现 LONG 与 SHORT 两笔（对冲），用 side 区分；
   "positions": [ {"pair":"AURA/CORE","side":"LONG","lots":10,"leverage":100,

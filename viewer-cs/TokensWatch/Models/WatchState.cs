@@ -61,6 +61,7 @@ public sealed class WatchState
     [JsonPropertyName("sharpe")] public double? Sharpe { get; set; }
     [JsonPropertyName("closed_n")] public int ClosedN { get; set; }
     [JsonPropertyName("win_n")] public int WinN { get; set; }
+    [JsonPropertyName("profit_factor")] public double? ProfitFactor { get; set; }
     [JsonPropertyName("fees")] public double Fees { get; set; }
     [JsonPropertyName("swap")] public double Swap { get; set; }
     [JsonPropertyName("blowups")] public int Blowups { get; set; }

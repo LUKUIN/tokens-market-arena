@@ -369,14 +369,16 @@ public partial class MainWindow : Window
         // ---------- 统计行 ----------
         string mddTxt = st.MaxDrawdown is { } mdd ? $"{mdd:0.00}%" : "—";
         string shp = st.Sharpe is { } s ? s.ToString("0.00", CultureInfo.CurrentCulture) : "—";
-        string winRate = st.ClosedN > 0
-            ? (st.WinN * 100.0 / st.ClosedN).ToString("0.0", CultureInfo.CurrentCulture) + "%"
-            : "—";
+        // 盈利因子（总盈利 / 总亏损）取代胜率：有杠杆、一大波和强平，一笔亏损就能
+        // 吞掉十几笔小赢，单看赢的笔数几乎说明不了权益最终会落在哪里。
+        string pf = st.ProfitFactor is { } pfv
+            ? pfv.ToString("0.00", CultureInfo.CurrentCulture)
+            : (st.ClosedN > 0 && st.WinN == st.ClosedN ? "∞" : "—");
         double fee = st.Fees + st.Swap;
 
         TxtStats.Text = $"目标 {st.Target:N0}" +
                         (st.TargetBonus > 0 ? $"（贷款上浮 +{st.TargetBonus:N0}）" : "") +
-                        $" | 回撤 {mddTxt} | 夏普 {shp} | {st.ClosedN} 笔 · 胜率 {winRate} | 费息 {fee:N0}";
+                        $" | 回撤 {mddTxt} | 夏普 {shp} | {st.ClosedN} 笔 · 盈利因子 {pf} | 费息 {fee:N0}";
 
         // ---------- 快进 ----------
         if (st.Ff is { } ff)
