@@ -1183,7 +1183,7 @@ class Engine:
             elif k == "hold_long":
                 need = CHALLENGE_TIERS["hold_long"][tier]
                 if int(c.get("hold_hits") or 0) >= need:
-                    self._challenge_done(t, "%d 笔满 %d tick" % (need, CHALLENGE_HOLD_TICKS))
+                    self._challenge_done(t, "%d closes reached %d ticks" % (need, CHALLENGE_HOLD_TICKS))
                 else:
                     self._challenge_fail(t, "only %d of %d closes reached %d ticks"
                                       % (int(c.get("hold_hits") or 0), need, CHALLENGE_HOLD_TICKS))
@@ -1761,9 +1761,9 @@ class Engine:
             fee_sum = sum(float(t.get("fee") or 0.0) for t in trades)
             fees = float(s.get("total_fees") or 0.0)
             if abs(fee_sum - fees) > max(0.05, 0.01 * len(trades)):
-                issues.append("手续费合计 %.2f 与成交流水 %.2f 不一致" % (fees, fee_sum))
+                issues.append("fee total %.2f != sum of trade fees %.2f" % (fees, fee_sum))
         except Exception as exc:
-            issues.append("手续费核对异常：%s" % exc)
+            issues.append("fee audit failed: %s" % exc)
         try:
             loan = s.get("loan") or {}
             borrowed = float(loan.get("borrowed") or 0.0)
@@ -1772,17 +1772,17 @@ class Engine:
             bal = float(loan.get("balance") or 0.0)
             expect = borrowed - repaid + interest
             if abs(bal - expect) > 0.05:
-                issues.append("贷款余额 %.2f 与 借入-已还+利息 %.2f 不一致" % (bal, expect))
+                issues.append("loan balance %.2f != borrowed - repaid + interest %.2f" % (bal, expect))
         except Exception as exc:
-            issues.append("贷款核对异常：%s" % exc)
+            issues.append("loan audit failed: %s" % exc)
         try:
             for i, p in enumerate(s.get("positions") or []):
                 if p.get("side") not in ("LONG", "SHORT"):
-                    issues.append("第 %d 笔持仓方向非法：%r" % (i + 1, p.get("side")))
+                    issues.append("position %d has an illegal side: %r" % (i + 1, p.get("side")))
                 if float(p.get("lots") or 0) <= 0:
-                    issues.append("第 %d 笔持仓手数非法：%r" % (i + 1, p.get("lots")))
+                    issues.append("position %d has non-positive lots: %r" % (i + 1, p.get("lots")))
         except Exception as exc:
-            issues.append("持仓核对异常：%s" % exc)
+            issues.append("position audit failed: %s" % exc)
         return issues
 
     def _end_session(self, reason):

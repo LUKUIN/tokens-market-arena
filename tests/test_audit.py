@@ -61,7 +61,7 @@ class TestLedgerAudit(AuditCase):
         eng.close_position("FROST/CORE", None)
         eng.s["total_fees"] = float(eng.s.get("total_fees") or 0.0) + 100.0
         issues = eng._audit_ledger()
-        self.assertTrue(any("手续费" in x for x in issues), issues)
+        self.assertTrue(any("fee total" in x for x in issues), issues)
 
     def test_detects_loan_inconsistency(self):
         """A loan balance that does not equal borrowed - repaid + interest must be reported."""
@@ -69,7 +69,7 @@ class TestLedgerAudit(AuditCase):
         eng.borrow(200000)
         eng.s["loan"]["balance"] = float(eng.s["loan"]["balance"]) + 1.0
         issues = eng._audit_ledger()
-        self.assertTrue(any("贷款" in x for x in issues), issues)
+        self.assertTrue(any("loan balance" in x for x in issues), issues)
 
     def test_detects_illegal_position(self):
         """Illegal side and zero lots must both be detected."""
@@ -77,8 +77,8 @@ class TestLedgerAudit(AuditCase):
         eng.s["positions"].append({"pair": "LUMEN/CORE", "side": "SIDEWAYS",
                                    "lots": 0, "entry": 1.0, "leverage": 20})
         issues = eng._audit_ledger()
-        self.assertTrue(any("方向非法" in x for x in issues), issues)
-        self.assertTrue(any("手数非法" in x for x in issues), issues)
+        self.assertTrue(any("illegal side" in x for x in issues), issues)
+        self.assertTrue(any("non-positive lots" in x for x in issues), issues)
 
     def test_state_exposes_audit(self):
         eng = self.make()
@@ -92,7 +92,7 @@ class TestLedgerAudit(AuditCase):
         eng.s["total_fees"] = float(eng.s.get("total_fees") or 0.0) + 50.0
         out = eng.quit_session()
         self.assertFalse(out["settled"])
-        self.assertTrue(any("手续费" in w for w in out["warnings"]), out["warnings"])
+        self.assertTrue(any("fee total" in w for w in out["warnings"]), out["warnings"])
 
 
 class TestEventSequence(AuditCase):
