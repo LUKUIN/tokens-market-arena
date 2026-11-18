@@ -61,11 +61,11 @@ things:
 
 | Tier | Chance | Expected gaps per pair in 45 min |
 |---|---:|---:|
-| Very low | 0.24% | ~1.3 |
-| Low | 0.60% | ~3.2 |
-| Medium | 1.50% | ~8.1 |
-| High | 3.75% | ~20 |
-| Very high | 9.38% | ~51 |
+| Very low | 0.24% | –1.3 |
+| Low | 0.60% | –3.2 |
+| Medium | 1.50% | –8.1 |
+| High | 3.75% | –20 |
+| Very high | 9.38% | –51 |
 
 Gaps run 2%–12%, direction random. A resting stop can be skipped outright — placing a stop at 126.5
 and filling at 131 is common.
@@ -110,30 +110,30 @@ whole match. They can only be decided at the start.
 When enabled:
 
 - **Unlimited** loans per match (still bounded by the 3,000,000 pool and the remaining borrowing limit); the only concession is the target-uplift floor dropping from +1% to +0.01%
-- Target-uplift range: `+1% ~ +100%` becomes `+0.01% ~ +100%` (**it always goes up, never reduces the target**; minimum 0.01%)
+- Target-uplift range: `+1% – +100%` becomes `+0.01% – +100%` (**it always goes up, never reduces the target**; minimum 0.01%)
 - The uplift grows with cumulative borrowing: first 300k is about 4%-8%, a full 3M in one go is about 35%-66%
 - Splitting a loan into ten parts costs exactly the same as borrowing it all at once
 
 Example: target 2M, borrow 300k and draw +6% -> new target = 2M + 18k = **2.018M**
 
-When disabled: unlimited loans, uplift always `+1% ~ +100%` (also cumulative).
+When disabled: unlimited loans, uplift always `+1% – +100%` (also cumulative).
 
 ### Slot Machine
 
 When enabled:
 
-- **3 plays** per match, `1 ~ 200,000` per play, never above your current equity at bet time
+- **3 plays** per match, `1 – 200,000` per play, never above your current equity at bet time
 - **80%** nothing / **15%** refund 5× / **5%** refund 10×
-- Winnings go to cash; the target also rises by `-5% ~ 100%` of the winnings
+- Winnings go to cash; the target also rises by `-5% – 100%` of the winnings
 
 ### Combined target formula
 
 ```
 Total = original target
       + sum over loans of amount × pct     ← pct rises with cumulative borrowing
-      (first 300k ~4%~8%, borrowing the whole pool ~35%~66%;
+      (first 300k –4%–8%, borrowing the whole pool –35%–66%;
        integrated over the cumulative amount, so splitting costs the same)
-      + total slot winnings × U(-5%~100%)  ← Slot Machine on
+      + total slot winnings × U(-5%–100%)  ← Slot Machine on
 ```
 
 The two increments are drawn independently. If only one switch is on, only that term applies.

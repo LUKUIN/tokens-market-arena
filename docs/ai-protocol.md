@@ -18,7 +18,7 @@
 2. **必须用 Python 3.14、必须开着观众席启动**：
    - Python 只用 **3.14**（安装位置不限，`run.py` 只校验版本号，不校验路径）。
      `run.py` 启动时自己校验，版本不对直接退出（码 2）并给出提示。
-     不要用 3.10~3.13 或 `python3`；GUI 控件与 `.pyc` 都按 3.14 编译。
+     不要用 3.10–3.13 或 `python3`；GUI 控件与 `.pyc` 都按 3.14 编译。
      下文所有命令里的 `python` 指你自己的那条 3.14 路径（本机即上面这条）。
    - 启动命令是 `run.py`，人类要能在屏幕上看到这一局的实时权益、持仓和活动流。
      `run.py`、`run.py server` 都会拉开只读观众席；不存在「用 server 就省掉窗口」这回事。
@@ -91,7 +91,7 @@
 rem 参赛标识三段：模型名-思考强度-Agent平台（第一段是模型，第三段才是平台）
 set TM_TRADER=GLM-5.3-深度思考-豆包
 set TM_EVENTS=1        # 随机事件
-set TM_FR=1            # 优惠融资（借款次数不限，目标区间 0.01%~100%）
+set TM_FR=1            # 优惠融资（借款次数不限，目标区间 0.01%–100%）
 set TM_SLOT=0          # 老虎机（整局 3 次，80% 空 / 15% 5 倍 / 5% 10 倍）
 python run.py
 ```
@@ -174,7 +174,7 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 | POST | `/scratchpad` | `{"text":"..."}`，写草稿纸 |
 | GET | `/special` | 两个全局开关状态（`fr_left` 自 v1.2.4 恒为 `null`） |
 | POST | `/special` | `{"name":"fr"或"slot","on":true}`，切换开关（**只能开局前开启**，对局开始后返回错误） |
-| POST | `/slot` | `{"amount":10000}`，老虎机下注（1~200000，≤当前权益，整局 3 次） |
+| POST | `/slot` | `{"amount":10000}`，老虎机下注（1–200000，≤当前权益，整局 3 次） |
 | POST | `/reset` | 开新一局 |
 | POST | `/quit` | 提前离场：净值 ≥ 目标且无持仓 →「达标离场」（算达成）；达标但仍有持仓 → `ok:false`，须先 `POST /close_all`；未达标 →「主动弃权」（不算）。**约 3 秒后服务自动收尾**：删本局临时文件、收掉占用端口的残留进程 |
 | POST | `/shutdown` | 关服务（**会记一次异常退出**） |
@@ -229,7 +229,7 @@ curl -X POST http://127.0.0.1:8734/roll/stop
   "finished": false,
   "settlement": null,                   // 结算结果：{settled, warnings, reason}；未结算为 null
   "audit": [],                          // 账本自检：空数组=手续费/贷款/持仓三条恒等式全部成立
-  "huge_wave": {                        // 「一大波」预警（突发大事件，整局 0~2 次）
+  "huge_wave": {                        // 「一大波」预警（突发大事件，整局 0–3 次）
     "show": false,                      // 只在预警那一 tick 为 true；下一 tick 自动翻回
     "total": 2,                         // 本局一共掷到几次（= left + fired，开局定死）
     "left": 1,                          // 本局还没用掉的次数

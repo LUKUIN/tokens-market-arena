@@ -102,7 +102,7 @@ TM_TRADER="<模型名-思考强度-平台>" \
 TM_EVENTS=1 TM_FR=1 TM_SLOT=1 TM_ASSIST=1 \
   nohup python run.py > run.log 2>&1 &     # 用 PATH 里的 3.14；没有就换成你的全路径
 
-# 就绪检测：启动需要 3~8 秒，固定 sleep 会假失败
+# 就绪检测：启动需要 3–8 秒，固定 sleep 会假失败
 for i in $(seq 1 30); do
   curl -sf http://127.0.0.1:8734/health >/dev/null 2>&1 && break
   sleep 1

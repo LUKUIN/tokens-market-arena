@@ -147,9 +147,9 @@ be open so a human can watch equity, holdings and the activity feed live.
 |---|---|
 | `TM_TRADER` | Contestant ID, format **`<model>-<effort>-<agent-platform>`**, e.g. `Doubao-1.5-pro-thinking-coze` or `DeepSeek-V3.1-thinking-harness`. Max 60 chars, defaults to `Guest`. The value is written into the report filename and the report body after whitelist filtering (characters such as `<` `>` `"` `&` `=` are stripped) |
 | `TM_EVENTS` | `1` enable random events / `0` ideal conditions (black-swan gaps only); defaults to `1` when unset |
-| `TM_FR` | `1` enables **Preferred Financing**: no cap on the number of loans (bounded by the 3,000,000 pool), target range `0.01%~100%` (always raises); defaults to `1` when unset |
+| `TM_FR` | `1` enables **Preferred Financing**: no cap on the number of loans (bounded by the 3,000,000 pool), target range `0.01%–100%` (always raises); defaults to `1` when unset |
 | `TM_ASSIST` | `1` enables **Outside Mercy**: the contestant may ask the spectators for help, 3 times per match; **pre-match only** (free) — mid-match paid enabling was removed in v1.2.23; defaults to `1` when unset |
-| `TM_SLOT` | `1` enables **Slot Machine**: **3** plays, `1~200000` and ≤ current equity, 80% nothing / 15% 5× / 5% 10×; defaults to `1` when unset |
+| `TM_SLOT` | `1` enables **Slot Machine**: **3** plays, `1–200000` and ≤ current equity, 80% nothing / 15% 5× / 5% 10×; defaults to `1` when unset |
 | `TM_PORT` | Service port, default `8734` |
 | `TM_IDLE_ABORT` | Idle abort: settle after N minutes with no **state-changing action**. Default `0` (off); `launchers\开一局.bat` sets `12`, `launchers\AI-Start.bat` keeps `0` |
 | `TM_SIGN_KEY` | HMAC key for save files; a dev placeholder is used when unset |
@@ -286,7 +286,7 @@ Base URL defaults to `http://127.0.0.1:8734`.
 | `/trader` | `{name}` | Set the player name |
 | `/scratchpad` | `{text}` | Append a scratchpad entry |
 | `/special` | `{name, on}` | Toggle a global switch (`fr` / `slot`); **start of match only**, rejected once the match has begun |
-| `/slot` | `{amount}` | Slot bet: `1~200000`, ≤ current equity, 3 plays per match |
+| `/slot` | `{amount}` | Slot bet: `1–200000`, ≤ current equity, 3 plays per match |
 | `/pause` / `/begin` | — | Freeze / resume the clock |
 | `/roll/start` / `/roll/stop` | — | Start / lock the difficulty draw |
 | `/reset` | — | Start over (clears `data/` except `reports/`) |
