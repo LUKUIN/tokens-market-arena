@@ -3084,7 +3084,10 @@ class Engine:
             elif final_eq >= target and not self._qualified():
                 verdict = "Target reached but run ineligible"
             else:
-                verdict = "Target reached" if hit else "Target missed"
+                _hit_at = self.s.get("hit_at_tick")
+                verdict = ("Target reached" if hit else
+                           ("Target missed (hit at %d:%02d, gave it back before settlement)" % self._hit_clock()
+                            if _hit_at is not None else "Target missed"))
             pnl = final_eq - self.s.get("genesis", STARTER_CASH)
             pnl_pct = pnl / self.s["genesis"] * 100 if self.s.get("genesis") else 0.0
             # Overall rating: return bucket + Sharpe bonus - drawdown penalty.
@@ -3762,7 +3765,7 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
             "Lots": "1 lot = %.0f units of base currency" % LOTS_SIZE,
             SPECIAL_FR_NAME: ("Run-wide switch (not a random event): once on, loans are unlimited (still bounded by the %.1fM pool) and the target uplift range shifts from +1%%~+100%% to +0.01%%~+100%% (it always goes up, never reduces the target; minimum 0.01%%); can only be enabled before the match starts" % (LOAN_POOL / 1000000.0)
                         ).replace("%%", "%"),
-            "Slot Machine": ("Run-wide switch: once on, %d plays per run, each 1~%.0f and never above current equity; 80%% nothing / 15%% 5x / 5%% 10x (expected return 1.25x); the payout goes to cash while the target rises by -5%%~100%% of that payout (worst case the target doubles); can only be enabled before the match starts" % (
+            SPECIAL_SLOT_NAME: ("Run-wide switch: once on, %d plays per run, each 1~%.0f and never above current equity; 80%% nothing / 15%% 5x / 5%% 10x (expected return 1.25x); the payout goes to cash while the target rises by -5%%~100%% of that payout (worst case the target doubles); can only be enabled before the match starts" % (
                            SLOT_MAX_PLAYS, SLOT_MAX_STAKE)
                        ).replace("%%", "%"),
             "Leverage": "Selectable %d - %d x (the cap can be temporarily lowered by events; trust the error message)" % (MIN_LEVERAGE, MAX_LEVERAGE),

@@ -36,6 +36,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 
@@ -189,7 +190,8 @@ def _interactive_setup():
     print()
     print("  Player  %s" % name)
     print("  Mode    %s" % EVENTS_TEXT[mode])
-    print("  Preferred Financing %s | Slot Machine %s" % ("on" if fr_on else "off", "on" if slot_on else "off"))
+    print("  Preferred Financing %s | Slot Machine %s | Outside Mercy %s"
+          % ("on" if fr_on else "off", "on" if slot_on else "off", "on" if assist_on else "off"))
     if (_ask("  Start now? (y/N):", "n") or "n").lower() != "y":
         print("  Cancelled.")
         return None
@@ -323,6 +325,8 @@ def _run_ai(interactive=False, port=None):
         return 1
 
     print("  HTTP API: http://127.0.0.1:%d  (rules: GET /rules)" % port)
+    _start_autoclean(os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "data"),
+                     port=port)
     _enable_assist_from_env()
     # The spectator runs in its own subprocess. It is a display layer, not the host of
     # the match: closing it, crashing it, or failing to open it (another instance holds
@@ -492,6 +496,43 @@ def _autoclean(home):
                 pass
 
 
+def _start_autoclean(home, host="127.0.0.1", port=8734):
+    """Poll /state and clean up after the match ends.
+
+    Lives in run.py rather than the engine: only this file knows both the data
+    directory and the service port, and it is unaffected by source sealing
+    (the guard seals src/*.py only).
+    """
+    def watch():
+        url = "http://%s:%d/state" % (host, port)
+        hits = 0
+        while True:
+            time.sleep(2.0)
+            try:
+                # Local polling bypasses proxies too: when a proxy hijacks it this
+                # call fails silently and autoclean would never see "finished".
+                with _local_open(url, timeout=2) as r:
+                    st = json.loads(r.read().decode("utf-8"))
+            except Exception:
+                continue
+            if not st.get("finished"):
+                hits = 0
+                continue
+            hits += 1
+            if hits < 2:
+                continue          # two consecutive confirmations, to ride out settlement jitter
+            time.sleep(2.0)       # give clients time to read the last reply and write the report
+            print("\n  [autoclean] Match finished: deleting temp files and reaping related processes.")
+            try:
+                _autoclean(home)
+            except Exception as exc:
+                print("  [autoclean] failed: %s" % exc)
+            finally:
+                os._exit(0)
+
+    threading.Thread(target=watch, daemon=True).start()
+
+
 def _start_guard(port):
     """Seal the sources and watch for cheating, in this process.
 
@@ -636,6 +677,8 @@ def main(argv=None):
             return 4
         _enable_assist_from_env()
 
+        _start_autoclean(os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "data"),
+                         host=host, port=port)
         try:
             serve(host, port)
         finally:
