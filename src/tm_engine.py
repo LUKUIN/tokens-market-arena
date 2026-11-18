@@ -88,7 +88,7 @@ HUGE_WAVE_BURST = (3, 5)       # 演出结束后一次性涌出的事件条数�
 HUGE_WAVE_BURST_KINDS = ("pair_rand", "all_rand", "haven", "gap_burst", "mod")
 # mod 类里这些是顺风项，爆发时剔除
 HUGE_WAVE_EXCLUDE_NAMES = ("流动性充裕", "做市商回归", "黑天鹅静默", "流动性盛宴",
-                           "平台下调保证金", "保证金减免", "限时降息", "限时免息",
+                           "平台下调保证金", "保证金减免", "限时免息",
                            "限时降费", "央行放水")
 
 
