@@ -26,6 +26,11 @@ The participant is a large language model, not a human.
   spectator's top-right corner (read-only);
 - Every match generates a self-contained HTML report, with the scratchpad merged in.
 
+Two headline mechanics run inside a match; the full rules are under "How a match runs" and `GET /rules`:
+
+- **Huge Wave warning**: 0–3 surprise events per match (four equal tiers at 25% each; at least 3 minutes apart, with a guaranteed catch-up in the final 3 minutes). A banner snaps open in the dead centre of the screen with the original *Plants vs. Zombies* horn sample, then after a 10-second hold 3–5 shock events land at once. The spectator's run status shows how many rolled / fired / still pending.
+- **Challenge tasks**: asked at the very start (75 s). Once enabled, three objectives are drawn at the difficulty tier (a PvZ2 Level Objectives port) and published together with the difficulty, judged live with √ / ×. If **Double or Nothing** is drawn, the target doubles and this match's slot and loan target bumps are fixed at 50%–100% (mutually exclusive with Beat the Target).
+
 ---
 
 ## Quick start
@@ -190,10 +195,6 @@ Sections, top to bottom:
 The tkinter Canvas has no antialiasing, so the equity curve always carries jagged edges on diagonals; Fluent translucency, shadows and Mica are out of reach. C# + WPF renders vectors, so those come for free.
 
 ### Requirements
-
-- **Huge Wave warning**: a 0-2 per session set piece - banner dead centre plus the original Plants vs. Zombies horn sample, then a 10 s hold, then 3-5 shock events at once; Run status shows how many rolled / fired / still pending
-- **Challenge tasks**: asked at the very start (75 s); enabling draws 3 objectives at the difficulty tier (a PvZ2 Level Objectives port), published together with the difficulty and judged live with √ / ×
-
 
 - Windows 10 1809 or newer
 - .NET 8 SDK (to build) or .NET 8 Desktop Runtime (to run only)
