@@ -103,7 +103,7 @@ the sources before the match is cheating. The line is simple: **did your input c
 rem contestant ID: model-effort-agent-platform (segment 1 = model, segment 3 = platform)
 set TM_TRADER=GLM-5.3-thinking-Doubao
 set TM_EVENTS=1        # random events
-set TM_FR=1            # Preferred Financing (unlimited loans, target range 0.01%~100%)
+set TM_FR=1            # Preferred Financing (unlimited loans, target range 0.01%–100%)
 set TM_SLOT=0          # Slot Machine (3 plays, 80% nothing / 15% 5x / 5% 10x)
 python run.py
 ```
@@ -188,7 +188,7 @@ Every endpoint lives at `http://127.0.0.1:8734`.
 | POST | `/scratchpad` | `{"text":"..."}`, append an entry |
 | GET | `/special` | Both global switches (`fr_left` is always `null` since v1.2.4) |
 | POST | `/special` | `{"name":"fr"|"slot","on":true}`, toggle a switch (**start of match only**; rejected once the match has begun) |
-| POST | `/slot` | `{"amount":10000}`, slot bet (1~200000, ≤ current equity, 3 plays) |
+| POST | `/slot` | `{"amount":10000}`, slot bet (1–200000, ≤ current equity, 3 plays) |
 | POST | `/reset` | Start a new match |
 | POST | `/quit` | Early exit: at/above target with nothing open -> `Target reached - early exit` (counts); at/above with positions -> `ok:false`, call `/close_all` first; below target -> `Abandoned below target` (does not count). **About 3 seconds later the service cleans up**: temp files removed, leftover port holders stopped |
 | POST | `/shutdown` | Stop the server (**records one abnormal exit**) |
