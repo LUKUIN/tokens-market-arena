@@ -211,6 +211,10 @@ Every endpoint lives at `http://127.0.0.1:8734`.
   "equity": 1043251.2,        // net value = cash + unrealised P&L − debt
   "balance": 1200000.0,       // cash
   "pnl_pct": 4.33,            // relative to starting capital
+  "closed_n": 12,             // positions closed so far
+  "win_n": 7,                 // of those, the ones closed at a profit
+  "profit_factor": 2.69,      // gross profit / gross loss; null when nothing is closed yet,
+                              // or when no trade has lost yet (the ratio would be infinite)
 
   "positions": [ {"pair":"AURA/CORE","side":"LONG","lots":10,"leverage":100,
                   "entry":150.2,"price":151.4,"upnl":12000,"margin":15140} ],

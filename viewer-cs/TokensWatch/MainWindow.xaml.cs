@@ -359,14 +359,17 @@ public partial class MainWindow : Window
         // ---------- 统计行 ----------
         string mddTxt = st.MaxDrawdown is { } mdd ? $"{mdd:0.00}%" : "—";
         string shp = st.Sharpe is { } s ? s.ToString("0.00", CultureInfo.CurrentCulture) : "—";
-        string winRate = st.ClosedN > 0
-            ? (st.WinN * 100.0 / st.ClosedN).ToString("0.0", CultureInfo.CurrentCulture) + "%"
-            : "—";
+        // Profit factor (gross profit / gross loss) replaces the win rate here: with leverage,
+        // Huge Waves and forced liquidations, one loss can swallow a dozen small wins, so the
+        // ratio of winning trades barely predicts where the equity line ends up.
+        string pf = st.ProfitFactor is { } pfv
+            ? pfv.ToString("0.00", CultureInfo.CurrentCulture)
+            : (st.ClosedN > 0 && st.WinN == st.ClosedN ? "∞" : "—");
         double fee = st.Fees + st.Swap;
 
         TxtStats.Text = $"Target {st.Target:N0}" +
                         (st.TargetBonus > 0 ? $" (loan uplift +{st.TargetBonus:N0})" : "") +
-                        $" | Drawdown {mddTxt} | Sharpe {shp} | {st.ClosedN} trades · win rate {winRate} | fees {fee:N0}";
+                        $" | Drawdown {mddTxt} | Sharpe {shp} | {st.ClosedN} trades · profit factor {pf} | fees {fee:N0}";
 
         // ---------- 快进 ----------
         if (st.Ff is { } ff)

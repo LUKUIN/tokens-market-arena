@@ -148,8 +148,11 @@ def _challenge_desc(key, tier):
     if key == "beat_target":
         return "Final equity reaches %.0f%% of the target" % CHALLENGE_TIERS[key][tier]
     if key == "double_goal":
+        # This branch does no % substitution, so the percent signs are literals. Writing
+        # %% here (as the formatted branches above do) leaks a doubled sign into /state and
+        # the report, which is exactly what the 2026-11-18 screenshot showed.
         return ("Final equity reaches the current target (doubled at draw); this run's "
-                "slot and loan target bumps are fixed at 50%%-100%%")
+                "slot and loan target bumps are fixed at 50%-100%")
     return {"no_loan": "Never borrow from the loan pool",
             "no_blowup": "Never get force-liquidated",
             "no_assist": "Never use the Crowd's Mercy",
@@ -2851,6 +2854,11 @@ class Engine:
             "trades_n": len(closes), "win_n": len(wins),
             "forced_n": len([t for t in closes if t.get("forced")]),
             "win_rate": (len(wins) / len(closes)) if closes else 0.0,
+            # Profit factor = gross profit / gross loss. Unlike the win rate it weighs
+            # every trade by size, which is what matters once leverage and Huge Waves
+            # make a single loss able to swallow a dozen small wins.
+            "profit_factor": ((sum(gains) / abs(sum(losses)))
+                              if losses and sum(losses) < 0 else None),
             "best": (max(gains) if gains else None),
             "worst": (min(losses) if losses else None),
             "fees": self.s.get("total_fees", 0.0), "swap": self.s.get("total_swap", 0.0),
@@ -2947,19 +2955,9 @@ class Engine:
             parts.append(baseline(target_eq, "#c9971b", "Target to win", "5 4"))
         parts.append(baseline(0.0, "#c62828", "Capital wiped out", "2 3", width=1.4, op=0.95))
 
-                # ---- 峰值 / 谷值 / 最后平仓：图上直接给精确数字 ----
+        # ---- 峰值 / 谷值 / 最后平仓：图上直接给精确数字 ----
         _pi = eqs.index(max(eqs))
         _li = eqs.index(min(eqs))
-        for _i, _label, _color, _dy in (
-                (_pi, "Peak " + "{:,.0f}".format(max(eqs)), "#c9971b", -7),
-                (_li, "Low " + "{:,.0f}".format(min(eqs)), "#c62828", 16)):
-            _mx, _my = X(_i), Y(eqs[_i])
-            parts.append('<circle cx="%.1f" cy="%.1f" r="3" fill="%s"/>' % (_mx, _my, _color))
-            _anchor = "start" if _mx < w * 0.7 else "end"
-            _dx = 6 if _mx < w * 0.7 else -6
-            parts.append('<text x="%.1f" y="%.1f" text-anchor="%s" font-size="10" '
-                         'font-weight="600" fill="%s">%s</text>'
-                         % (_mx + _dx, _my + _dy, _anchor, _color, _label))
         if last_close:
             _ct = int(last_close.get("tick") or 0)
             _ci = min(range(n), key=lambda i: abs(ticks[i] - _ct))
@@ -3011,38 +3009,57 @@ class Engine:
         # ---- key event markers (pick points automatically, no hard-coded captions) ----
         marks = []
         if first_neg is not None:
-            marks.append((first_neg, "Blown out", "#8b0000"))
+            marks.append((first_neg, "Blown out", "#8b0000", "down"))
         closes = [t for t in self.s.get("trades", []) if t.get("type") == "close"]
         if closes:
             worst = min(closes, key=lambda t: float(t.get("pnl") or 0.0))
             if float(worst.get("pnl") or 0.0) < 0:
                 wt = int(worst.get("tick") or 0)
                 idx = min(range(n), key=lambda i: abs(ticks[i] - wt))
+                # the caption pass below also clears the Peak / Low labels, so a marker
+                # landing on an extreme still reads fine instead of being dropped
                 far = all(abs(ticks[idx] - ticks[m[0]]) > tspan * 0.02 for m in marks)
                 if far:
-                    marks.append((idx, "Largest single loss", "#c62828"))
+                    marks.append((idx, "Largest single loss", "#c62828", "up"))
 
-        # Markers hug the curve; labels alternate above and below so they do not overlap
-        for mi, (idx, label, color) in enumerate(marks):
-            mx, my = X(idx), Y(eqs[idx])
-            below = (mi % 2 == 0)
-            ty = my + (16 if below else -10)
-            anchor = 'middle'
-            if mx > w - pad_r - 60:
-                anchor = 'end'
-                mx_t = mx
-            elif mx < pad_l + 60:
-                anchor = 'start'
-                mx_t = mx
+        # ---- captions: laid out in one pass, each one slides out until it hits nothing ----
+        tags = [(_pi, "Peak " + "{:,.0f}".format(max(eqs)), "#c9971b", "up", False),
+                (_li, "Low " + "{:,.0f}".format(min(eqs)), "#c62828", "down", False)]
+        tags += [(i, lab, col, pref, True) for i, lab, col, pref in marks]
+
+        placed = []
+        for _ti, _lab, _col, _pref, _dashed in tags:
+            _mx, _my = X(_ti), Y(eqs[_ti])
+            _half = max(18.0, len(_lab) * 3.1)          # half width at font-size 10
+            if _mx - _half < pad_l:
+                _anch, _tx, _x0 = "start", _mx + 5, _mx + 5
+            elif _mx + _half > w - pad_r:
+                _anch, _tx, _x0 = "end", _mx - 5, _mx - 5 - _half * 2
             else:
-                mx_t = mx
-            parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" '
-                         'stroke-width="1" stroke-dasharray="3 3" opacity="0.55"/>'
-                         % (mx, my, mx, ty - (0 if below else 6), color))
-            parts.append('<circle cx="%.1f" cy="%.1f" r="3.4" fill="%s" stroke="#fff" stroke-width="1"/>'
-                         % (mx, my, color))
-            parts.append('<text x="%.1f" y="%.1f" text-anchor="%s" font-size="10" fill="%s" '
-                         'font-weight="600">%s</text>' % (mx_t, ty, anchor, color, label))
+                _anch, _tx, _x0 = "middle", _mx, _mx - _half
+            _order = (-9, 15, -22, 28, -35, 41) if _pref == "up" else (15, -9, 28, -22, 41, -35)
+            _ty = None
+            for _dy in _order:
+                _cand = _my + _dy
+                if _cand < pad_t + 10 or _cand > h - pad_b - 4:
+                    continue
+                if all(not (abs(_cand - q[1]) < 12 and _x0 < q[2] and q[0] < _x0 + _half * 2)
+                       for q in placed):
+                    _ty = _cand
+                    break
+            if _ty is None:
+                _ty = _my + _order[len(placed) % len(_order)]
+            placed.append((_x0, _ty, _x0 + _half * 2))
+
+            if _dashed:
+                parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" '
+                             'stroke-width="1" stroke-dasharray="3 3" opacity="0.55"/>'
+                             % (_mx, _my, _mx, _ty - 5 if _ty < _my else _ty - 6, _col))
+            parts.append('<circle cx="%.1f" cy="%.1f" r="3.2" fill="%s" stroke="#fff" stroke-width="1"/>'
+                         % (_mx, _my, _col))
+            parts.append('<text x="%.1f" y="%.1f" text-anchor="%s" font-size="10" '
+                         'font-weight="600" fill="%s">%s</text>'
+                         % (_tx, _ty, _anch, _col, _lab))
 
         return ('<svg viewBox="0 0 %d %d" class="curve" xmlns="http://www.w3.org/2000/svg">%s</svg>'
                 % (w, h, "".join(parts)))
@@ -3284,7 +3301,9 @@ class Engine:
                         " (note: this run resumed after a restart, so the seed only "
                         "reproduces the part before the restart)"
                         if self.s.get("rng_resumed") else "")))(self._roll_index_text()),
-                "winrate": "%.1f" % (m["win_rate"] * 100),
+                "pftxt": ("—" if not m["trades_n"]
+                          else ("∞" if m["profit_factor"] is None
+                                else "%.2f" % m["profit_factor"])),
                 "best": fmt(m["best"]) if m["best"] is not None else "—",
                 "worst": fmt(m["worst"]) if m["worst"] is not None else "—",
                 "fees": fmt(m["fees"]),
@@ -3420,7 +3439,7 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
   <div class="kv"><span>└ Forced liquidation</span><span>{forced_n}</span></div>
   <div class="kv"><span>Orders (incl. opens)</span><span>{trades_all}</span></div>
   <div class="kv"><span>Positions after settlement</span><span>{settle_pos}</span></div>
-  <div class="kv"><span>Win rate</span><span>{winrate}%</span></div>
+  <div class="kv"><span>Profit factor</span><span>{pftxt}</span></div>
   <div class="kv"><span>Largest single win</span><span class="up">{best}</span></div>
   <div class="kv"><span>Largest single loss</span><span class="down">{worst}</span></div>
   <div class="kv"><span>Total commission</span><span>{fees}</span></div>
@@ -3639,6 +3658,8 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
                 "closed_n": len([x for x in self.s.get("trades", []) if x.get("type") == "close"]),
                 "win_n": len([x for x in self.s.get("trades", [])
                               if x.get("type") == "close" and float(x.get("pnl") or 0) > 0]),
+                "profit_factor": (round(_m["profit_factor"], 2)
+                                  if _m.get("profit_factor") is not None else None),
                 "fees": round(float(self.s.get("total_fees") or 0), 2),
                 "swap": round(float(self.s.get("total_swap") or 0), 2),
                 "roll_left": self.roll_state().get("roll_left", 0.0),

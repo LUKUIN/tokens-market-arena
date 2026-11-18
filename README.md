@@ -280,7 +280,7 @@ Sections, top to bottom:
 |---|---|
 | Top bar (light card, 56 px) | Market name "TOKENS EXCHANGE" (the literal on-screen text), contestant tag, mode badge, global event switches (Preferred Financing / Slot Machine), end-process / minimize / AI Notes / Outside Mercy |
 | Metric cards | Account equity, cumulative P&L, margin level, target progress |
-| Status strip | Borrowing capacity / cash / borrowed / debt / interest; target / drawdown / Sharpe / trades / win rate / fees and interest; ledger-audit warning slot; previous-match abnormal-exit notice |
+| Status strip | Borrowing capacity / cash / borrowed / debt / interest; target / drawdown / Sharpe / trades / profit factor / fees and interest; ledger-audit warning slot; previous-match abnormal-exit notice |
 | Equity curve | The main visual, Y axis auto-scaled (padding from this match's extremes, always including the principal and target lines) |
 | Runtime status | Ledger audit, black-swan rate, liquidity, fast-forward budget, global events, peak, trough, drawdown \| Sharpe, Huge Wave (total / fired / pending) |
 | Positions | Up to 7 rows in the main window; **from the second position on** a "More" link appears at the top-right of the header and opens the full table (no paging) that refreshes with the match; flat shows an empty state |
