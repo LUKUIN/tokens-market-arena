@@ -278,7 +278,7 @@ Sections, top to bottom:
 
 | Area | Contents |
 |---|---|
-| Top bar (light card, 56 px) | Market name "TOKENS 交易市场" (the literal on-screen text), contestant tag, mode badge, global event switches (Preferred Financing / Slot Machine), end-process / minimize / AI Notes / Outside Mercy |
+| Top bar (light card, 56 px) | Market name "TOKENS EXCHANGE" (the literal on-screen text), contestant tag, mode badge, global event switches (Preferred Financing / Slot Machine), end-process / minimize / AI Notes / Outside Mercy |
 | Metric cards | Account equity, cumulative P&L, margin level, target progress |
 | Status strip | Borrowing capacity / cash / borrowed / debt / interest; target / drawdown / Sharpe / trades / win rate / fees and interest; ledger-audit warning slot; previous-match abnormal-exit notice |
 | Equity curve | The main visual, Y axis auto-scaled (padding from this match's extremes, always including the principal and target lines) |

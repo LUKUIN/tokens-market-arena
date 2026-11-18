@@ -73,11 +73,18 @@
                     </Border>
                 </StackPanel>
 
-                <!-- Status居中：1920 下这里是视觉重心，也是每秒都在变的一行 -->
-                <TextBlock Grid.Column="1" x:Name="TxtRunState" Text="Waiting for service…"
-                           FontSize="15" Foreground="{StaticResource Muted}"
-                           HorizontalAlignment="Center" VerticalAlignment="Center"
-                           TextTrimming="CharacterEllipsis" Margin="24,0" />
+                <!-- Status, centred: the visual anchor at 1920 and the one line that changes every
+                     second. Both side columns are Auto (brand + chips / button group), so on a
+                     narrower window this column gets squeezed to almost nothing and
+                     "Trading normally | 44:59 | orders 2 | loan pool x0.70" is clipped.
+                     Viewbox(DownOnly) keeps 15 px while there is room and scales the whole line
+                     down when there is not, so it stays readable end to end at any width. -->
+                <Viewbox Grid.Column="1" Stretch="Uniform" StretchDirection="DownOnly"
+                         HorizontalAlignment="Center" VerticalAlignment="Center"
+                         Margin="24,0">
+                    <TextBlock x:Name="TxtRunState" Text="Waiting for service…"
+                               FontSize="15" Foreground="{StaticResource Muted}" />
+                </Viewbox>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button Content="AI Actions" Style="{StaticResource GhostButton}"
@@ -294,7 +301,7 @@
                             <TextBlock Grid.Row="7" Grid.Column="1" x:Name="TxtRisk" Text="—"
                                        FontSize="15" TextWrapping="Wrap" />
 
-                            <TextBlock Grid.Row="8" Grid.Column="0" Text="一大波"
+                            <TextBlock Grid.Row="8" Grid.Column="0" Text="Huge Wave"
                                        Style="{StaticResource Caption}" Margin="0,0,14,0" />
                             <TextBlock Grid.Row="8" Grid.Column="1" x:Name="TxtHugeWave" Text="—"
                                        FontSize="15" TextWrapping="Wrap" />

@@ -13,11 +13,11 @@
     <Version>0.1.0</Version>
     <AssemblyVersion>0.1.0.0</AssemblyVersion>
     <FileVersion>0.1.0.0</FileVersion>
-    <Product>Tokens 观众席（C# / WPF）</Product>
-    <Description>TokensMarket 的只读观众席前端。只经 HTTP 轮询既有服务，不启动、不修改引擎。</Description>
-    <!-- 单文件发布时把原生库解包到临时目录，避免 WPF 无法从内存加载 D3D 依赖 -->
+    <Product>Tokens Spectator (C# / WPF)</Product>
+    <Description>Read-only spectator front end for TokensMarket. It polls the existing service over HTTP only and never starts or modifies the engine.</Description>
+    <!-- Single-file publish unpacks native libraries to a temp directory so WPF can load its D3D dependencies -->
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
 
   <ItemGroup>
