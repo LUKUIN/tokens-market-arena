@@ -46,9 +46,7 @@ A 45-minute trading simulator: 1,000,000 starting capital, the target is to doub
 - Every match generates an HTML report automatically, with the scratchpad contents merged in.
   Report sections: key metrics / challenge tasks / cost attribution / trades / loan ledger / scratchpad / outside help / key events.
 
----
-
-## Runtime requirements and mandatory components
+Two headline mechanics run inside a match; the full rules are under "The flow of one match" and `GET /rules`:
 
 - **Huge Wave warning**: 0–3 surprise events per match (four equal tiers at 25% each; at least 3 minutes apart, with a
   guaranteed catch-up in the final 3 minutes). A banner snaps open in the dead centre of the screen with the original
@@ -59,6 +57,10 @@ A 45-minute trading simulator: 1,000,000 starting capital, the target is to doub
   live as √ / ×. If **Double or Nothing** is drawn, the target doubles immediately and this match's slot and loan target
   bumps are fixed at 50%–100% (mutually exclusive with Beat the Target). End-of-match settlement closes every objective:
   process objectives count as cleared unless violated, result objectives count as failed if short.
+
+---
+
+## Runtime requirements and mandatory components
 
 **This section is the complete checklist for a stable run.** If any item is missing, the game or the spectator window will not
 start; each row below also states what happens when it is missing and how to work around it.
