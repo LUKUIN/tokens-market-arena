@@ -223,7 +223,7 @@ def _sanitize_trader(name):
     import re as _re
     if not name:
         return ""
-    s = _re.sub(r"[^\w\s\-_.()（）·]", "", str(name), flags=_re.UNICODE)
+    s = _re.sub("[^\\w\\s\\-_.()\uFF08\uFF09\u00B7]", "", str(name), flags=_re.UNICODE)  # CJK-width parens and middot stay allowed: contestant names may contain them
     return s.strip()
 
 
@@ -412,8 +412,8 @@ def _idle_rule_text():
             "slow thinking is never cut short. TM_IDLE_ABORT tunes it, 0 disables"
             % ("/".join(IDLE_ACTION_LABELS), IDLE_ABORT_MINUTES))
 ENGINE_VERSION = "1.2.27"  # release version: report footer and docs both quote this
-PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
-                            # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
+PROTOCOL_VERSION = 1        # Agent-facing protocol version. Any field add/remove or semantic change must bump it,
+                            # and docs/ai-protocol.md plus the /health "protocol" field must be updated in step.
 
 # ---------------- fast-forward quota ----------------
 # 15 minutes total per round. Both tiers can be mixed; each use starts a cooldown for the tier just used.
@@ -581,7 +581,7 @@ def _new_session(seed=None, apply_rng=True, roll_index=None):
         "huge_wave_warn_until": 0,   # non-zero means the hold runs; burst fires at this tick
         "huge_wave_show_tick": -1,   # the tick that raised the banner; viewer keys on this
         "huge_wave_fired": 0,        # occurrences so far, for report and /state cross-check
-        "huge_wave_last_tick": -10 ** 6,   # 上次预警起始 tick；强制两波间隔
+        "huge_wave_last_tick": -10 ** 6,   # tick at which the last warning started; enforces the gap between the two waves
         "halt_orders": False,
         "halt_loan_until": 0,    # risk review: no borrowing before this tick (negative-cash rescue excepted)
         "halt_close_until": 0,   # exchange maintenance: no closing before this tick (forced liquidation unaffected)
@@ -600,7 +600,7 @@ def _new_session(seed=None, apply_rng=True, roll_index=None):
         "total_swap": 0.0,
         "order_count": 0,
         "abnormal_exits": 0,
-        "last_settle": None,   # 最近一次结算的结果（settled / warnings）
+        "last_settle": None,   # result of the latest settlement (settled / warnings)
         "difficulty": None,          # {"gap": i, "liq": j}, filled once locked
         "roll_started_at": 0.0,      # draw start time (time.time())
         "roll_index": (int(roll_index) % ROLL_COMBOS
@@ -789,7 +789,7 @@ class Engine:
                 for k, v in base.items():
                     s.setdefault(k, v)
                 s["session_id"] = s.get("session_id") or os.urandom(8).hex()
-                # 重启后随机流无法回到存档时刻，报告必须诚实标注复现边界
+                # A restarted process cannot rewind the RNG to the save point, so a report must state its replay boundary honestly
                 if not s.get("finished"):
                     s["rng_resumed"] = True
                 return s
@@ -874,7 +874,7 @@ class Engine:
 
     @_writing
     def start_roll(self):
-        # 挑战任务还没答复就先别起盲盒倒计时
+        # Do not start the blind-box countdown before the challenge prompt is answered
         if (self.s.get("challenge") or {}).get("stage") == "ask":
             return {"ok": False, "error": "challenge ask pending", "roll": self.roll_state()}
         """Starts only the difficulty draw countdown; does not unpause or reset the session timer.
@@ -985,8 +985,8 @@ class Engine:
         first = rng.choice(finals)
         rest = [p for p in pool if p[0] != first[0]]
         picks = [first] + rng.sample(rest, CHALLENGE_MAX - 1)
-        # 「孤注一掷」与「更上层楼」互斥：目标翻倍后再叠 200% 就是 4 倍，同局出现等于必败。
-        # 抽中两条时把「更上层楼」换成池里未入选的过程型目标。
+        # "All-In" and "Higher Still" are mutually exclusive: doubling the target and then stacking 200% means 4x, a certain loss in one match.
+        # When both are drawn, replace "Higher Still" with a procedural-type objective that was not already picked.
         _picked = {p[0] for p in picks}
         if "double_goal" in _picked and "beat_target" in _picked:
             _spare = [p for p in pool if p[0] not in _picked and p[2] != "final"]
@@ -996,7 +996,7 @@ class Engine:
                  for k, n, kind in picks]
         for t in tasks:
             if t["key"] == "double_goal":
-                # 抽到即生效：目标翻倍，本局老虎机 / 借款的目标上浮区间统一收紧到 50%~100%
+                # Applies on draw: the target doubles, and this match's slot-machine / loan target-uplift ranges tighten to 50%~100%
                 self.s["target"] = float(self.s.get("target") or TARGET_EQUITY) * 2.0
                 t["goal"] = float(self.s["target"])
                 self.s.setdefault("challenge", {}).setdefault("rules", {})["double_goal"] = True
@@ -1147,18 +1147,18 @@ class Engine:
 
 
     def _challenge_rule(self, key):
-        """本局开局生效的挑战规则开关（目前只有 double_goal）。"""
+        """Challenge rule switches in effect for this match (currently only double_goal)."""
         c = self.s.get("challenge") or {}
         return bool((c.get("rules") or {}).get(key))
 
     def _challenge_settle_end(self):
-        """局终清算，保证每条任务都有结局。
+        """End-of-match settlement: every objective is guaranteed an outcome.
 
-        hold 类（不借款 / 不爆仓 / 不求助 / 不对锁 / 手续费 / 回撤 / 持仓数 / 保证金）
-        只会在破功时被判失败，若全程没破功，到结算时必须补记为达成；
-        final 类（按兵不动 / 更上层楼 / 孤注一掷）没达标就是未达成。
-        幂等：只处理仍为 pending 的任务，重复调用结果不变。
-        """
+        hold-type (no borrowing / no blow-up / no Mercy call / no counter-hedge / commission /
+        drawdown / position count / margin) only fails by being broken; never broken means it must
+        be recorded as achieved at settlement. final-type (Hold Still / Higher Still / All-In)
+        counts as missed unless the bar is cleared. Idempotent: only pending objectives are processed,
+        so repeated calls return the same result."""
         c = self.s.get("challenge") or {}
         if c.get("stage") != "on":
             return
@@ -1191,7 +1191,7 @@ class Engine:
                     self._challenge_fail(t, "only %d of %d closes reached %d ticks"
                                       % (int(c.get("hold_hits") or 0), need, CHALLENGE_HOLD_TICKS))
             else:
-                # 其余全是一路监控的 hold 类，没破功即达成
+                # Everything else is a hold-type objective monitored throughout; unbroken means achieved
                 self._challenge_done(t, "no violation during the whole run")
         cleared = sum(1 for t in tasks if t.get("status") == "done")
         self._event("[Challenge] settlement: %d/%d cleared" % (cleared, len(tasks)),
@@ -1266,8 +1266,8 @@ class Engine:
 
     def _event(self, text, kind="info"):
         s = self.s
-        # 每条事件带单调递增 seq 与会话 ID：报告与审计日志可以按序号定位，
-        # 不影响原有字段，老报告依然可读。
+        # Every event carries a monotonically increasing seq and a session ID, so a report and the audit log
+        # can both be located by ordinal. Older fields are untouched, so old reports stay readable.
         s["event_seq"] = int(s.get("event_seq") or 0) + 1
         s["events"].append({"seq": s["event_seq"], "session": s.get("session_id", ""),
                             "tick": s["tick"], "kind": kind,
@@ -1552,13 +1552,13 @@ class Engine:
         left = int(self.s.get("huge_wave_left") or 0)
         if left <= 0:
             return False
-        # 余量必须在 45 分钟内全部放完：剩余时间只够放完时进入冲刺段，
-        # 压缩两波间隔并把概率提到 100%，不再靠 1%/tick 的随机。
-        # 最后 3 分钟进入冲刺窗口：窗口长 180 秒，够放完 3 次（每次占 3 tick ≈ 15 秒）
+        # The whole reserve must be played out inside 45 minutes: once only just enough time remains, enter the sprint phase,
+        # which compresses the gap between waves and raises the probability to 100% instead of a 1%/tick roll.
+        # The final 3 minutes are a sprint window 180 seconds long, enough for 3 waves (each takes 3 ticks, about 15 s)
         _remain = SESSION_MINUTES * 60 - float(self._elapsed())
         _rush = _remain <= 180.0
         if _rush:
-            # 冲刺段把余量均匀铺到剩余时间里（180 秒 ÷ 余量），既保证放完又不挤成一串
+            # In the sprint phase spread the reserve evenly across the remaining time (180 s / reserve): it finishes without bunching
             _gap = max(HUGE_WAVE_WARN_TICKS + 1, int(_remain / max(1, left) / TICK_SECONDS))
         else:
             _gap = HUGE_WAVE_GAP_TICKS
@@ -1569,7 +1569,7 @@ class Engine:
 
         self.s["huge_wave_left"] = int(self.s["huge_wave_left"]) - 1
         self.s["huge_wave_fired"] = int(self.s.get("huge_wave_fired") or 0) + 1
-        self.s["huge_wave_last_tick"] = t     # 两波间隔从预警起点算
+        self.s["huge_wave_last_tick"] = t     # the gap between waves is measured from the warning start
         self.s["huge_wave_warn_until"] = t + HUGE_WAVE_WARN_TICKS
         self.s["huge_wave_show_tick"] = t     # the viewer keys the banner off this tick
         self.s["last_news_tick"] = t
@@ -1657,7 +1657,7 @@ class Engine:
                 "[Platform] %s -> Slot Machine betting paused for the next %d ticks (%.0f minutes)" % (
                     name, n, n * TICK_SECONDS / 60.0), "warn")
         elif kind == "flavor":
-            self._event("【%s】%s" % (name, random.choice(FLAVOR_LINES[name])), "info")
+            self._event("[%s] %s" % (name, random.choice(FLAVOR_LINES[name])), "info")
 
     def _advance_prices(self):
         self._expire_mods()
@@ -1743,19 +1743,19 @@ class Engine:
         return False
 
     def _audit_ledger(self):
-        """账本不变量自检。返回问题描述列表，空列表表示账面自洽。
+        """Ledger invariant self-check. Returns a list of problem descriptions; empty means the books balance.
 
-        只校验能用账面数据独立重算的恒等式，不依赖具体运行路径，
-        因此既能用在结算收尾，也能在任何时刻由 /state 触发：
+        Only identities that can be recomputed from ledger data alone are checked, with no dependency
+        on a particular execution path, so it runs both at settlement and at any moment from /state:
 
-        1. 累计手续费 == 成交流水里 fee 之和
-        2. 贷款未还余额 == 借入 - 已还 + 累计利息
-        3. 持仓方向合法、手数为正
+        1. cumulative commission == sum of fee across fills
+        2. outstanding loan balance == borrowed - repaid + accrued interest
+        3. position side is valid and size is positive
 
         The old "4. equity == cash + upnl - debt" identity was removed: it is the
         very same formula as equity(), always true, so it never detects anything.
 
-        审计本身绝不打断对局：任何异常都收敛成一条 issue 返回。
+        The audit never interrupts a match: any exception collapses into one issue.
         """
         issues = []
         s = self.s
@@ -1802,8 +1802,8 @@ class Engine:
             warnings.append("%d position(s) could not be settled: %s" % (
                 len(residual), ", ".join(sorted({p["pair"] for p in residual}))))
         self._settle_loan()
-        # 结算后跑一次账本自检：任何恒等式不成立都以 warnings 形式冒出来，
-        # 不允许 settled=True 把账目问题盖过去。
+        # Run the ledger self-check once after settlement: any broken identity surfaces as warnings,
+        # and settled=True is never allowed to paper over accounting problems.
         warnings.extend(self._audit_ledger())
         # These two closing checks must run before last_settle is written,
         # otherwise settled would omit them.
@@ -2887,7 +2887,7 @@ class Engine:
         n = len(eqs)
 
         # ---- Y range: include the low / high / 0 / starting capital / target ----
-        # 固定 50 万刻度：0 / 100 万（本金）/ 200 万（目标）都落在刻度线上
+        # Fixed 500k grid: 0 / 1M (capital) / 2M (target) all land on grid lines
         _STEP = 500_000.0
         cand = [min(eqs), max(eqs), 0.0, start_eq]
         if target_eq > start_eq:
@@ -2955,7 +2955,7 @@ class Engine:
             parts.append(baseline(target_eq, "#c9971b", "Target to win", "5 4"))
         parts.append(baseline(0.0, "#c62828", "Capital wiped out", "2 3", width=1.4, op=0.95))
 
-        # ---- 峰值 / 谷值 / 最后平仓：图上直接给精确数字 ----
+        # ---- peak / trough / last close: exact numbers drawn on the chart ----
         _pi = eqs.index(max(eqs))
         _li = eqs.index(min(eqs))
         if last_close:
@@ -3181,7 +3181,7 @@ class Engine:
                 _bumps = _loan.get("goal_bumps") or []
                 if _bumps:
                     _rows_loan.append(
-                        "<div class=\"kv\" style=\"grid-column:1/-1\"><span>Loan by loan (target raised)</span><span>%s</span></div>" % " ｜ ".join(
+                        "<div class=\"kv\" style=\"grid-column:1/-1\"><span>Loan by loan (target raised)</span><span>%s</span></div>" % " | ".join(
                             "t%s loan %s (%+.2f%% -> %+.0f)" % (
                                 b.get("tick", "—"), fmt(b.get("amount", 0)),
                                 float(b.get("pct") or 0), float(b.get("bump") or 0))
@@ -3204,7 +3204,7 @@ class Engine:
                 try:
                     _gp = float(_d.get("gap_pct") or GAP_LEVELS[int(_d["gap"])][1])
                     _ld = float(_d.get("liq_depth") or LIQ_LEVELS[int(_d["liq"])][1])
-                    _dl_gap = "%s（%.2f%%/tick）" % (GAP_LEVELS[int(_d["gap"])][0], _gp * 100)
+                    _dl_gap = "%s (%.2f%%/tick)" % (GAP_LEVELS[int(_d["gap"])][0], _gp * 100)
                     _dl_liq = "%s (depth %.1fM)" % (LIQ_LEVELS[int(_d["liq"])][0], _ld / 1000000.0)
                 except Exception:
                     _dl_gap = _dl_liq = ""
@@ -3474,8 +3474,8 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
             hp = os.path.join(html_dir, base + ".html")
             with open(hp, "w", encoding="utf-8") as f:
                 f.write(html)
-            # 机器可读摘要：bench.py / CI 只读这份 JSON，不解析 HTML。
-            # 字段只增不改，历史存档不会因为新字段失效。
+            # Machine-readable summary: bench.py / CI read this JSON only and never parse the HTML.
+            # Fields are additive only, so a new field never invalidates an archived report.
             jp = os.path.join(json_dir, base + ".json")
             _start = float(m["start"])
             _genesis = float(self.s.get("genesis", STARTER_CASH))
@@ -3547,7 +3547,7 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
             self.s["abnormal_exits"] = int(self.s.get("abnormal_exits", 0)) + 1
             self._event("[Abnormal exit] %s: not settled, snapshot report written" % reason, "warn")
             self._save()
-            self._clear_running()   # 这一笔已经记过了，别让下次启动再记一次
+            self._clear_running()   # this fill is already recorded; do not record it again on the next start
             return self._write_report(reason, eq, abnormal=True)
 
     def quit_session(self):
@@ -3581,7 +3581,7 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
             return self._end_session("Abandoned below target")
 
     def reset(self, count=True, seed=None, roll_index=None):
-        """开新局。seed=None 时沿用 TM_SEED 或随机生成；显式传 seed / roll_index 用于配对评测。"""
+        """Start a new match. seed=None reuses TM_SEED or rolls a random one; passing seed / roll_index explicitly is for paired benchmarks."""
         with LOCK:
             now = time.time()
             if count:
@@ -3647,8 +3647,8 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
                 "session_id": self.s.get("session_id", ""),
                 "abnormal_exits": int(self.s.get("abnormal_exits", 0)),
                 "settlement": self.s.get("last_settle"),
-                # 账本自检：空列表代表现金/持仓/贷款/权益四组恒等式全部成立。
-                # 非空时请把内容当作告警而不是正常数据。
+                # Ledger self-check: an empty list means all four identity groups (cash / positions / loans / equity) hold.
+                # A non-empty result is a warning, not normal data.
                 "audit": self._audit_ledger(),
                 "paused": bool(self.s.get("paused")),
                 "ff": self.ff_plan(),
@@ -3758,7 +3758,7 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
                 # alone, so a slow poll cannot miss it and a second poll cannot replay it.
                 "huge_wave": {
                     "show": int(self.s["tick"]) == int(self.s.get("huge_wave_show_tick", -1)),
-                    # 本局一共掷到几次：余量只减、已触发只增，两者之和恒等于开局掷出的总数
+                    # Total rolls this match: the reserve only decreases and triggered only increases; the two always sum to the opening roll count
                     "total": int(self.s.get("huge_wave_left") or 0) + int(self.s.get("huge_wave_fired") or 0),
                     "left": int(self.s.get("huge_wave_left") or 0),
                     "fired": int(self.s.get("huge_wave_fired") or 0),

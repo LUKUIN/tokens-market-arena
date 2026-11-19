@@ -25,7 +25,7 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 VAULT = os.path.join(HERE, "_guard_vault")
-# 加密箱放在项目目录之外，避免和源码同处一棵树里被顺手打包拷走
+# The sealed box lives outside the project so it is never swept into a bundle along with the sources
 GUARD_ROOT = os.path.join(
     os.environ.get("LOCALAPPDATA") or os.environ.get("TEMP") or tempfile.gettempdir(),
     "TokensMarketGuard")
@@ -33,7 +33,7 @@ MAGIC = b"TMG1"
 
 
 def _keystream(key, nonce, n):
-    """SHA-256 计数器流：标准库就能拼出的 CTR 流密码，只为防顺手读，不是密码学边界。"""
+    """SHA-256 counter-mode keystream: a CTR stream cipher buildable from the standard library, only to stop casual reading, not a cryptographic boundary."""
     buf = bytearray()
     i = 0
     while len(buf) < n:
@@ -114,9 +114,9 @@ def _post(port, path, timeout=2.0):
 
 
 def _write_synced(path, data):
-    """写文件并 fsync，再用 os.replace 原子替换。
+    """Write a file, fsync it, then swap it in atomically with os.replace.
 
-    崩溃时只会看到「完整的旧文件」或「完整的新文件」，不会留下半截内容。
+    A crash leaves either the complete old file or the complete new one, never a half-written file.
     """
     tmp = path + ".tmp"
     with open(tmp, "wb") as f:
@@ -216,7 +216,7 @@ def unseal():
                     f.write(data)
                 out.append(rel)
             shutil.rmtree(box, ignore_errors=True)
-    # 向后兼容：旧版本把明文放在项目内的 _guard_vault/src__*.py
+    # Backward compatibility: older builds left plaintext at <project>/_guard_vault/src__*.py
     for rel in SOURCES:
         if rel in out:
             continue

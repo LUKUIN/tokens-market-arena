@@ -5,9 +5,9 @@ using TokensWatch.Helpers;
 namespace TokensWatch.Controls;
 
 /// <summary>
-/// Quotes的迷你走势。对应 Python 侧 _draw_spark（第 1268-1284 行）：
-/// 只取最近 48 个真实价格，不足 2 个点就不画。
-/// 区别：WPF 矢量线条自带抗锯齿，1.4px 在斜向也不会碎成台阶。
+/// /// Quote-board sparkline. Mirrors the Python _draw_spark (lines 1268-1284):
+/// /// only the last 48 real prices, and nothing at all below 2 points.
+/// /// Difference: WPF vector strokes antialias on their own, so 1.4 px never breaks into steps on a diagonal.
 /// </summary>
 public sealed class Sparkline : FrameworkElement
 {
@@ -30,7 +30,7 @@ public sealed class Sparkline : FrameworkElement
         }
         else
         {
-            // 与 Python 一致：hist[-48:]
+            // // Same as Python: hist[-48:]
             int start = Math.Max(0, history.Count - 48);
             _points = history.Skip(start).ToArray();
         }

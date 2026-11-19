@@ -7,11 +7,11 @@ using TokensWatch.Models;
 namespace TokensWatch.Controls;
 
 /// <summary>
-/// 权益曲线。WPF 矢量渲染自带抗锯齿，因此这里只做三件事：
-///  1. 纵轴**自适应**（旧版固定在 -50 万~250 万，把 0.5% 的波动压成亚像素，看不出涨跌）
-///  2. 面积填充压到 8% 透明度（旧版糊成一堵红墙，把曲线整个盖住）
-///  3. 单调三次插值加密（旧版是折线，拐角处生硬；且不能越界）
-/// 参考线保留「Principal 100 万」与「Target」，它们是对局的两条硬边界。
+/// /// Equity curve. WPF vector rendering already antialiases, so this only does three things:
+/// ///  1. Auto-fit the Y range (the old build pinned -500k to 2.5M, squashing a 0.5% move below one pixel)
+/// ///  2. Drop the area fill to 8% opacity (the old build was a solid red wall covering the curve)
+/// ///  3. Densify with monotone cubic interpolation (the old build drew sharp polyline corners and could overshoot)
+/// /// Reference lines keep "Principal 1M" and "Target": the two hard boundaries of a match.
 /// </summary>
 public sealed class EquityChart : FrameworkElement
 {
@@ -26,7 +26,7 @@ public sealed class EquityChart : FrameworkElement
 
     public EquityChart()
     {
-        // 保证父容器给足高度；同时让 WPF 以矢量方式渲染
+        // // Make sure the parent gives enough height, and let WPF render it as vectors
         MinHeight = 120;
         RenderOptions.SetEdgeMode(this, EdgeMode.Unspecified);
         RenderOptions.SetBitmapScalingMode(this, BitmapScalingMode.HighQuality);
@@ -46,7 +46,7 @@ public sealed class EquityChart : FrameworkElement
         double h = ActualHeight;
         if (w <= 4 || h <= 4) return;
 
-        // 背景
+        // // Background
         dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, w, h));
 
         double plotW = Math.Max(1, w - PadLeft - PadRight);
@@ -59,7 +59,7 @@ public sealed class EquityChart : FrameworkElement
             return;
         }
 
-        // ---------- 纵轴范围：自适应 + 留白，且必须把Principal线包进去 ----------
+        // // ---------- Y range: auto-fit plus padding, and the Principal line must stay inside ----------
         double dataMin = double.MaxValue;
         double dataMax = double.MinValue;
         foreach (var p in _curve)
@@ -78,23 +78,23 @@ public sealed class EquityChart : FrameworkElement
         double XOf(double i) => PadLeft + plotW * (i / Math.Max(1, _curve.Count - 1));
         double YOf(double v) => PadTop + plotH * (1.0 - (v - yMin) / ySpan);
 
-        // ---------- 网格 + Y 轴刻度 ----------
+        // // ---------- Grid + Y ticks ----------
         DrawAxis(dc, plotRect, yMin, yMax, YOf);
 
-        // ---------- X 轴：tick 刻度 ----------
+        // // ---------- X axis: tick marks ----------
         DrawTimeAxis(dc, plotRect);
 
-        // ---------- 参考线 ----------
+        // // ---------- Reference lines ----------
         DrawReferenceLine(dc, plotRect, YOf(_baseLine), Theme.Muted, "Principal 1,000,000");
         if (_targetLine is { } tv && tv > 0 && tv <= yMax)
             DrawReferenceLine(dc, plotRect, YOf(tv), Theme.Blue, $"Target {tv:N0}");
 
-        // ---------- 曲线：先加密，再统一映射到屏幕坐标 ----------
+        // // ---------- Curve: densify first, then map to screen coordinates ----------
         var raw = new List<Point>(_curve.Count);
         for (int i = 0; i < _curve.Count; i++)
             raw.Add(new Point(XOf(i), _curve[i].Equity));
 
-        // Fritsch–Carlson 的保形性作用在「值域」上，所以在这里先平滑值、再映射 Y
+        // // Fritsch-Carlson shape preservation acts on the value domain, so smooth values here and map Y afterwards
         var smoothVals = Interpolation.MonotoneCubic(
             raw.Select((p, i) => new Point(i, p.Y)).ToList(),
             perSegment: Math.Clamp(220 / Math.Max(1, _curve.Count), 4, 24));
@@ -109,7 +109,7 @@ public sealed class EquityChart : FrameworkElement
         bool isUp = _curve[^1].Equity >= _curve[0].Equity;
         var lineColor = isUp ? Theme.Green : Theme.Red;
 
-        // ---------- 渐变填充：顶部 8% → 底部 0 ----------
+        // // ---------- Gradient fill: 8% at the top, 0 at the bottom ----------
         if (screenPts.Count > 1)
         {
             var areaGeo = new StreamGeometry();
@@ -139,7 +139,7 @@ public sealed class EquityChart : FrameworkElement
             dc.DrawGeometry(fillBrush, null, areaGeo);
         }
 
-        // ---------- 曲线本体 ----------
+        // // ---------- The curve itself ----------
         var lineGeo = new StreamGeometry();
         using (var ctx = lineGeo.Open())
         {
@@ -158,7 +158,7 @@ public sealed class EquityChart : FrameworkElement
         pen.Freeze();
         dc.DrawGeometry(null, pen, lineGeo);
 
-        // ---------- 起终点标记 ----------
+        // // ---------- Start / end markers ----------
         DrawDot(dc, screenPts[0], Theme.Muted);
         DrawDot(dc, screenPts[^1], lineColor);
 
@@ -176,16 +176,16 @@ public sealed class EquityChart : FrameworkElement
         var peakPt = new Point(XOf(iMax), YOf(peakVal));
         var troughPt = new Point(XOf(iMin), YOf(troughVal));
 
-        // Peak在点上方、Trough在点下方；贴边时自动翻到另一侧
+        // // Peak label above the point, Trough below it; flip to the other side when the point hugs an edge
         DrawExtremum(dc, peakPt, $"Peak {peakVal:N0}", Theme.GreenHex, preferAbove: true);
         DrawExtremum(dc, troughPt, $"Trough {troughVal:N0}", Theme.RedHex, preferAbove: false);
 
-        // 终点数值：贴在右上方，避免和曲线重叠
+        // // Final value: tuck it into the top right so it never overlaps the curve
         var last = _curve[^1].Equity;
         DrawText(dc, $"Now {last:N0}", new Point(PadLeft + 6, PadTop + 2), lineColor, 14, bold: true);
     }
 
-    /// <summary>在极值点画一个带光晕的圆点，并在旁边标出数值。</summary>
+    /// /// <summary>Draw a glowing dot at an extreme point and print its value beside it.</summary>
     private void DrawExtremum(DrawingContext dc, Point p, string label, string colorHex, bool preferAbove)
     {
         var color = (Color)ColorConverter.ConvertFromString(colorHex)!;
@@ -200,7 +200,7 @@ public sealed class EquityChart : FrameworkElement
 
         var ft = MakeText(label, core, 11.5, bold: true);
 
-        // 默认在点上方；上方放不开就翻到下方
+        // // Above the point by default; flip below when there is no room
         bool above = preferAbove;
         if (above && p.Y - ft.Height - 10 < 2) above = false;
         if (!above && p.Y + ft.Height + 12 > ActualHeight - 2) above = true;
@@ -208,18 +208,18 @@ public sealed class EquityChart : FrameworkElement
         double x = p.X - ft.Width / 2;
         double y = above ? p.Y - ft.Height - 9 : p.Y + 9;
 
-        // 左右/上下夹到绘图区内，避免被裁掉
+        // // Clamp horizontally and vertically to the plot area so nothing is clipped
         x = Math.Clamp(x, PadLeft + 2, Math.Max(PadLeft + 2, ActualWidth - ft.Width - 4));
         y = Math.Clamp(y, 2, Math.Max(2, ActualHeight - ft.Height - 2));
 
         dc.DrawText(ft, new Point(x, y));
     }
 
-    // ---------------- 绘制辅助 ----------------
+    // // ---------------- Drawing helpers ----------------
 
     private void DrawAxis(DrawingContext dc, Rect plot, double yMin, double yMax, Func<double, double> yOf)
     {
-        // Target：4~6 条水平刻度。取一个“整”步长，别让标签变成 1234567 这种。
+        // // Target: 4 to 6 horizontal ticks. Pick a "round" step so a label never reads like 1234567.
         double span = yMax - yMin;
         double rawStep = span / 5.0;
         double mag = Math.Pow(10, Math.Floor(Math.Log10(Math.Max(1e-9, rawStep))));
@@ -238,15 +238,15 @@ public sealed class EquityChart : FrameworkElement
 
             dc.DrawLine(gridPen, new Point(plot.Left, y), new Point(plot.Right, y));
 
-            // 消掉负零：.NET 的 (-0.0).ToString("0") 会输出 "-0"，
-            // 而 yMin 经 PadRange 后可能是 -0.0，或 |v|<0.5 时四舍五入带出负号。
+            // // Kill negative zero: .NET prints "-0" for (-0.0).ToString("0"),
+            // // and yMin can be -0.0 after PadRange, or carry a minus sign from rounding when |v| < 0.5.
             double vv = Math.Abs(v) < 0.5 ? 0.0 : v;
-            // M/K 保留 3 位：步长很小（例如 500）时，1,000,000 与 1,000,500 都按
-            // 2 位小数会同时输出 "1M"，纵轴出现几个一模一样的标签。
+            // // Keep 3 significant digits for M/K: with a small step (500, say) both 1,000,000 and 1,000,500
+            // // would print "1M" at 2 decimals, leaving several identical labels on the axis.
             string label = Math.Abs(vv) >= 1e6 ? $"{vv / 1e6:0.###}M"
                          : Math.Abs(vv) >= 1e3 ? $"{vv / 1e3:0.###}K"
                          : $"{vv:0}";
-            // 三连 "1M" 这种四舍五入重合的两档，后一档直接不画，避免重复标签。
+            // // When two ticks round to the same label ("1M" three times), skip the later one instead of drawing it.
             if (label == _lastAxisLabel) continue;
             _lastAxisLabel = label;
             DrawText(dc, label, new Point(PadLeft - 8, y - 8), Theme.Muted, 11, alignRight: true);
@@ -254,9 +254,9 @@ public sealed class EquityChart : FrameworkElement
     }
 
     /// <summary>
-    /// 底部 tick 刻度。曲线原来只有 Y 轴，看不出「这段盈利发生在什么时候」，
-    /// 复盘时无法判断某一段是早期扛出来的还是尾盘冲的。
-    /// 用 tick 而不是墙钟时间：服务端只保证 tick 单调，不保证每秒一个。
+    /// /// Bottom tick marks. The curve used to have a Y axis only, so "when did this profit happen" was unanswerable,
+    /// /// and a review could not tell an early hold from a late-innings push.
+    /// /// Uses ticks rather than wall-clock time: the server only guarantees tick monotonicity, not one per second.
     /// </summary>
     private void DrawTimeAxis(DrawingContext dc, Rect plot)
     {

@@ -42,8 +42,8 @@ public static class DisplayProfile
 
     public static WindowSize Pick()
     {
-        // 手动覆盖：TM_WATCH_SIZE="1600x900"。既方便在 2K 屏上验收 1080p 档，
-        // 也让人可以固定自己想要的尺寸而不受检测结果影响。
+        // // Manual override: TM_WATCH_SIZE="1600x900". Convenient for validating the 1080p tier on a 2K panel,
+        // // and it lets anyone pin a size regardless of what detection reports.
         var forced = ParseForced(Environment.GetEnvironmentVariable("TM_WATCH_SIZE"));
         if (forced is { } f)
             return f;

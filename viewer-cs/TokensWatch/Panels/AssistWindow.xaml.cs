@@ -8,12 +8,12 @@ using TokensWatch.Services;
 namespace TokensWatch.Panels;
 
 /// <summary>
-/// 「Outside Mercy · Outside Aid」。对应 tm_watch_ai.py 第 625-696 行。
+/// /// "Outside Mercy - Outside Aid". Mirrors tm_watch_ai.py lines 625-696.
 ///
-/// 语义要点（不能自作主张改动）：
-///  - 观众席**不能主动发消息**，只能在参赛者 POST /assist/ask 之后回复或Dismiss；
-///  - 开通入口在参赛者一侧，观众席只显示状态；
-///  - 历史按 who 上色：ai=参赛者(蓝)、human=观众席(绿)、其他=系统(灰)。
+/// /// Semantics that must not be changed on a whim:
+/// ///  - The spectator cannot initiate a message; it can only reply or dismiss after the contestant POSTs /assist/ask;
+/// ///  - The enable switch lives on the contestant side; the spectator only displays state;
+/// ///  - History is colored by who: ai = contestant (blue), human = spectator (green), anything else = system (grey).
 /// </summary>
 public partial class AssistWindow : Window
 {
@@ -48,7 +48,7 @@ public partial class AssistWindow : Window
             return;
         }
 
-        // ---------- 副标题 ----------
+        //         // ---------- Subtitle ----------
         if (a.Enabled)
         {
             TxtSubtitle.Text = $"Enabled · the contestant can still ask {a.Remaining} more time(s)";
@@ -61,7 +61,7 @@ public partial class AssistWindow : Window
             TxtSubtitle.Foreground = Theme.Orange;
         }
 
-        // ---------- 历史 ----------
+        //         // ---------- History ----------
         var doc = new FlowDocument { PagePadding = new Thickness(0), FontSize = 12 };
 
         if (a.Log.Count == 0)
@@ -84,7 +84,7 @@ public partial class AssistWindow : Window
 
                 var p = new Paragraph { Margin = new Thickness(0, 0, 0, 10) };
                 p.Inlines.Add(new Run($"[t{x.Tick}] ") { Foreground = Theme.Muted });
-                p.Inlines.Add(new Run(tag + "：") { Foreground = color, FontWeight = FontWeights.SemiBold });
+                p.Inlines.Add(new Run(tag + ":") { Foreground = color, FontWeight = FontWeights.SemiBold });
                 p.Inlines.Add(new Run(x.Text ?? ""));
                 doc.Blocks.Add(p);
             }
@@ -93,13 +93,13 @@ public partial class AssistWindow : Window
         History.Document = doc;
         History.ScrollToEnd();
 
-        // ---------- 待处理 ----------
+        //         // ---------- Pending ----------
         _lastTicket = a.Pending.Count > 0 ? a.Pending[^1].Ticket : null;
 
         if (a.Pending.Count > 0 && a.Enabled && !string.IsNullOrEmpty(_lastTicket))
         {
             PendingBox.Visibility = Visibility.Visible;
-            TxtPendingTitle.Text = $"Pending requests {_lastTicket}：";
+            TxtPendingTitle.Text = $"Pending requests {_lastTicket}:";
             ReplyBox.Focus();
         }
         else

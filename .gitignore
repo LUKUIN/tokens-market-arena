@@ -1,21 +1,21 @@
-# 运行产物（每次开局都会变，不该进版本库）
+# Runtime output (changes every match, must not be versioned)
 data/
 _agent/
 
-# Python 缓存
+# Python cache
 __pycache__/
 *.py[cod]
 *.pyd
 *.c
 build/
 
-# 成品包专用（开源版不需要，防止误提交）
+# Packaged build only (not needed by the open-source edition; prevents accidental commits)
 manifest.json
 startgame.pyc
 python-*.exe
 ~$*
 
-# 编辑器
+# Editors
 .vscode/
 .idea/
 *.swp
@@ -23,7 +23,7 @@ python-*.exe
 # source guard vault (temporary, restored after each match)
 _guard_vault/
 
-# 运行日志（每次开局都会写，不该进版本库）
+# Run logs (written every match, must not be versioned)
 *.log
 
 # Release bundles stay out of the repo: they ship as release assets
@@ -32,7 +32,7 @@ _guard_vault/
 # Local scripts and scratch output
 _scratch/
 
-# C# 观众席构建产物（源码入库，产物不入库）
+# C# spectator build output (tracked so a fresh clone runs out of the box: rebuild and commit after touching the viewer)
 viewer-cs/**/obj/
 viewer-cs/**/bin/Debug/
 viewer-cs/**/bin/**/*.pdb

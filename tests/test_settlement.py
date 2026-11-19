@@ -29,7 +29,7 @@ class EngineCase(unittest.TestCase):
         home = tempfile.mkdtemp(prefix="tmtest_")
         eng = T.Engine(home)
         eng.roll_stop()
-        eng.challenge_decline()   # 本组用例不测挑战任务：按「不开启」进入正常对局
+        eng.challenge_decline()   # These cases do not exercise challenges: decline the prompt and run a normal match
         return eng
 
     def trading_delta(self, eng, pos):

@@ -4,9 +4,9 @@ using System.Text.Json.Serialization;
 namespace TokensWatch.Models;
 
 /// <summary>
-/// GET /state 的强类型视图。
-/// 字段来源：docs/ai-protocol.md 第 185-231 行 + src/tm_watch_ai.py 的 st.get(...) 调用点。
-/// 未知字段一律忽略（服务端会随版本加字段，前端不能因此崩溃）。
+/// /// Strongly typed view of GET /state.
+/// /// Field sources: docs/ai-protocol.md lines 185-231 plus the st.get(...) call sites in src/tm_watch_ai.py.
+/// /// Unknown fields are ignored (the server adds fields across versions and the front end must not break over it).
 /// </summary>
 public sealed class WatchState
 {
@@ -19,7 +19,7 @@ public sealed class WatchState
 
     [JsonPropertyName("positions")] public List<Position> Positions { get; set; } = new();
 
-    /// <summary>净值 ÷ (名义敞口 × 10%)。空仓时为 null。</summary>
+    ///     /// <summary>Equity / (notional exposure x 10%). Null while flat.</summary>
     [JsonPropertyName("margin_level")] public double? MarginLevel { get; set; }
 
     [JsonPropertyName("prices")] public Dictionary<string, Quote> Prices { get; set; } = new();
@@ -27,7 +27,7 @@ public sealed class WatchState
     [JsonPropertyName("loan")] public LoanInfo? Loan { get; set; }
     [JsonPropertyName("total_borrowed")] public double TotalBorrowed { get; set; }
 
-    /// <summary>生效中的临时Rules。服务端可能是对象数组，也可能是字符串数组，用 JsonElement 兜住。</summary>
+    ///     /// <summary>Active temporary rules. The server may send an array of objects or an array of strings; JsonElement absorbs both.</summary>
     [JsonPropertyName("active_mods")] public JsonElement? ActiveMods { get; set; }
 
     [JsonPropertyName("special")] public SpecialFlags? Special { get; set; }
@@ -83,14 +83,14 @@ public sealed class WatchState
     [JsonPropertyName("settlement")] public JsonElement? Settlement { get; set; }
     [JsonPropertyName("seed")] public JsonElement? Seed { get; set; }
 
-    // ---- 异常/紧急状态：不是 null 就代表正在倒计时 ----
+    //     // ---- Error / emergency state: anything non-null means a countdown is running ----
     [JsonPropertyName("negative_remain")] public double? NegativeRemain { get; set; }
     [JsonPropertyName("margin_call_remain")] public double? MarginCallRemain { get; set; }
     [JsonPropertyName("tampered")] public bool Tampered { get; set; }
     [JsonPropertyName("clock_cheat")] public bool ClockCheat { get; set; }
     [JsonPropertyName("unnamed")] public bool Unnamed { get; set; }
 
-    /// <summary>active_mods 归一化成可显示的短文本（兼容对象数组与字符串数组两种形态）。</summary>
+    ///     /// <summary>Normalize active_mods into short display text (accepts both object arrays and string arrays).</summary>
     public string ActiveModsText()
     {
         if (ActiveMods is not { } el) return string.Empty;
@@ -108,7 +108,7 @@ public sealed class WatchState
                     }
                     else if (item.ValueKind == JsonValueKind.Object)
                     {
-                        // 优先用 label，其次 name
+                        //                         // Prefer label, fall back to name
                         if (item.TryGetProperty("label", out var lb) && lb.ValueKind == JsonValueKind.String)
                             parts.Add(lb.GetString()!);
                         else if (item.TryGetProperty("name", out var nm) && nm.ValueKind == JsonValueKind.String)
@@ -123,7 +123,7 @@ public sealed class WatchState
         }
         catch (JsonException)
         {
-            // 结构异常时安静降级，不要因为一个装饰性字段把整屏数据丢掉
+            //             // Degrade quietly on a malformed structure: never drop the whole screen over one decorative field
         }
 
         return string.Empty;
@@ -162,9 +162,9 @@ public sealed class SpecialFlags
     [JsonPropertyName("fr")] public bool Fr { get; set; }
     [JsonPropertyName("fr_left")] public JsonElement? FrLeft { get; set; }
     [JsonPropertyName("slot")] public bool Slot { get; set; }
-    // 引擎在「老虎机未开启」时把 slot_left 输出成 null（tm_engine.py:1817 的
-    // `... if slot else None`）。这里必须是可空类型，否则整个 /state 反序列化失败，
-    // 界面会整块变空并弹「连接失败」。
+    //     // The engine emits slot_left as null when the slot machine is off (tm_engine.py:1817
+    //     // `... if slot else None`). It must be nullable here, or deserializing the whole /state fails
+    //     // and the UI goes blank behind a "connection failed" dialog.
     [JsonPropertyName("slot_left")] public JsonElement? SlotLeft { get; set; }
     [JsonPropertyName("slot_win")] public double SlotWin { get; set; }
     [JsonPropertyName("fr_lo_pct")] public double FrLoPct { get; set; }

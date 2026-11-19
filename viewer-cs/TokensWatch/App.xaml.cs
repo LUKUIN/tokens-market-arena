@@ -7,12 +7,12 @@ public partial class App : Application
 {
     private Mutex? _mutex;
     private bool _ownsMutex;
-    private int _fatalShown;   // 0=还没弹过；用 Interlocked 保证只弹一次
+    private int _fatalShown;   // 0 = not shown yet; Interlocked guarantees a single dialog
 
     protected override void OnStartup(StartupEventArgs e)
     {
-        // 与 Python 版占用的 8735 端口锁**故意不同名**：
-        // 两个观众席允许同时开着，方便逐项对比数据与观感。
+        // // Deliberately a different name from the port lock the Python edition uses (8735):
+        // // both spectators may run at once so data and feel can be compared item by item.
         _mutex = new Mutex(initiallyOwned: true, name: @"Global\TokensWatchViewerEn", out bool created);
         _ownsMutex = created;
 
@@ -29,8 +29,8 @@ public partial class App : Application
 
         DispatcherUnhandledException += (_, args) =>
         {
-            // 观众席是只读窗口：任何未处理异常都不能让进程静默消失，
-            // 否则玩家会以为是游戏崩了。
+            // // The spectator is a read-only window: an unhandled exception must never let the process vanish silently,
+            // // otherwise the player assumes the game crashed.
             MessageBox.Show(
                 "The spectator hit an unhandled error:\n\n" + args.Exception.Message,
                 "Tokens Spectator",
@@ -50,7 +50,7 @@ public partial class App : Application
         }
         catch
         {
-            // 退出路径上不再制造新异常
+            // // Do not manufacture new exceptions on the exit path
         }
 
         _mutex?.Dispose();

@@ -7,12 +7,12 @@ using TokensWatch.Models;
 namespace TokensWatch.Panels;
 
 /// <summary>
-/// Activity「More」。对应 tm_watch_ai.py 第 1126-1228 行。
+/// /// Activity "More". Mirrors tm_watch_ai.py lines 1126-1228.
 ///
-/// 三条必须对齐的语义：
-///  1. **筛选是共享状态**：这里切分类，主窗口右栏那条也跟着切（Python 的 _log_filter 是成员变量）。
-///  2. 六个页签按 _log_cat 归类，Rules见 EventKind。
-///  3. **只有原本就停在底部时才跟随滚动**，否则用户往上翻会被强行拽回来（第 1193-1197 行）。
+/// /// Three semantics that must match:
+/// ///  1. The filter is shared state: switching a category here also switches the newest line in the right column (Python keeps _log_filter on the instance).
+/// ///  2. Six tabs are classified by _log_cat; the rules live in EventKind.
+/// ///  3. Follow-scroll only when already pinned to the bottom, otherwise a user scrolling up gets yanked back (lines 1193-1197).
 /// </summary>
 public partial class LogWindow : Window
 {
@@ -70,13 +70,13 @@ public partial class LogWindow : Window
     {
         if (Filter == key) return;
 
-        // 交给主窗口统一改，主窗口会回调 RenderLogFeed，内外同步
+        //         // Hand it to the main window, which calls back RenderLogFeed so inside and outside stay in sync
         _main.SetLogFilter(key);
         PaintTabs();
         Render(force: true);
     }
 
-    /// <summary>主窗口拿到新事件后调用（传入去重后的完整列表）。</summary>
+    ///     /// <summary>Called by the main window when new events arrive (passes the deduplicated full list).</summary>
     public void AppendAll(IReadOnlyList<GameEvent> events)
     {
         _events.Clear();
@@ -84,7 +84,7 @@ public partial class LogWindow : Window
 
         if (_events.Count != _lastRenderedCount)
         {
-            PaintTabs();       // 主窗口可能改过筛选
+            PaintTabs();       // the main window may have changed the filter
             Render();
         }
     }

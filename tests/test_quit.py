@@ -22,7 +22,7 @@ class _Base(unittest.TestCase):
         self.home = tempfile.mkdtemp(prefix="tm_quit_")
         self.addCleanup(shutil.rmtree, self.home, True)
         self.e = T.Engine(self.home)
-        self.e.challenge_decline()   # 新局开局即进入挑战任务询问，测试里直接按不开启
+        self.e.challenge_decline()   # A new match opens with the challenge prompt; decline it here
         self.e.s["difficulty"] = {"gap": 2, "liq": 1, "at": 0,
                                   "gap_pct": T.GAP_LEVELS[2][1],
                                   "liq_depth": T.LIQ_LEVELS[1][1]}

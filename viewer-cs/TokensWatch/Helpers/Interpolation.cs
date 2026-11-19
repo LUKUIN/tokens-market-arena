@@ -3,29 +3,29 @@ using System.Windows;
 namespace TokensWatch.Helpers;
 
 /// <summary>
-/// 单调三次 Hermite 插值（Fritsch–Carlson 限制）。
+/// /// Monotone cubic Hermite interpolation (Fritsch-Carlson limits).
 ///
-/// 为什么不用现成的平滑算法：
-///  - 三次样条（cubic spline）在金融数据上会产生**过冲**，曲线会穿到历史极值之外，
-///    看起来比实际波动更夸张，属于造假。
-///  - Catmull-Rom 同样不保形。
-///  - Fritsch–Carlson 保证：曲线**经过每个原始点**，且**不会越出相邻两点构成的区间**。
-///    这正是权益曲线需要的性质。
+/// /// Why not an off-the-shelf smoother:
+/// ///  - A cubic spline overshoots on financial data: the curve runs past historical extremes,
+/// ///    looking more volatile than it really was, which is a form of fabrication.
+/// ///  - Catmull-Rom is not shape preserving either.
+/// ///  - Fritsch-Carlson guarantees the curve passes through every original point and never leaves
+/// ///    the interval spanned by two adjacent points, which is exactly what an equity curve needs.
 /// </summary>
 public static class Interpolation
 {
     /// <summary>
-    /// 把折线加密成平滑曲线。输入按 X 升序，X 重复时以最后一个为准。
+    ///     /// Densify a polyline into a smooth curve. Input must ascend in X; on duplicate X the last one wins.
     /// </summary>
-    /// <param name="src">原始点（至少 2 个）</param>
-    /// <param name="perSegment">每段插入的采样数，越大越圆滑；10~20 之间足够</param>
+    ///     /// <param name="src">Original points (at least 2)</param>
+    ///     /// <param name="perSegment">Samples inserted per segment; larger is smoother, 10-20 is plenty</param>
     public static List<Point> MonotoneCubic(IReadOnlyList<Point> src, int perSegment = 10)
     {
         if (perSegment < 1) perSegment = 1;
         int n = src.Count;
         if (n < 3)
         {
-            // 少于 3 个点没有“曲率”可言，原样返回
+            //             // Fewer than 3 points have no "curvature"; return them unchanged
             return new List<Point>(src);
         }
 
@@ -37,7 +37,7 @@ public static class Interpolation
             ys[i] = src[i].Y;
         }
 
-        // 1) 各区间割线斜率
+        //         // 1) Secant slope of each interval
         var delta = new double[n - 1];
         for (int i = 0; i < n - 1; i++)
         {
@@ -45,19 +45,19 @@ public static class Interpolation
             delta[i] = Math.Abs(dx) < 1e-12 ? 0.0 : (ys[i + 1] - ys[i]) / dx;
         }
 
-        // 2) 初始切线：内部取相邻割线的平均，两端取端割线
+        //         // 2) Initial tangents: average of adjacent secants inside, the end secant at the edges
         var m = new double[n];
         m[0] = delta[0];
         m[n - 1] = delta[n - 2];
         for (int i = 1; i < n - 1; i++)
             m[i] = (delta[i - 1] + delta[i]) / 2.0;
 
-        // 3) Fritsch–Carlson 限制：保证不越界
+        //         // 3) Fritsch-Carlson limiter: keeps the curve inside the data
         for (int i = 0; i < n - 1; i++)
         {
             if (Math.Abs(delta[i]) < 1e-12)
             {
-                // 平坦区间，两端切线置零，避免出现鼓包
+                //                 // Flat interval: zero both tangents so no bump appears
                 m[i] = 0.0;
                 m[i + 1] = 0.0;
                 continue;
@@ -75,7 +75,7 @@ public static class Interpolation
             }
         }
 
-        // 4) 逐段 Hermite 求值
+        //         // 4) Evaluate Hermite per segment
         var result = new List<Point>((n - 1) * perSegment + 1);
         result.Add(new Point(xs[0], ys[0]));
 
@@ -84,7 +84,7 @@ public static class Interpolation
             double h = xs[i + 1] - xs[i];
             if (h <= 0)
             {
-                // X 非递增时退化为直线，绝不除以零
+                //                 // Non-increasing X degenerates to a straight line; never divide by zero
                 result.Add(new Point(xs[i + 1], ys[i + 1]));
                 continue;
             }
@@ -109,14 +109,14 @@ public static class Interpolation
     }
 
     /// <summary>
-    /// 给纵轴留白：按数据范围上下各扩 12%，并避免零跨度（全平局）时除零。
+    ///     /// Pad the Y axis: extend the data range by 12% on both sides and avoid division by zero on a flat match.
     /// </summary>
     public static (double Min, double Max) PadRange(double dataMin, double dataMax, double padRatio = 0.12)
     {
         double span = dataMax - dataMin;
         if (span <= 1e-9)
         {
-            // 完全水平的曲线：给一个固定视觉厚度，否则会贴在边框上
+            //             // Perfectly flat curve: give it a fixed visual thickness, otherwise it sits on the border
             double pad = Math.Max(Math.Abs(dataMax) * 0.002, 1.0);
             return (dataMin - pad, dataMax + pad);
         }

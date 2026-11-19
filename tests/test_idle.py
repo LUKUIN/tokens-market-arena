@@ -43,7 +43,7 @@ class _IdleBase(unittest.TestCase):
         self.addCleanup(shutil.rmtree, home, True)
         eng = T.Engine(home)
         eng.roll_stop()          # the clock only starts after the difficulty lock
-        eng.challenge_decline()   # 本组用例不测挑战任务：按「不开启」进入正常对局
+        eng.challenge_decline()   # These cases do not exercise challenges: decline the prompt and run a normal match
         return eng
 
     def push_idle(self, eng):
@@ -126,7 +126,7 @@ class TestIdleDisabled(unittest.TestCase):
         self.addCleanup(shutil.rmtree, home, True)
         eng = T.Engine(home)
         eng.roll_stop()
-        eng.challenge_decline()   # 本组用例不测挑战任务：按「不开启」进入正常对局
+        eng.challenge_decline()   # These cases do not exercise challenges: decline the prompt and run a normal match
         for _ in range(200):
             eng.tick()
         self.assertFalse(eng.s["finished"])

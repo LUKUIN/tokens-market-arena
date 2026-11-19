@@ -58,7 +58,7 @@ class LockedIndexTest(_Base):
         e = self.make()
         e.start_roll()
         e.roll_stop()
-        e.challenge_decline()   # 本组用例不测挑战任务：按「不开启」进入正常对局
+        e.challenge_decline()   # These cases do not exercise challenges: decline the prompt and run a normal match
         e.reset(count=False)
         r = e.roll_stop()
         self.assertEqual(r["index"], 3)
@@ -131,7 +131,7 @@ class ReportIndexTest(_Base):
         e = self.make()
         e.start_roll()
         e.roll_stop()
-        e.challenge_decline()   # 本组用例不测挑战任务：按「不开启」进入正常对局
+        e.challenge_decline()   # These cases do not exercise challenges: decline the prompt and run a normal match
         self.assertEqual(e._roll_index_text(),
                          ("9", T.GAP_LEVELS[4][0], T.LIQ_LEVELS[1][0]))
 
@@ -150,8 +150,8 @@ class RandomStreamRegressionTest(_Base):
             home = tempfile.mkdtemp(prefix="tm_repro2_")
             self.addCleanup(shutil.rmtree, home, True)
             e = T.Engine(home)
-            e.s["events_on"] = False   # 一大波是否触发会消耗随机数，测价格流时先排除它
-            e.s["news_rate"] = 0.0     # 构造期随机抽取，若不固定两次的新闻流会对不上
+            e.s["events_on"] = False   # whether the wave fires consumes RNG draws; rule it out when testing the price stream
+            e.s["news_rate"] = 0.0     # news is drawn at construction time; without pinning it two runs' streams diverge
             e.s["roll_phase"] = 0.0
             T.random.seed(576407804)
             e.s["begun"] = True

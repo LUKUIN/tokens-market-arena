@@ -1,10 +1,10 @@
-# Git 的属性规则是「后面的覆盖前面的」，所以通配规则必须写在最前面。
+# Git applies the last matching attribute rule, so the wildcard rule must come first.
 
-# 默认：自动检测、统一 LF
+# Default: auto-detect, LF everywhere
 * text=auto eol=lf
 
-# 例外：Windows 脚本必须 CRLF。
-# bat 用 LF 存盘时 cmd 会把多行粘成一句，中文全变成「不是内部或外部命令」。
+# Exception: Windows scripts must use CRLF.
+# A .bat saved with LF makes cmd join the lines into one, and the Chinese text becomes "'xxx' is not recognized as an internal or external command".
 *.bat  text eol=crlf
 *.cmd  text eol=crlf
 *.ps1  text eol=crlf

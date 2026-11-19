@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace TokensWatch.Models;
 
-/// <summary>GET /assist/pending 的回包。「Outside Mercy」窗口的数据源。</summary>
+/// /// <summary>Response of GET /assist/pending. Data source for the "Outside Mercy" window.</summary>
 public sealed class AssistPending
 {
     [JsonPropertyName("enabled")] public bool Enabled { get; set; }
@@ -19,7 +19,7 @@ public sealed class AssistLogItem
 {
     [JsonPropertyName("tick")] public int Tick { get; set; }
 
-    /// <summary>ai = 参赛者，human = 观众席，其他值一律按「系统」显示。</summary>
+    ///     /// <summary>ai = contestant, human = spectator, anything else renders as "system".</summary>
     [JsonPropertyName("who")] public string Who { get; set; } = "";
 
     [JsonPropertyName("text")] public string Text { get; set; } = "";
@@ -32,7 +32,7 @@ public sealed class AssistTicket
     [JsonPropertyName("text")] public string Text { get; set; } = "";
 }
 
-/// <summary>GET /scratchpad 的回包。「AI Actions」窗口的数据源。</summary>
+/// /// <summary>Response of GET /scratchpad. Data source for the "AI Actions" window.</summary>
 public sealed class ScratchpadResponse
 {
     [JsonPropertyName("items")] public List<ScratchpadItem> Items { get; set; } = new();
@@ -46,8 +46,8 @@ public sealed class ScratchpadItem
 }
 
 /// <summary>
-/// tick 有时是数字、有时缺席（Python 侧用 x.get("tick", "—") 兜底）。
-/// 用字符串承载，反序列化时由转换器处理两种形态。
+/// /// tick is sometimes a number and sometimes absent (Python falls back with x.get("tick", "-")).
+/// /// Carried as a string; the converter handles both shapes on deserialization.
 /// </summary>
 [JsonConverter(typeof(JsonElementLiteConverter))]
 public readonly struct JsonElementLite

@@ -9,8 +9,8 @@ using TokensWatch.Models;
 namespace TokensWatch.Panels;
 
 /// <summary>
-/// Positions「More」。对应 tm_watch_ai.py 第 1230-1266 行。
-/// 弹窗内容跟随主循环刷新，关闭后由主窗口清引用。
+/// /// Positions "More". Mirrors tm_watch_ai.py lines 1230-1266.
+/// /// The popup refreshes with the main loop; the main window drops the reference on close.
 /// </summary>
 public partial class HoldWindow : Window
 {

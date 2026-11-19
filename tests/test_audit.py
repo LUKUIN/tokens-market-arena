@@ -21,9 +21,9 @@ import tm_engine as T  # noqa: E402
 
 
 def _summary_path(html_path):
-    """报告按类型分目录：HTML 在 reports/HTML Reports，同名 JSON 在 reports/JSON Reports。
+    """Reports are split by type: HTML under reports/HTML Reports, the same-named JSON under reports/JSON Reports.
 
-    兼容旧布局（两者同目录），便于读取历史归档。
+    The old layout (both in one directory) is still accepted so archived runs remain readable.
     """
     root = os.path.dirname(html_path)
     if os.path.basename(root) == "HTML Reports":
@@ -40,7 +40,7 @@ class AuditCase(unittest.TestCase):
         self.addCleanup(shutil.rmtree, home, True)
         eng = T.Engine(home)
         eng.roll_stop()
-        eng.challenge_decline()   # 本组用例不测挑战任务：按「不开启」进入正常对局
+        eng.challenge_decline()   # These cases do not exercise challenges: decline the prompt and run a normal match
         return eng
 
 
@@ -138,13 +138,13 @@ class TestSeededReset(AuditCase):
         eng_a = self.make()
         eng_a.reset(count=False, seed=123456)
         eng_a.roll_stop()
-        eng_a.challenge_decline()   # 本组用例不测挑战任务：按「不开启」进入正常对局
+        eng_a.challenge_decline()   # These cases do not exercise challenges: decline the prompt and run a normal match
         a = eng_a.state()["prices"]
 
         eng_b = self.make()
         eng_b.reset(count=False, seed=123456)
         eng_b.roll_stop()
-        eng_b.challenge_decline()   # 本组用例不测挑战任务：按「不开启」进入正常对局
+        eng_b.challenge_decline()   # These cases do not exercise challenges: decline the prompt and run a normal match
         b = eng_b.state()["prices"]
 
         self.assertEqual(eng_a.s["seed"], 123456)
@@ -159,11 +159,11 @@ class TestSeededReset(AuditCase):
         eng_a = self.make()
         eng_a.reset(count=False, seed=1)
         eng_a.roll_stop()
-        eng_a.challenge_decline()   # 本组用例不测挑战任务：按「不开启」进入正常对局
+        eng_a.challenge_decline()   # These cases do not exercise challenges: decline the prompt and run a normal match
         eng_b = self.make()
         eng_b.reset(count=False, seed=2)
         eng_b.roll_stop()
-        eng_b.challenge_decline()   # 本组用例不测挑战任务：按「不开启」进入正常对局
+        eng_b.challenge_decline()   # These cases do not exercise challenges: decline the prompt and run a normal match
         for _ in range(3):
             eng_a.tick()
             eng_b.tick()

@@ -3,12 +3,12 @@ using System.Windows.Media;
 namespace TokensWatch.Helpers;
 
 /// <summary>
-/// 与 src/tm_watch_ai.py 第 127-152 行的配色/字体保持一一对应。
-/// 数值改动时请同步 Python 侧，两个观众席必须看着是同一个产品。
+/// /// One-to-one match with the colors and fonts at src/tm_watch_ai.py lines 127-152.
+/// /// Change a value here and change Python too: the two spectators must look like the same product.
 /// </summary>
 public static class Theme
 {
-    // ---- 颜色（与 Python 常量同名同值）----
+    //     // ---- Colors (same names and values as the Python constants) ----
     public const string BgHex = "#F3F3F3";
     public const string CardHex = "#FFFFFF";
     public const string BorderHex = "#E1E1E1";
@@ -19,7 +19,7 @@ public static class Theme
     public const string RedHex = "#C42B1C";
     public const string OrangeHex = "#CA5010";
 
-    // ---- 事件流分类颜色（对应 _write_rows 的 kind_color）----
+    //     // ---- Event-stream category colors (mirrors kind_color in _write_rows) ----
     public const string LogGapHex = "#C42B1C";      // Black swan
     public const string LogLiqHex = "#8E562E";      // Liquidity drained
     public const string LogNewsHex = "#CA5010";     // Events
@@ -27,15 +27,15 @@ public static class Theme
     public const string LogCloseHex = "#038387";    // Close position (distinct from open)
     public const string LogRiskHex = "#A4262C";     // Risk
     public const string LogLoanHex = "#8764B8";     // Borrow
-    public const string LogEndHex = "#444444";      // 对局结束
-    public const string LogTraderHex = "#44546A";   // 身份
+    public const string LogEndHex = "#444444";      // match end
+    public const string LogTraderHex = "#44546A";   // identity
 
-    // ---- 字体 ----
-    /// <summary>中文界面用雅黑；Segoe UI Variable 不含中文字形，不能替代。</summary>
+    //     // ---- Fonts ----
+    ///     /// <summary>Microsoft YaHei UI carries the CJK glyphs; Segoe UI Variable has none and cannot replace it.</summary>
     public const string UiFont = "Microsoft YaHei UI";
     public const string MonoFont = "Consolas";
 
-    // ---- Quotes品种顺序与配色（PAIR_ORDER / PAIR_COLORS）----
+    //     // ---- Quote instrument order and colors (PAIR_ORDER / PAIR_COLORS) ----
     public static readonly string[] PairOrder =
     {
         "AURA/CORE", "FROST/CORE", "AMBER/CORE", "TIDE/CORE",
@@ -56,7 +56,7 @@ public static class Theme
     public static string PairColor(string pair) =>
         PairColorMap.TryGetValue(pair, out var hex) ? hex : MutedHex;
 
-    // ---- 涨跌/Borrow映射表（_GAP_PCT / _LIQ_PCT）----
+    //     // ---- Gap / Borrow lookup tables (_GAP_PCT / _LIQ_PCT) ----
     public static readonly Dictionary<string, string> GapPct = new()
     {
         ["very low"] = "0.24%", ["low"] = "0.60%", ["medium"] = "1.50%",
@@ -72,7 +72,7 @@ public static class Theme
     public const string FrName = "Preferred Financing";
     public const string SlotName = "Slot machine";
 
-    // ---- Activity标签页（LOG_TABS）----
+    //     // ---- Activity tabs (LOG_TABS) ----
     public static readonly (string Key, string Label)[] LogTabs =
     {
         ("all", "All"),
@@ -83,7 +83,7 @@ public static class Theme
         ("risk", "Risk"),
     };
 
-    // ---- Brush 缓存：SolidColorBrush 必须 Freeze 才能在多线程/动画里安全复用 ----
+    //     // ---- Brush cache: a SolidColorBrush must be frozen to be reused safely across threads and animations ----
     private static readonly Dictionary<string, SolidColorBrush> BrushCache = new();
 
     public static SolidColorBrush Brush(string hex)
@@ -104,7 +104,7 @@ public static class Theme
     public static readonly SolidColorBrush BorderBrush = Brush(BorderHex);
     public static readonly SolidColorBrush Text = Brush(TextHex);
 
-    /// <summary>正文色别名。XAML 里叫 Ink，C# 里两个名字都能用，避免风格分裂。</summary>
+    ///     /// <summary>Body-text color alias. XAML calls it Ink, C# accepts either name, so styling never splits.</summary>
     public static readonly SolidColorBrush Ink = Text;
     public static readonly SolidColorBrush Muted = Brush(MutedHex);
     public static readonly SolidColorBrush Blue = Brush(BlueHex);

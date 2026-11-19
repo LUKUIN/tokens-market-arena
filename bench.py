@@ -170,7 +170,7 @@ def run_one(seed, policy, outdir, roll_index=None):
             break
         try:
             pol(eng, rng, tick)
-        except Exception as exc:        # 策略出错不能吞掉整局
+        except Exception as exc:        # a failing policy must not swallow the whole match
             print("  seed %d tick %d policy error: %s" % (seed, tick, exc), file=sys.stderr)
         eng.tick()
 
@@ -264,9 +264,9 @@ def _print_stats(rows):
 
 
 def _report_json_dir(root):
-    """报告目录。新布局是 reports/JSON Reports；旧数据可能还在 reports/ 根下。
+    """Report directory. The new layout is reports/JSON Reports; older data may still sit under reports/.
 
-    返回实际存在 JSON 的那个目录，两个都没有时返回新布局路径（供报错信息用）。
+    Returns whichever directory actually holds the JSON, or the new-layout path when neither exists (for error messages).
     """
     sub = os.path.join(root, "JSON Reports")
     if os.path.isdir(sub):

@@ -19,8 +19,8 @@
         </Grid.RowDefinitions>
 
         <!-- ============================================================
-             顶栏 56px：品牌 / 身份 / 模式徽章 / Status / 按钮，一行放完。
-             原版拆成「红色标题栏 + 深蓝工具栏」两行，做了同一件事。
+             Header bar, 56 px: brand / identity / mode badge / Status / buttons, all on one line.
+             The original split it into "red title bar + dark blue toolbar": two rows doing the same job.
              ============================================================ -->
         <Border Grid.Row="0" Background="{StaticResource Card}" CornerRadius="8"
                 BorderBrush="{StaticResource Line}" BorderThickness="1"
@@ -100,28 +100,28 @@
         </Border>
 
         <!-- ============================================================
-             主体：左 1424 看盘 / 右 400 辅助
+             Body: 1,424 px board on the left / 400 px assist panel on the right
              ============================================================ -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="12" />
-                <!-- 宽度由 DisplayProfile 按窗口档位设置：1920 档 400，1600 档 360 -->
+                <!-- Width comes from DisplayProfile per window tier: 400 at the 1920 tier, 360 at the 1600 tier -->
                 <ColumnDefinition x:Name="ColRight" Width="400" />
             </Grid.ColumnDefinitions>
 
-            <!-- ======== 左栏 ========  -->
+            <!-- ======== Left column ========  -->
             <Grid Grid.Column="0">
-                <!-- 曲线行用 * ：窗口高度不够时让它先收缩，报价台必须留在视野里 -->
+                <!-- The curve row uses *: shrink it first when the window is short; the quote board must stay visible -->
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />  <!-- 指标卡 -->
-                    <RowDefinition Height="Auto" />  <!-- 状态条 -->
-                    <RowDefinition Height="*" />     <!-- 权益曲线：吃剩余高度，最小 200 -->
-                    <RowDefinition Height="Auto" />  <!-- 持仓明细 -->
-                    <RowDefinition Height="Auto" />  <!-- 报价台 -->
+                    <RowDefinition Height="Auto" />  <!-- Metric cards -->
+                    <RowDefinition Height="Auto" />  <!-- Status bar -->
+                    <RowDefinition Height="*" />     <!-- Equity curve: takes the remaining height, 200 px minimum -->
+                    <RowDefinition Height="Auto" />  <!-- Positions detail -->
+                    <RowDefinition Height="Auto" />  <!-- Quote board -->
                 </Grid.RowDefinitions>
 
-                <!-- 指标卡：1920 下宽度充裕，四格对称 -->
+                <!-- Metric cards: ample width at 1920, four symmetric cells -->
                 <UniformGrid Grid.Row="0" Columns="4" Margin="0,0,0,10">
                     <Border Style="{StaticResource CardBorder}" Margin="0,0,5,0" Padding="18,14">
                         <StackPanel>
@@ -133,8 +133,8 @@
                     <Border Style="{StaticResource CardBorder}" Margin="5,0,5,0" Padding="18,14">
                         <StackPanel>
                             <TextBlock Text="Total P&amp;L" Style="{StaticResource Caption}" />
-                            <!-- Viewbox(DownOnly)：1600 档卡片变窄时 "+131,840 (+13.18%)" 会被右边缘切掉，
-                                 空间够就保持 27 号，不够才等比缩小。 -->
+                            <!-- Viewbox (DownOnly): at the 1600 tier the card narrows and "+131,840 (+13.18%)" would be clipped by the right edge,
+                             so keep 27 pt when there is room and scale down proportionally when there is not. -->
                             <Viewbox StretchDirection="DownOnly" HorizontalAlignment="Left" Margin="0,8,0,0">
                                 <TextBlock x:Name="TxtPnl" Text="—" FontSize="27" FontWeight="Bold"
                                            TextOptions.TextFormattingMode="Ideal" />
@@ -157,7 +157,7 @@
                     </Border>
                 </UniformGrid>
 
-                <!-- 资金 + Target统计合并成一条紧凑信息带（原版是两条各占一整行） -->
+                <!-- Funds + Target stats merged into one compact strip (the original used two full-width rows) -->
                 <Border Grid.Row="1" Style="{StaticResource CardBorder}" Padding="16,10" Margin="0,0,0,10">
                     <StackPanel>
                         <TextBlock x:Name="TxtFunds" Text="—" FontSize="14" TextWrapping="Wrap" />
@@ -167,9 +167,9 @@
                     </StackPanel>
                 </Border>
 
-                <!-- 权益曲线：主视觉 -->
+                <!-- Equity curve: primary visual -->
                 <Border Grid.Row="2" Style="{StaticResource CardBorder}" Padding="14" Margin="0,0,0,10">
-                    <!-- 原来固定 420：1600×900 下会把报价台顶出窗口。改成最小 200 + 自适应。 -->
+                    <!-- Was a fixed 420: at 1600x900 that pushed the quote board out of the window. Now 200 px minimum plus auto-fit. -->
                     <Grid MinHeight="200">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -185,7 +185,7 @@
                     </Grid>
                 </Border>
 
-                <!-- Positions：空态自动塌缩 -->
+                <!-- Positions: collapses on its own when empty -->
                 <Border Grid.Row="3" Style="{StaticResource CardBorder}" Padding="14" Margin="0,0,0,10">
                     <Grid>
                         <Grid.RowDefinitions>
@@ -220,7 +220,7 @@
                     </Grid>
                 </Border>
 
-                <!-- Quotes：7 品种一排，每格约 200px，不再 4+3 留空洞 -->
+                <!-- Quotes: 7 instruments in one row, about 200 px each, no 4+3 gap -->
                 <Border Grid.Row="4" Style="{StaticResource CardBorder}" Padding="14">
                     <StackPanel>
                         <TextBlock Text="Quotes" Style="{StaticResource SectionTitle}" Margin="4,0,0,10" />
@@ -229,7 +229,7 @@
                 </Border>
             </Grid>
 
-            <!-- ======== 右栏 ========  -->
+            <!-- ======== Right column ========  -->
             <Grid Grid.Column="2">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -307,7 +307,7 @@
                                        FontSize="15" TextWrapping="Wrap" />
                         </Grid>
 
-                        <!-- 时间进度 -->
+                        <!-- Time progress -->
                         <Grid Margin="0,16,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -325,7 +325,7 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Activity：整列Left高度，最新在上，可滚动 -->
+                <!-- Activity: full column height, newest on top, scrollable -->
                 <!-- Challenge tasks: asked after the difficulty roll; once enabled, the three
                      objectives show their live status. A port of PvZ2 Level Objectives:
                      checked = cleared / cross = broken / dot = in progress. -->

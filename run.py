@@ -620,7 +620,7 @@ _self_heal()
 
 
 def _env_int(raw, default):
-    """环境变量 / 位置参数转端口或整数：非法值回退默认值并提示，不抛异常。"""
+    """Turn an environment variable or positional argument into a port or integer: an invalid value falls back to the default with a notice instead of raising."""
     if raw is None or str(raw).strip() == "":
         return default
     try:

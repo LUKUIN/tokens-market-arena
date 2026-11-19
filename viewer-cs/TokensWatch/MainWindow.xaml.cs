@@ -16,17 +16,17 @@ namespace TokensWatch;
 
 public partial class MainWindow : Window
 {
-    // 系统强调色会把标题栏刷成红色（本机就是这个情况），
-    // 和整体的浅灰卡片风格打架。Win11 允许直接指定标题栏配色。
+    // // The system accent color paints the title bar red (which is what this machine does),
+    // // clashing with the overall light-grey card styling. Win11 lets us set the caption color directly.
     private const int DWMWA_CAPTION_COLOR = 35;
     private const int DWMWA_TEXT_COLOR = 36;
 
     [System.Runtime.InteropServices.DllImport("dwmapi.dll", PreserveSig = true)]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
 
-    // ---- 移除标题栏右上角的三个系统按钮 ----
-    // 对齐 Python 的 _hide_close_button（第 83-103 行）。理由：看盘时手滑点到 X 窗口就没了，
-    // 这一局就再没人盯着；Minimize仍可以用顶栏那个自带按钮。
+    // // ---- Remove the three system buttons from the title bar top right ----
+    // // Mirrors _hide_close_button in Python (lines 83-103). Rationale: a stray click on X closes the window
+    // // and nobody watches the match any more; Minimize still works through the built-in top-bar button.
     private const int GWL_STYLE = -16;
     private const int WS_SYSMENU = 0x00080000;
     private const uint SWP_NOSIZE = 0x0001;
@@ -58,20 +58,20 @@ public partial class MainWindow : Window
             return;
         }
 
-        // 1) 标题栏配色跟随浅灰主题，而不是系统强调色（本机是红色）
+        // // 1) Caption color follows the light-grey theme instead of the system accent (red on this machine)
         try
         {
-            int caption = 0x00F3F3F3;   // COLORREF 是 0x00BBGGRR，不是 RGB
+            int caption = 0x00F3F3F3;   // COLORREF is 0x00BBGGRR, not RGB
             DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, ref caption, sizeof(int));
             int text = 0x001A1A1A;
             DwmSetWindowAttribute(hwnd, DWMWA_TEXT_COLOR, ref text, sizeof(int));
         }
         catch
         {
-            // Win10 没有这两个属性，保留系统默认
+            // // Win10 has neither property; keep the system default
         }
 
-        // 2) 去掉 Minimize / 最大化 / 关闭
+        // // 2) Drop Minimize / Maximize / Close
         try
         {
             int style = GetWindowLong(hwnd, GWL_STYLE);
@@ -84,17 +84,17 @@ public partial class MainWindow : Window
         }
         catch
         {
-            // 失败时保留系统按钮，不影响其他功能
+            // // On failure keep the system buttons; nothing else is affected
         }
     }
 
     private readonly StateClient _client = new();
 
-    // 主循环 300ms，对齐 Python 侧 self.root.after(delay, self.refresh)
+    // // Main loop at 300 ms, mirroring self.root.after(delay, self.refresh) on the Python side
     private readonly DispatcherTimer _uiTimer;
     private const int PollMs = 300;
 
-    // 「Outside Mercy」低频轮询，对齐 _poll_assist
+    // // Low-frequency "Outside Mercy" poll, mirroring _poll_assist
     private readonly DispatcherTimer _assistTimer;
     private const int AssistPollMs = 3000;
 
@@ -104,8 +104,8 @@ public partial class MainWindow : Window
     private readonly HashSet<(int Tick, string Text)> _logSeen = new();
     private readonly HashSet<string> _assistSeen = new();
 
-    /// <summary>Activity筛选。主窗口与「Activity (all)」弹窗共享这一个状态，
-    /// 对齐 Python 的 self._log_filter：弹窗里切分类，外面的最新一条也跟着变。</summary>
+    /// /// <summary>Activity filter. The main window and the "Activity (all)" popup share this state,
+    /// /// mirroring self._log_filter in Python: switching a category in the popup changes the newest line outside too.</summary>
     private string _logFilter = "all";
 
     public string LogFilter => _logFilter;
@@ -128,13 +128,13 @@ public partial class MainWindow : Window
     //   1) the same warning being read on two consecutive polls (which would replay the
     //      sound) when polling is slower than the tick clock;
     //   2) a replay after the window is minimised and restored and the UI is rebuilt.
-        private bool _hugeWaveShowLatch;   // 上一次渲染时 show 的值，用于取上升沿
+        private bool _hugeWaveShowLatch;   // last rendered show value, used to detect the rising edge
 
-    // 出场动画的两个时长（毫秒），只在这里改。
-    // 参考：PvZ 原版文字缩放到位实测是 200ms（60fps 下 12 帧），但那是 800×600 的画面；
-    // 放到 1920 宽的观众席上观感偏急，按用户反馈放慢到 620/260。
-    // 注意 hugewave.ogg 本身长 6.5709 秒，那是「音效 + 停留」的总长，不是缩放时长，
-    // 横幅停留时间由下面的 10 秒定时器控制，已经覆盖。
+    // // The two exit-animation durations in milliseconds; change them only here.
+    // // Reference: the PvZ original scales its text in 200 ms (12 frames at 60 fps), but that is an 800x600 screen;
+    // // on a 1920-wide spectator it reads as rushed, so feedback moved it to 620/260.
+    // // Note hugewave.ogg itself runs 6.5709 s: that is "sound + hold", not the scale duration,
+    // // and the banner hold is driven by the 10-second timer below, which already covers it.
     private const int HugeWaveScaleMs = 620;
     private const int HugeWaveFadeMs = 260;
 
@@ -147,8 +147,8 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
-        // 按显示器可用区域挑尺寸：2K 及以上 1920×1080，1080p 换 1600×900（观察员反馈固定
-        // 1920×1080 在 1080p 屏上顶满整屏）。XAML 里的 1920×1080 只是设计基准与设计器预览。
+        // // Pick a size from the display work area: 1920x1080 at 2K and above, 1600x900 on 1080p (observers reported
+        // // a fixed 1920x1080 filling the whole 1080p screen). The 1920x1080 in XAML is only the design baseline.
         var prof = DisplayProfile.Pick();
         Width = prof.Width;
         Height = prof.Height;
@@ -171,9 +171,9 @@ public partial class MainWindow : Window
 
         Loaded += (_, _) =>
         {
-            // 设计基准是 1920×1080。本机是 2K 屏，正常情况下放得下；
-            // 但如果系统缩放调到 150%，1920 DIP 会超出 2560 物理像素宽，
-            // 这里兜一层，保证窗口永远不跑到屏幕外。
+            // // Design baseline is 1920x1080. This machine has a 2K panel, so it fits normally;
+            // // at 150% system scaling, though, 1920 DIP exceeds 2560 physical pixels,
+            // // so clamp here and make sure the window never lands off screen.
             var wa = SystemParameters.WorkArea;
             if (Width > wa.Width) Width = wa.Width;
             if (Height > wa.Height) Height = wa.Height;
@@ -192,7 +192,7 @@ public partial class MainWindow : Window
         };
     }
 
-    // ==================== 轮询 ====================
+    // // ==================== Polling ====================
 
     private async Task PollAsync()
     {
@@ -241,8 +241,8 @@ public partial class MainWindow : Window
             {
                 foreach (var t in fresh) _assistSeen.Add(t);
 
-                // 对齐 Python 第 584-594 行：新求助到达时响提示音并弹窗。
-                // 少了这一步，玩家在别处操作时就会完全错过求助窗口。
+                // // Mirrors Python lines 584-594: a new ask rings the chime and raises the popup.
+                // // Without this, a player busy elsewhere misses the ask window entirely.
                 System.Media.SystemSounds.Asterisk.Play();
 
                 string cn = n switch { 1 => "one", 2 => "two", 3 => "three", _ => n.ToString() };
@@ -260,11 +260,11 @@ public partial class MainWindow : Window
         }
         catch
         {
-            // assist 通道不可用不影响主界面
+            // // An unavailable assist channel never affects the main UI
         }
     }
 
-    // ==================== 渲染 ====================
+    // // ==================== Rendering ====================
 
     private void Render(WatchState st)
     {
@@ -275,7 +275,7 @@ public partial class MainWindow : Window
         // ---------- challenge tasks (PvZ2 Level Objectives port) ----------
         RenderChallenge(st);
 
-        // ---------- 顶栏 ----------
+        // // ---------- Top bar ----------
         TxtTrader.Text = string.IsNullOrEmpty(st.Trader) ? "Guest" : st.Trader;
         TxtMode.Text = st.EventsOn ? "Random events ON" : "Ideal (no random events)";
         TxtMode.Foreground = st.EventsOn ? Theme.Blue : Theme.Muted;
@@ -287,7 +287,7 @@ public partial class MainWindow : Window
         ChipSlot.Visibility = slot ? Visibility.Visible : Visibility.Collapsed;
         ChipSpecial.Visibility = (fr || slot) ? Visibility.Collapsed : Visibility.Visible;
 
-        // ---------- 指标卡 ----------
+        // // ---------- Metric cards ----------
         TxtEquity.Text = st.Equity.ToString("N0", CultureInfo.CurrentCulture);
         TxtEquity.Foreground = st.Equity >= 1_000_000 ? Theme.Green : Theme.Red;
 
@@ -308,7 +308,7 @@ public partial class MainWindow : Window
         TxtTargetPct.Text = st.TargetPct.ToString("0.0", CultureInfo.CurrentCulture) + "%";
         TxtTargetPct.Foreground = st.TargetPct >= 100 ? Theme.Green : Theme.Blue;
 
-        // ---------- 资金行 ----------
+        // // ---------- Funds row ----------
         var loan = st.Loan;
         string rateTxt = loan is null ? "—" : $"{loan.RatePct:0.000}%/tick";
         TxtFunds.Text = loan is null
@@ -317,7 +317,7 @@ public partial class MainWindow : Window
               $"Debt {loan.Balance:N0} | Interest {loan.Interest:N0} | {rateTxt}";
         TxtFunds.Foreground = st.TotalBorrowed > 0 ? Theme.Red : Theme.Blue;
 
-        // ---------- Status文案 ----------
+        // // ---------- Status text ----------
         string stateTxt = "Trading normally";
         if (st.NegativeRemain is { } nr)
             stateTxt = $"Balance negative · {(int)nr}s to borrow or the round ends";
@@ -356,7 +356,7 @@ public partial class MainWindow : Window
                       || (st.MarginLevel is { } mlv2 && mlv2 < 50);
         TxtRunState.Foreground = danger ? Theme.Red : Theme.Muted;
 
-        // ---------- 统计行 ----------
+        // // ---------- Statistics row ----------
         string mddTxt = st.MaxDrawdown is { } mdd ? $"{mdd:0.00}%" : "—";
         string shp = st.Sharpe is { } s ? s.ToString("0.00", CultureInfo.CurrentCulture) : "—";
         // Profit factor (gross profit / gross loss) replaces the win rate here: with leverage,
@@ -371,7 +371,7 @@ public partial class MainWindow : Window
                         (st.TargetBonus > 0 ? $" (loan uplift +{st.TargetBonus:N0})" : "") +
                         $" | Drawdown {mddTxt} | Sharpe {shp} | {st.ClosedN} trades · profit factor {pf} | fees {fee:N0}";
 
-        // ---------- 快进 ----------
+        // // ---------- Fast forward ----------
         if (st.Ff is { } ff)
         {
             double usedSum = ff.Records.Sum();
@@ -382,7 +382,7 @@ public partial class MainWindow : Window
             TxtFastForward.Foreground = ff.CoolLeft > 0 ? Theme.Red : Theme.Muted;
         }
 
-        // ---------- 时间进度 ----------
+        // // ---------- Time progress ----------
         double total = Math.Max(1, st.SessionMinutes * 60.0);
         double frac = Math.Clamp(st.ElapsedSeconds / total, 0, 1);
         double remain = Math.Max(0, total - st.ElapsedSeconds);
@@ -392,12 +392,12 @@ public partial class MainWindow : Window
         TxtTimeLeft.Text = $"Left {(int)remain / 60:00}:{(int)remain % 60:00}";
         TxtTimeLeft.Foreground = frac < 0.8 ? Theme.Muted : Theme.Orange;
 
-        // ---------- Status面板 ----------
+        // // ---------- Status panel ----------
         TxtAudit.Text = st.Audit.Count > 0 ? $"{st.Audit.Count} warnings" : "passed (4 identities)";
         TxtAudit.Foreground = st.Audit.Count > 0 ? Theme.Red : Theme.Green;
 
         string gapPct = st.GapLevel is not null && Theme.GapPct.TryGetValue(st.GapLevel, out var gp) ? gp : "?";
-        TxtGap.Text = $"{st.GapLevel ?? "—"}（{gapPct}/tick）";
+        TxtGap.Text = $"{st.GapLevel ?? "—"} ({gapPct}/tick)";
 
         string liqPct = st.LiqLevel is not null && Theme.LiqPct.TryGetValue(st.LiqLevel, out var lp) ? lp : "?";
         TxtLiq.Text = $"{st.LiqLevel ?? "—"} ({liqPct} round-trip)";
@@ -406,12 +406,12 @@ public partial class MainWindow : Window
         var specialNames = new List<string>();
         if (fr) specialNames.Add(Theme.FrName);
         if (slot) specialNames.Add(Theme.SlotName);
-        TxtSpecialState.Text = specialNames.Count > 0 ? string.Join("、", specialNames) : "None";
+        TxtSpecialState.Text = specialNames.Count > 0 ? string.Join(", ", specialNames) : "None";
 
-        // Peak / Trough：直接取曲线上的极值，和图上标注的是同一组数字。
-        // 只有 1 个点时（刚开局）没有“波动”可言，峰谷会等于Principal，显示出来
-        // 反而让人以为「全程零波动」，与图表显示的「No data」也对不上，
-        // 所以阈值统一用 2，和数据曲线保持一致。
+        // // Peak / Trough: read the extremes straight off the curve so they match the chart annotations.
+        // // With only 1 point (right after the open) there is no "movement": peak and trough would equal
+        // // the Principal, which reads as "zero volatility all match" and disagrees with the chart "No data",
+        // // so both use a threshold of 2 and stay consistent with the curve.
         if (st.EquityCurve.Count >= 2)
         {
             double peak = double.MinValue, trough = double.MaxValue;
@@ -442,7 +442,7 @@ public partial class MainWindow : Window
             ? "—"
             : string.Format("Total {0} | fired {1} | pending {2}", hwi.Total, hwi.Fired, hwi.Left);
 
-        // ---------- 曲线 ----------
+        // // ---------- Curve ----------
         ChartEquity.SetData(st.EquityCurve, baseLine: 1_000_000, target: st.Target);
 
         // ---------- Positions ----------
@@ -454,7 +454,7 @@ public partial class MainWindow : Window
         // ---------- Activity ----------
         AppendEvents(st);
 
-        // ---------- 附属窗口跟随主循环 ----------
+        // // ---------- Child windows follow the main loop ----------
         RefreshHoldPanel();
     }
 
@@ -464,7 +464,7 @@ public partial class MainWindow : Window
 
         if (st.Positions.Count == 0)
         {
-            // 空态塌缩：不画表头，只留一句提示，避免 260px 的空白
+            // // Empty-state collapse: draw no header, just one hint line, so 260 px are not left blank
             HoldHeader.Visibility = Visibility.Collapsed;
             TxtHoldEmpty.Visibility = Visibility.Visible;
             BtnHoldMore.Visibility = Visibility.Collapsed;
@@ -552,8 +552,8 @@ public partial class MainWindow : Window
                 VerticalAlignment = VerticalAlignment.Center,
             };
 
-            // 7 列时每格只有约 200px：品种名、价格、涨跌挤在一行会被裁掉，
-            // 所以拆成「名称 + 涨跌」一行、「价格」一行的两行结构。
+            // // At 7 columns each cell is only about 200 px: instrument, price and change on one line get clipped,
+            // // so the layout splits into a "name + change" row and a "price" row.
             chg.Margin = new Thickness(0);
             chg.HorizontalAlignment = HorizontalAlignment.Right;
 
@@ -647,18 +647,18 @@ public partial class MainWindow : Window
 
         if (!added) return;
 
-        // 不截断：活动流要能回看到开局第一条。渲染侧已经是虚拟化列表，
-        // 主窗右栏本来就只画最近 30 条，内存里留全量不会拖慢界面。
+        // // Never truncate: the activity feed must scroll back to the very first entry. The renderer is already virtualized,
+        // // and the right column only draws the latest 30 entries, so keeping the full list in memory costs nothing.
 
         RenderLogFeed();
         _logWindow?.AppendAll(_logEvents);
     }
 
     /// <summary>
-    /// 右栏Activity：最新在上，最多渲染 30 条，超出靠滚动。
-    /// 原版主窗口只显示最新 1 条，等于把一整个区块让给一行字——这里把空间用满。
+    /// /// Right-column activity: newest on top, at most 30 rendered, the rest via scrolling.
+    /// /// The original main window showed the latest single line, giving a whole block to one row; this fills the space.
     /// </summary>
-    /// <summary>由「Activity (all)」弹窗回调，保证内外两处筛选一致。</summary>
+    /// /// <summary>Called back by the "Activity (all)" popup so the filter is identical inside and out.</summary>
     public void SetLogFilter(string key)
     {
         if (_logFilter == key) return;
@@ -694,7 +694,7 @@ public partial class MainWindow : Window
 
 
     /// <summary>
-    /// Challenge card. Four stages：
+    /// /// Challenge card. Four stages:
     ///   none -- not rolled yet, shown as not enabled;
     ///   ask  -- waiting for the contestant, candidates listed with a countdown;
     ///   on   -- enabled, each row shows check / cross / dot;
@@ -924,7 +924,7 @@ public partial class MainWindow : Window
 
     private static string KindColor(string kind, string text)
     {
-        // 对齐 Python _write_rows 的 kind_color；Black swan里要拆出「Liquidity drained」
+        // // Mirrors kind_color in the Python _write_rows; the black-swan bucket must pull out "Liquidity drained"
         if (kind == "gap")
         {
             bool isLiq = text.Contains("Liquidity drained") || text.Contains("Liquidity drained");
@@ -950,7 +950,7 @@ public partial class MainWindow : Window
         return $"{s / 60}m {s % 60:00}s";
     }
 
-    // ==================== 顶栏按钮 ====================
+    // // ==================== Top-bar buttons ====================
 
     private void OnMinimizeClick(object sender, RoutedEventArgs e)
         => WindowState = WindowState.Minimized;
@@ -968,12 +968,12 @@ public partial class MainWindow : Window
 
         try
         {
-            // 与 Python 侧「Stop related processes」按钮语义一致：先让服务自己收尾
+            // // Same semantics as the Python-side "Stop related processes" button: let the service wind itself down first
             _ = _client.PostShutdownAsync();
         }
         catch
         {
-            // 服务已经不在也没关系
+            // // Fine if the service is already gone
         }
 
         _closing = true;
@@ -1036,7 +1036,7 @@ public partial class MainWindow : Window
         if (_state is not null) _holdWindow.UpdateRows(_state.Positions);
     }
 
-    /// <summary>Positions弹窗需要跟随主循环刷新，由主循环推动。</summary>
+    /// /// <summary>The Positions popup refreshes with the main loop, driven by it.</summary>
     public void RefreshHoldPanel()
     {
         if (_holdWindow is { IsLoaded: true } && _state is not null)

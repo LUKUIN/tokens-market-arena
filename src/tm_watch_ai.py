@@ -154,9 +154,9 @@ FONT_MONO_BIG = ("Consolas", 11, "bold")
 
 # Event feed quick-filter tabs: (key, label).  "gap" and "liq" share the same
 # engine kind "gap", so they are split by the "[Liquidity drained]" text prefix.
-# 流动性事件的前缀（英文版 [Liquidity drained]、中文版【流动性枯竭】，
-# 两种括号都要覆盖——此前只匹配英文，中文事件全被归进「黑天鹅」）
-_LIQ_MARKS = ("[Liquidity drained]", "【流动性枯竭】", "[流动性枯竭]")
+# Liquidity event prefixes: the English edition emits "[Liquidity drained]" and the Chinese edition
+# emits the full-width form. Both bracket styles must be covered; matching only the English form
+_LIQ_MARKS = ("[Liquidity drained]", "\u3010\u6d41\u52a8\u6027\u67af\u7aed\u3011", "[\u6d41\u52a8\u6027\u67af\u7aed]")
 
 LOG_TABS = (
     ("all", "All"),
@@ -254,7 +254,7 @@ class Watch:
     def _build(self):
         root = self.root
 
-        # ---------- 顶栏（Fluent 深色标题栏）----------
+        # ---------- Top bar (Fluent dark title bar) ----------
         # The dark strip separates identity / mode / global state from the body;
         # hierarchy comes from colour contrast, not from rounded corners Tk cannot draw.
         topbar = tk.Frame(root, bg=TOPBAR)
@@ -404,8 +404,8 @@ class Watch:
                         font=FONT_SMALL, borderwidth=0, relief="flat")
         style.map("Tm.Treeview", background=[("selected", "#BFD9F2")],
                   foreground=[("selected", TEXT)])
-        # 持仓表固定 7 行（改版前的高度），行数超出时内部滚动；
-        # 行数超过可视行数时，标题行右侧出现「更多」，点开是同步刷新的完整表。
+        # The positions table is fixed at 7 rows (its pre-revamp height); overflow scrolls internally.
+        # When the row count exceeds the visible rows a "More" affordance appears at the header right and opens a live full table.
         tree_wrap = tk.Frame(hold, bg=CARD)
         tree_wrap.pack(fill="x", padx=10, pady=(0, 10))
         self.tree_wrap = tree_wrap
@@ -784,7 +784,7 @@ class Watch:
         if self._last_trader != (trader, mode, diff, rolling):
             self._last_trader = (trader, mode, diff, rolling)
             self.lbl_trader.config(text="| %s" % trader)
-            self.lbl_mode.config(text="（%s）" % mode,
+            self.lbl_mode.config(text="(%s)" % mode,
                                  fg=BLUE if st.get("events_on", True) else MUTED)
             title = "Tokens Trading Market | %s (%s)" % (_fit_title(trader), mode)
             if gap_lv and liq_lv:
@@ -855,7 +855,7 @@ class Watch:
         self.lbl_loan.config(
             text="Credit {:,.0f}{} | Cash {:+,.0f}".format(
                 loan["limit"],
-                ("（%s）" % st["loan_pool_event"]) if st.get("loan_pool_event") else "",
+                ("(%s)" % st["loan_pool_event"]) if st.get("loan_pool_event") else "",
                 st["balance"]),
             fg=BLUE if st["balance"] >= 0 else RED)
         mdd = st.get("max_drawdown")
@@ -957,7 +957,7 @@ class Watch:
             _recent = [e for e in st.get("events", [])
                        if e["kind"] in ("open", "close")
                        and _now - float(e.get("time", 0)) < 120][-3:]
-        # 实际可见行数少于持仓数时才需要「更多」，不写死 7
+        # Only needed when the visible row count is below the position count; do not hard-code 7
         try:
             _visible = int(self.tree.cget("height"))
         except Exception:
@@ -992,7 +992,7 @@ class Watch:
                 self.tree.insert("", "end", values=(
                     "  [t%d] %s" % (e["tick"], e["text"][:26]), "", "", "", "", "", "", ""))
 
-        # 持仓弹窗跟随刷新（只在窗口还活着时写，避免对已销毁控件操作）
+        # The positions popup follows the refresh (write only while the window is alive, never touch destroyed widgets)
         if getattr(self, "_hold_tree", None) is not None:
             try:
                 if self._hold_win is not None and self._hold_win.winfo_exists():
@@ -1014,8 +1014,8 @@ class Watch:
 
         # Quote board
         hist = st.get("price_history", {})
-        # 是否重画走势只看 tick：判断必须放在循环外，
-        # 放到循环里会让第一个品种之后的所有品种永远被跳过。
+        # Whether to redraw the sparkline depends only on tick: the check must sit outside the loop, because
+        # inside it every pair after the first would be skipped forever.
         _fresh = getattr(self, "_spark_tick", None) != st.get("tick")
         if _fresh:
             self._spark_tick = st.get("tick")
@@ -1218,7 +1218,7 @@ class Watch:
             self.log_text.tag_config(k, foreground=kind_color.get(k, MUTED))
 
     def _show_hold_panel(self):
-        """持仓明细弹窗：内容跟随主循环刷新，关窗后引用清空。"""
+        """Positions popup: contents refresh with the main loop; references are cleared once the window closes."""
         try:
             if self._hold_win is not None and self._hold_win.winfo_exists():
                 self._hold_win.lift()
@@ -1256,7 +1256,7 @@ class Watch:
         self._hold_tree = None
 
     def _draw_spark(self, c, hist, color):
-        """报价台的迷你走势：只取最近一段真实价格，不足 2 个点就不画。"""
+        """Quote-board sparkline: only the most recent real prices, and nothing is drawn below 2 points."""
         c.delete("all")
         pts = hist[-48:]
         if len(pts) < 2:
@@ -1283,8 +1283,8 @@ class Watch:
             return
 
         eqs = [p["equity"] for p in self.curve]
-        # 固定刻度：以 50 万为步长。0 / 100 万（本金）/ 200 万（目标）都正好落在刻度上，
-        # 负值同样按 50 万向下延伸。刻度数超过 12 条时才退回自适应，避免一屏几十条线。
+        # Fixed grid: 500k steps. 0 / 1M (capital) / 2M (target) all land exactly on a grid line,
+        # negative values extend downward in the same 500k steps. Fall back to adaptive only past 12 lines to avoid dozens per screen.
         _STEP = 500_000.0
         _BASE = 1_000_000.0
         _TARGET = 2_000_000.0
@@ -1308,7 +1308,7 @@ class Watch:
             return (x, y)
 
         # Horizontal grid + ticks
-        # 固定 50 万步长；超过 12 条时退回 5 等分自适应
+        # Fixed 500k steps; fall back to 5-way adaptive once there are more than 12 lines
         _span = hi - lo
         if _span / _STEP <= 12:
             _vals = []

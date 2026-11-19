@@ -16,7 +16,7 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- 标题 -->
+        <!-- Title -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
             <TextBlock Text="Outside Aid" FontSize="20" FontWeight="SemiBold"
                        Foreground="{StaticResource Ink}" />
@@ -25,7 +25,7 @@
                        VerticalAlignment="Bottom" />
         </StackPanel>
 
-        <!-- 历史 -->
+        <!-- History -->
         <Border Grid.Row="1" Style="{StaticResource CardBorder}" Padding="12">
             <RichTextBox x:Name="History" IsReadOnly="True" BorderThickness="0"
                          Background="Transparent" FontFamily="{StaticResource UiFont}"
@@ -35,7 +35,7 @@
             </RichTextBox>
         </Border>
 
-        <!-- 待处理 -->
+        <!-- Pending -->
         <Border x:Name="PendingBox" Grid.Row="2" Style="{StaticResource CardBorder}"
                 Padding="12" Margin="0,8,0,0" Visibility="Collapsed">
             <StackPanel>

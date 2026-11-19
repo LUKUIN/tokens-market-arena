@@ -8,12 +8,12 @@ using TokensWatch.Services;
 namespace TokensWatch.Panels;
 
 /// <summary>
-/// 「AI Actions」（Scratchpad）。对应 tm_watch_ai.py 第 732-769 行。
+/// /// "AI Actions" (Scratchpad). Mirrors tm_watch_ai.py lines 732-769.
 ///
-/// 一个容易漏掉的细节：Python 侧 `yview_moveto(0.0)` 调了两次（第 768 行立即，
-/// 第 769 行 after(80) 再来一次）。WPF 里等价的做法是在 Loaded 之后
-/// 用 Dispatcher.BeginInvoke(DispatcherPriority.Loaded) 再滚一次，
-/// 否则布局尚未完成，第一次 ScrollToHome 会失效。
+/// /// One easy-to-miss detail: Python calls yview_moveto(0.0) twice (line 768 immediately,
+/// /// line 769 again after(80)). The WPF equivalent is to scroll once more after Loaded
+/// /// through Dispatcher.BeginInvoke(DispatcherPriority.Loaded),
+/// /// otherwise layout is not finished and the first ScrollToHome is a no-op.
 /// </summary>
 public partial class ScratchWindow : Window
 {
@@ -66,7 +66,7 @@ public partial class ScratchWindow : Window
 
         ContentBox.Text = sb.ToString();
 
-        // 两次滚动：与 Python 的第 768/769 行对应
+        //         // Two scrolls: mirrors Python lines 768/769
         ContentBox.ScrollToHome();
         await Dispatcher.BeginInvoke(new Action(() => ContentBox.ScrollToHome()),
                                      System.Windows.Threading.DispatcherPriority.Loaded);

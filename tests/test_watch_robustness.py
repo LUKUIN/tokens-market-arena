@@ -26,19 +26,19 @@ def _read(rel):
         return f.read()
 
 
-@unittest.skipUnless(IS_RUNNABLE, "run.py 的版本守卫只允许 Python 3.14 导入，其余版本 import 即退出 2")
+@unittest.skipUnless(IS_RUNNABLE, "run.py's version guard only lets Python 3.14 import it; other versions exit 2 on import")
 class TestConsoleDecode(unittest.TestCase):
     def setUp(self):
         import run
         self.run_mod = run
 
     def test_gbk_bytes(self):
-        raw = "活动连接".encode("gbk")
-        self.assertEqual(self.run_mod._decode_bytes(raw), "活动连接")
+        raw = "\u6d3b\u52a8\u8fde\u63a5".encode("gbk")
+        self.assertEqual(self.run_mod._decode_bytes(raw), "\u6d3b\u52a8\u8fde\u63a5")
 
     def test_utf8_bytes(self):
-        raw = "活动连接".encode("utf-8")
-        self.assertEqual(self.run_mod._decode_bytes(raw), "活动连接")
+        raw = "\u6d3b\u52a8\u8fde\u63a5".encode("utf-8")
+        self.assertEqual(self.run_mod._decode_bytes(raw), "\u6d3b\u52a8\u8fde\u63a5")
 
     def test_empty_and_none_safe(self):
         self.assertEqual(self.run_mod._decode_bytes(b""), "")
@@ -48,7 +48,7 @@ class TestConsoleDecode(unittest.TestCase):
         self.assertIsInstance(self.run_mod._listening_pids(65533), list)
 
 
-@unittest.skipUnless(IS_RUNNABLE, "run.py 的版本守卫只允许 Python 3.14 导入，其余版本 import 即退出 2")
+@unittest.skipUnless(IS_RUNNABLE, "run.py's version guard only lets Python 3.14 import it; other versions exit 2 on import")
 class TestLocalProxyBypass(unittest.TestCase):
     def test_opener_has_no_proxy_handler(self):
         import run

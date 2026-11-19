@@ -24,8 +24,8 @@
         </Border>
 
         <Border Grid.Row="1" Style="{StaticResource CardBorder}" Padding="0">
-            <!-- 虚拟化列表：活动流不再截断，一场 45 分钟能有上千条，
-                 用 ListBox + Recycling 只实例化可见行，否则每次刷新重建全部 TextBlock 会卡 -->
+            <!-- Virtualized list: the activity stream is no longer truncated; a 45-minute match can produce over a thousand entries,
+             so ListBox + Recycling instantiates only the visible rows; rebuilding every TextBlock on each refresh stutters -->
             <ListBox x:Name="LogList" BorderThickness="0" Background="Transparent" Padding="12"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                      ScrollViewer.VerticalScrollBarVisibility="Auto"
