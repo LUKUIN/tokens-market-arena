@@ -1,5 +1,6 @@
 using System.Threading;
 using System.Windows;
+using TokensWatch.Helpers;
 
 namespace TokensWatch;
 
@@ -11,8 +12,8 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
-        // // Deliberately a different name from the port lock the Python edition uses (8735):
-        // // both spectators may run at once so data and feel can be compared item by item.
+        // Deliberately a different name from the port lock the Python edition uses (8735):
+        // both spectators may run at once so data and feel can be compared item by item.
         _mutex = new Mutex(initiallyOwned: true, name: @"Global\TokensWatchViewerEn", out bool created);
         _ownsMutex = created;
 
@@ -29,10 +30,10 @@ public partial class App : Application
 
         DispatcherUnhandledException += (_, args) =>
         {
-            // // The spectator is a read-only window: an unhandled exception must never let the process vanish silently,
-            // // otherwise the player assumes the game crashed.
+            // The spectator is a read-only window: an unhandled exception must never let the process vanish silently,
+            // otherwise the player assumes the game crashed.
             MessageBox.Show(
-                "The spectator hit an unhandled error:\n\n" + args.Exception.Message,
+                "The spectator hit an unhandled error:\n\n" + ErrorText.Describe(args.Exception),
                 "Tokens Spectator",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
@@ -50,7 +51,7 @@ public partial class App : Application
         }
         catch
         {
-            // // Do not manufacture new exceptions on the exit path
+            // Do not manufacture new exceptions on the exit path
         }
 
         _mutex?.Dispose();

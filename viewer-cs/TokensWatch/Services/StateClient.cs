@@ -7,14 +7,14 @@ using TokensWatch.Models;
 namespace TokensWatch.Services;
 
 /// <summary>
-/// /// Read-only HTTP client that talks to the existing service.
+/// Read-only HTTP client that talks to the existing service.
 ///
-/// /// Two key alignments with src/tm_watch_ai.py:
-/// ///  1. Line 23: the address comes from the TM_WATCH_API environment variable, default http://127.0.0.1:8734
-/// ///  2. Line 28: bypass the system proxy explicitly. Python uses ProxyHandler({}),
-/// ///     while .NET HttpClientHandler.UseProxy defaults to true and must be turned off,
-/// ///     or a user running Clash pushes 127.0.0.1 through the proxy and one failed handshake reads as "connection lost".
-/// /// The timeout matches too: 3 seconds (Python timeout=3).
+/// Two key alignments with src/tm_watch_ai.py:
+///  1. Line 23: the address comes from the TM_WATCH_API environment variable, default http://127.0.0.1:8734
+///  2. Line 28: bypass the system proxy explicitly. Python uses ProxyHandler({}),
+///     while .NET HttpClientHandler.UseProxy defaults to true and must be turned off,
+///     or a user running Clash pushes 127.0.0.1 through the proxy and one failed handshake reads as "connection lost".
+/// The timeout matches too: 3 seconds (Python timeout=3).
 /// </summary>
 public sealed class StateClient : IDisposable
 {

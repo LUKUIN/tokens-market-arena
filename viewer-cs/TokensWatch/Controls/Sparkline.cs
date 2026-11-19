@@ -5,9 +5,9 @@ using TokensWatch.Helpers;
 namespace TokensWatch.Controls;
 
 /// <summary>
-/// /// Quote-board sparkline. Mirrors the Python _draw_spark (lines 1268-1284):
-/// /// only the last 48 real prices, and nothing at all below 2 points.
-/// /// Difference: WPF vector strokes antialias on their own, so 1.4 px never breaks into steps on a diagonal.
+/// Quote-board sparkline. Mirrors the Python _draw_spark (lines 1268-1284):
+/// only the last 48 real prices, and nothing at all below 2 points.
+/// Difference: WPF vector strokes antialias on their own, so 1.4 px never breaks into steps on a diagonal.
 /// </summary>
 public sealed class Sparkline : FrameworkElement
 {
@@ -30,7 +30,7 @@ public sealed class Sparkline : FrameworkElement
         }
         else
         {
-            // // Same as Python: hist[-48:]
+            // Same as Python: hist[-48:]
             int start = Math.Max(0, history.Count - 48);
             _points = history.Skip(start).ToArray();
         }

@@ -7,11 +7,11 @@ using TokensWatch.Models;
 namespace TokensWatch.Controls;
 
 /// <summary>
-/// /// Equity curve. WPF vector rendering already antialiases, so this only does three things:
-/// ///  1. Auto-fit the Y range (the old build pinned -500k to 2.5M, squashing a 0.5% move below one pixel)
-/// ///  2. Drop the area fill to 8% opacity (the old build was a solid red wall covering the curve)
-/// ///  3. Densify with monotone cubic interpolation (the old build drew sharp polyline corners and could overshoot)
-/// /// Reference lines keep "Principal 1M" and "Target": the two hard boundaries of a match.
+/// Equity curve. WPF vector rendering already antialiases, so this only does three things:
+///  1. Auto-fit the Y range (the old build pinned -500k to 2.5M, squashing a 0.5% move below one pixel)
+///  2. Drop the area fill to 8% opacity (the old build was a solid red wall covering the curve)
+///  3. Densify with monotone cubic interpolation (the old build drew sharp polyline corners and could overshoot)
+/// Reference lines keep "Principal 1M" and "Target": the two hard boundaries of a match.
 /// </summary>
 public sealed class EquityChart : FrameworkElement
 {
@@ -26,7 +26,7 @@ public sealed class EquityChart : FrameworkElement
 
     public EquityChart()
     {
-        // // Make sure the parent gives enough height, and let WPF render it as vectors
+        // Make sure the parent gives enough height, and let WPF render it as vectors
         MinHeight = 120;
         RenderOptions.SetEdgeMode(this, EdgeMode.Unspecified);
         RenderOptions.SetBitmapScalingMode(this, BitmapScalingMode.HighQuality);
@@ -46,7 +46,7 @@ public sealed class EquityChart : FrameworkElement
         double h = ActualHeight;
         if (w <= 4 || h <= 4) return;
 
-        // // Background
+        // Background
         dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, w, h));
 
         double plotW = Math.Max(1, w - PadLeft - PadRight);
@@ -59,7 +59,7 @@ public sealed class EquityChart : FrameworkElement
             return;
         }
 
-        // // ---------- Y range: auto-fit plus padding, and the Principal line must stay inside ----------
+        // ---------- Y range: auto-fit plus padding, and the Principal line must stay inside ----------
         double dataMin = double.MaxValue;
         double dataMax = double.MinValue;
         foreach (var p in _curve)
@@ -78,23 +78,23 @@ public sealed class EquityChart : FrameworkElement
         double XOf(double i) => PadLeft + plotW * (i / Math.Max(1, _curve.Count - 1));
         double YOf(double v) => PadTop + plotH * (1.0 - (v - yMin) / ySpan);
 
-        // // ---------- Grid + Y ticks ----------
+        // ---------- Grid + Y ticks ----------
         DrawAxis(dc, plotRect, yMin, yMax, YOf);
 
-        // // ---------- X axis: tick marks ----------
+        // ---------- X axis: tick marks ----------
         DrawTimeAxis(dc, plotRect);
 
-        // // ---------- Reference lines ----------
+        // ---------- Reference lines ----------
         DrawReferenceLine(dc, plotRect, YOf(_baseLine), Theme.Muted, "Principal 1,000,000");
         if (_targetLine is { } tv && tv > 0 && tv <= yMax)
             DrawReferenceLine(dc, plotRect, YOf(tv), Theme.Blue, $"Target {tv:N0}");
 
-        // // ---------- Curve: densify first, then map to screen coordinates ----------
+        // ---------- Curve: densify first, then map to screen coordinates ----------
         var raw = new List<Point>(_curve.Count);
         for (int i = 0; i < _curve.Count; i++)
             raw.Add(new Point(XOf(i), _curve[i].Equity));
 
-        // // Fritsch-Carlson shape preservation acts on the value domain, so smooth values here and map Y afterwards
+        // Fritsch-Carlson shape preservation acts on the value domain, so smooth values here and map Y afterwards
         var smoothVals = Interpolation.MonotoneCubic(
             raw.Select((p, i) => new Point(i, p.Y)).ToList(),
             perSegment: Math.Clamp(220 / Math.Max(1, _curve.Count), 4, 24));
@@ -109,7 +109,7 @@ public sealed class EquityChart : FrameworkElement
         bool isUp = _curve[^1].Equity >= _curve[0].Equity;
         var lineColor = isUp ? Theme.Green : Theme.Red;
 
-        // // ---------- Gradient fill: 8% at the top, 0 at the bottom ----------
+        // ---------- Gradient fill: 8% at the top, 0 at the bottom ----------
         if (screenPts.Count > 1)
         {
             var areaGeo = new StreamGeometry();
@@ -139,7 +139,7 @@ public sealed class EquityChart : FrameworkElement
             dc.DrawGeometry(fillBrush, null, areaGeo);
         }
 
-        // // ---------- The curve itself ----------
+        // ---------- The curve itself ----------
         var lineGeo = new StreamGeometry();
         using (var ctx = lineGeo.Open())
         {
@@ -158,7 +158,7 @@ public sealed class EquityChart : FrameworkElement
         pen.Freeze();
         dc.DrawGeometry(null, pen, lineGeo);
 
-        // // ---------- Start / end markers ----------
+        // ---------- Start / end markers ----------
         DrawDot(dc, screenPts[0], Theme.Muted);
         DrawDot(dc, screenPts[^1], lineColor);
 
@@ -176,16 +176,19 @@ public sealed class EquityChart : FrameworkElement
         var peakPt = new Point(XOf(iMax), YOf(peakVal));
         var troughPt = new Point(XOf(iMin), YOf(troughVal));
 
-        // // Peak label above the point, Trough below it; flip to the other side when the point hugs an edge
-        DrawExtremum(dc, peakPt, $"Peak {peakVal:N0}", Theme.GreenHex, preferAbove: true);
+        // Peak label above the point, Trough below it; flip to the other side when the point hugs an edge.
+        // The "Now" readout always sits in the top-left corner, so a peak near that corner would print
+        // straight over it; in that case put the peak label below its dot instead.
+        bool peakAbove = !(peakPt.X < PadLeft + 200 && peakPt.Y < PadTop + 60);
+        DrawExtremum(dc, peakPt, $"Peak {peakVal:N0}", Theme.GreenHex, preferAbove: peakAbove);
         DrawExtremum(dc, troughPt, $"Trough {troughVal:N0}", Theme.RedHex, preferAbove: false);
 
-        // // Final value: tuck it into the top right so it never overlaps the curve
+        // Final value: tuck it into the top right so it never overlaps the curve
         var last = _curve[^1].Equity;
         DrawText(dc, $"Now {last:N0}", new Point(PadLeft + 6, PadTop + 2), lineColor, 14, bold: true);
     }
 
-    /// /// <summary>Draw a glowing dot at an extreme point and print its value beside it.</summary>
+    /// <summary>Draw a glowing dot at an extreme point and print its value beside it.</summary>
     private void DrawExtremum(DrawingContext dc, Point p, string label, string colorHex, bool preferAbove)
     {
         var color = (Color)ColorConverter.ConvertFromString(colorHex)!;
@@ -200,7 +203,7 @@ public sealed class EquityChart : FrameworkElement
 
         var ft = MakeText(label, core, 11.5, bold: true);
 
-        // // Above the point by default; flip below when there is no room
+        // Above the point by default; flip below when there is no room
         bool above = preferAbove;
         if (above && p.Y - ft.Height - 10 < 2) above = false;
         if (!above && p.Y + ft.Height + 12 > ActualHeight - 2) above = true;
@@ -208,18 +211,18 @@ public sealed class EquityChart : FrameworkElement
         double x = p.X - ft.Width / 2;
         double y = above ? p.Y - ft.Height - 9 : p.Y + 9;
 
-        // // Clamp horizontally and vertically to the plot area so nothing is clipped
+        // Clamp horizontally and vertically to the plot area so nothing is clipped
         x = Math.Clamp(x, PadLeft + 2, Math.Max(PadLeft + 2, ActualWidth - ft.Width - 4));
         y = Math.Clamp(y, 2, Math.Max(2, ActualHeight - ft.Height - 2));
 
         dc.DrawText(ft, new Point(x, y));
     }
 
-    // // ---------------- Drawing helpers ----------------
+    // ---------------- Drawing helpers ----------------
 
     private void DrawAxis(DrawingContext dc, Rect plot, double yMin, double yMax, Func<double, double> yOf)
     {
-        // // Target: 4 to 6 horizontal ticks. Pick a "round" step so a label never reads like 1234567.
+        // Target: 4 to 6 horizontal ticks. Pick a "round" step so a label never reads like 1234567.
         double span = yMax - yMin;
         double rawStep = span / 5.0;
         double mag = Math.Pow(10, Math.Floor(Math.Log10(Math.Max(1e-9, rawStep))));
@@ -238,15 +241,15 @@ public sealed class EquityChart : FrameworkElement
 
             dc.DrawLine(gridPen, new Point(plot.Left, y), new Point(plot.Right, y));
 
-            // // Kill negative zero: .NET prints "-0" for (-0.0).ToString("0"),
-            // // and yMin can be -0.0 after PadRange, or carry a minus sign from rounding when |v| < 0.5.
+            // Kill negative zero: .NET prints "-0" for (-0.0).ToString("0"),
+            // and yMin can be -0.0 after PadRange, or carry a minus sign from rounding when |v| < 0.5.
             double vv = Math.Abs(v) < 0.5 ? 0.0 : v;
-            // // Keep 3 significant digits for M/K: with a small step (500, say) both 1,000,000 and 1,000,500
-            // // would print "1M" at 2 decimals, leaving several identical labels on the axis.
+            // Keep 3 significant digits for M/K: with a small step (500, say) both 1,000,000 and 1,000,500
+            // would print "1M" at 2 decimals, leaving several identical labels on the axis.
             string label = Math.Abs(vv) >= 1e6 ? $"{vv / 1e6:0.###}M"
                          : Math.Abs(vv) >= 1e3 ? $"{vv / 1e3:0.###}K"
                          : $"{vv:0}";
-            // // When two ticks round to the same label ("1M" three times), skip the later one instead of drawing it.
+            // When two ticks round to the same label ("1M" three times), skip the later one instead of drawing it.
             if (label == _lastAxisLabel) continue;
             _lastAxisLabel = label;
             DrawText(dc, label, new Point(PadLeft - 8, y - 8), Theme.Muted, 11, alignRight: true);
@@ -254,9 +257,9 @@ public sealed class EquityChart : FrameworkElement
     }
 
     /// <summary>
-    /// /// Bottom tick marks. The curve used to have a Y axis only, so "when did this profit happen" was unanswerable,
-    /// /// and a review could not tell an early hold from a late-innings push.
-    /// /// Uses ticks rather than wall-clock time: the server only guarantees tick monotonicity, not one per second.
+    /// Bottom tick marks. The curve used to have a Y axis only, so "when did this profit happen" was unanswerable,
+    /// and a review could not tell an early hold from a late-innings push.
+    /// Uses ticks rather than wall-clock time: the server only guarantees tick monotonicity, not one per second.
     /// </summary>
     private void DrawTimeAxis(DrawingContext dc, Rect plot)
     {

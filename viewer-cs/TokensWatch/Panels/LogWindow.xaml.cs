@@ -7,12 +7,12 @@ using TokensWatch.Models;
 namespace TokensWatch.Panels;
 
 /// <summary>
-/// /// Activity "More". Mirrors tm_watch_ai.py lines 1126-1228.
+/// Activity "More". Mirrors tm_watch_ai.py lines 1126-1228.
 ///
-/// /// Three semantics that must match:
-/// ///  1. The filter is shared state: switching a category here also switches the newest line in the right column (Python keeps _log_filter on the instance).
-/// ///  2. Six tabs are classified by _log_cat; the rules live in EventKind.
-/// ///  3. Follow-scroll only when already pinned to the bottom, otherwise a user scrolling up gets yanked back (lines 1193-1197).
+/// Three semantics that must match:
+///  1. The filter is shared state: switching a category here also switches the newest line in the right column (Python keeps _log_filter on the instance).
+///  2. Six tabs are classified by _log_cat; the rules live in EventKind.
+///  3. Follow-scroll only when already pinned to the bottom, otherwise a user scrolling up gets yanked back (lines 1193-1197).
 /// </summary>
 public partial class LogWindow : Window
 {

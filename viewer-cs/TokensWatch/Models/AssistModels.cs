@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace TokensWatch.Models;
 
-/// /// <summary>Response of GET /assist/pending. Data source for the "Outside Mercy" window.</summary>
+/// <summary>Response of GET /assist/pending. Data source for the "Outside Mercy" window.</summary>
 public sealed class AssistPending
 {
     [JsonPropertyName("enabled")] public bool Enabled { get; set; }
@@ -32,7 +32,7 @@ public sealed class AssistTicket
     [JsonPropertyName("text")] public string Text { get; set; } = "";
 }
 
-/// /// <summary>Response of GET /scratchpad. Data source for the "AI Actions" window.</summary>
+/// <summary>Response of GET /scratchpad. Data source for the "AI Actions" window.</summary>
 public sealed class ScratchpadResponse
 {
     [JsonPropertyName("items")] public List<ScratchpadItem> Items { get; set; } = new();
@@ -46,8 +46,8 @@ public sealed class ScratchpadItem
 }
 
 /// <summary>
-/// /// tick is sometimes a number and sometimes absent (Python falls back with x.get("tick", "-")).
-/// /// Carried as a string; the converter handles both shapes on deserialization.
+/// tick is sometimes a number and sometimes absent (Python falls back with x.get("tick", "-")).
+/// Carried as a string; the converter handles both shapes on deserialization.
 /// </summary>
 [JsonConverter(typeof(JsonElementLiteConverter))]
 public readonly struct JsonElementLite

@@ -3,8 +3,8 @@ using System.Windows.Media;
 namespace TokensWatch.Helpers;
 
 /// <summary>
-/// /// One-to-one match with the colors and fonts at src/tm_watch_ai.py lines 127-152.
-/// /// Change a value here and change Python too: the two spectators must look like the same product.
+/// One-to-one match with the colors and fonts at src/tm_watch_ai.py lines 127-152.
+/// Change a value here and change Python too: the two spectators must look like the same product.
 /// </summary>
 public static class Theme
 {

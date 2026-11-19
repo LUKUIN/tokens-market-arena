@@ -8,12 +8,12 @@ using TokensWatch.Services;
 namespace TokensWatch.Panels;
 
 /// <summary>
-/// /// "Outside Mercy - Outside Aid". Mirrors tm_watch_ai.py lines 625-696.
+/// "Outside Mercy - Outside Aid". Mirrors tm_watch_ai.py lines 625-696.
 ///
-/// /// Semantics that must not be changed on a whim:
-/// ///  - The spectator cannot initiate a message; it can only reply or dismiss after the contestant POSTs /assist/ask;
-/// ///  - The enable switch lives on the contestant side; the spectator only displays state;
-/// ///  - History is colored by who: ai = contestant (blue), human = spectator (green), anything else = system (grey).
+/// Semantics that must not be changed on a whim:
+///  - The spectator cannot initiate a message; it can only reply or dismiss after the contestant POSTs /assist/ask;
+///  - The enable switch lives on the contestant side; the spectator only displays state;
+///  - History is colored by who: ai = contestant (blue), human = spectator (green), anything else = system (grey).
 /// </summary>
 public partial class AssistWindow : Window
 {
@@ -36,7 +36,7 @@ public partial class AssistWindow : Window
         }
         catch (Exception ex)
         {
-            TxtSubtitle.Text = "Load failed: " + ex.Message;
+            TxtSubtitle.Text = "Load failed: " + ErrorText.Describe(ex);
             TxtSubtitle.Foreground = Theme.Red;
             return;
         }

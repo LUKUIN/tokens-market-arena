@@ -4,14 +4,14 @@ using TokensWatch.Models;
 namespace TokensWatch.Helpers;
 
 /// <summary>
-/// /// Event classification and colors. Mirrors tm_watch_ai.py lines 1068-1080 (_log_cat) and 1206-1228 (kind_color).
-/// /// The main window and the "Activity (all)" popup must share one set of rules, or the two disagree on categories.
+/// Event classification and colors. Mirrors tm_watch_ai.py lines 1068-1080 (_log_cat) and 1206-1228 (kind_color).
+/// The main window and the "Activity (all)" popup must share one set of rules, or the two disagree on categories.
 /// </summary>
 public static class EventKind
 {
     private static readonly string[] LiqMarks = { "[Liquidity drained]", "\u3010Liquidity drained\u3011", "[Liquidity drained]" };
 
-    /// /// <summary>Assign to all / gap / liq / news / trade / risk / other.</summary>
+    /// <summary>Assign to all / gap / liq / news / trade / risk / other.</summary>
     public static string Category(GameEvent e)
     {
         string k = e.Kind ?? "info";

@@ -3,14 +3,14 @@ using System.Windows;
 namespace TokensWatch.Helpers;
 
 /// <summary>
-/// /// Monotone cubic Hermite interpolation (Fritsch-Carlson limits).
+/// Monotone cubic Hermite interpolation (Fritsch-Carlson limits).
 ///
-/// /// Why not an off-the-shelf smoother:
-/// ///  - A cubic spline overshoots on financial data: the curve runs past historical extremes,
-/// ///    looking more volatile than it really was, which is a form of fabrication.
-/// ///  - Catmull-Rom is not shape preserving either.
-/// ///  - Fritsch-Carlson guarantees the curve passes through every original point and never leaves
-/// ///    the interval spanned by two adjacent points, which is exactly what an equity curve needs.
+/// Why not an off-the-shelf smoother:
+///  - A cubic spline overshoots on financial data: the curve runs past historical extremes,
+///    looking more volatile than it really was, which is a form of fabrication.
+///  - Catmull-Rom is not shape preserving either.
+///  - Fritsch-Carlson guarantees the curve passes through every original point and never leaves
+///    the interval spanned by two adjacent points, which is exactly what an equity curve needs.
 /// </summary>
 public static class Interpolation
 {

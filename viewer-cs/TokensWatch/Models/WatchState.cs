@@ -4,9 +4,9 @@ using System.Text.Json.Serialization;
 namespace TokensWatch.Models;
 
 /// <summary>
-/// /// Strongly typed view of GET /state.
-/// /// Field sources: docs/ai-protocol.md lines 185-231 plus the st.get(...) call sites in src/tm_watch_ai.py.
-/// /// Unknown fields are ignored (the server adds fields across versions and the front end must not break over it).
+/// Strongly typed view of GET /state.
+/// Field sources: docs/ai-protocol.md lines 185-231 plus the st.get(...) call sites in src/tm_watch_ai.py.
+/// Unknown fields are ignored (the server adds fields across versions and the front end must not break over it).
 /// </summary>
 public sealed class WatchState
 {

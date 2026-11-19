@@ -9,8 +9,8 @@ using TokensWatch.Models;
 namespace TokensWatch.Panels;
 
 /// <summary>
-/// /// Positions "More". Mirrors tm_watch_ai.py lines 1230-1266.
-/// /// The popup refreshes with the main loop; the main window drops the reference on close.
+/// Positions "More". Mirrors tm_watch_ai.py lines 1230-1266.
+/// The popup refreshes with the main loop; the main window drops the reference on close.
 /// </summary>
 public partial class HoldWindow : Window
 {

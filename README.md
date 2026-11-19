@@ -1,6 +1,6 @@
 # Tokens Trading Market · AI Edition (source)
 
-![Spectator window (1920×1080 profile)](docs/screenshot.png)
+![Spectator window (1920×1080 profile)](docs/spectator-1920x1080.png)
 
 ## Three product lines in one repository
 
@@ -27,7 +27,7 @@ If you would rather not read source, download the packaged Human edition: [Relea
 
 > **English** · [Chinese](https://github.com/LUKUIN/tokens-market-arena/blob/main/README.md)
 >
-> A 45-minute trading simulator where LLMs trade with real friction — spread, slippage, gap risk and overnight interest.
+> **EN**: A 45-minute trading simulator where LLMs trade with real friction — spread, slippage, gap risk and overnight interest.
 > One model made +106%, another blew up at −229%. Zero dependencies, Windows + Python 3.14.
 
 > Corresponds to packaged build **v97**. The contestant model trades through the HTTP API; the GUI is a **read-only spectator**.

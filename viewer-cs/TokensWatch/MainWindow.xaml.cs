@@ -16,17 +16,17 @@ namespace TokensWatch;
 
 public partial class MainWindow : Window
 {
-    // // The system accent color paints the title bar red (which is what this machine does),
-    // // clashing with the overall light-grey card styling. Win11 lets us set the caption color directly.
+    // The system accent color paints the title bar red (which is what this machine does),
+    // clashing with the overall light-grey card styling. Win11 lets us set the caption color directly.
     private const int DWMWA_CAPTION_COLOR = 35;
     private const int DWMWA_TEXT_COLOR = 36;
 
     [System.Runtime.InteropServices.DllImport("dwmapi.dll", PreserveSig = true)]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
 
-    // // ---- Remove the three system buttons from the title bar top right ----
-    // // Mirrors _hide_close_button in Python (lines 83-103). Rationale: a stray click on X closes the window
-    // // and nobody watches the match any more; Minimize still works through the built-in top-bar button.
+    // ---- Remove the three system buttons from the title bar top right ----
+    // Mirrors _hide_close_button in Python (lines 83-103). Rationale: a stray click on X closes the window
+    // and nobody watches the match any more; Minimize still works through the built-in top-bar button.
     private const int GWL_STYLE = -16;
     private const int WS_SYSMENU = 0x00080000;
     private const uint SWP_NOSIZE = 0x0001;
@@ -58,7 +58,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        // // 1) Caption color follows the light-grey theme instead of the system accent (red on this machine)
+        // 1) Caption color follows the light-grey theme instead of the system accent (red on this machine)
         try
         {
             int caption = 0x00F3F3F3;   // COLORREF is 0x00BBGGRR, not RGB
@@ -68,10 +68,10 @@ public partial class MainWindow : Window
         }
         catch
         {
-            // // Win10 has neither property; keep the system default
+            // Win10 has neither property; keep the system default
         }
 
-        // // 2) Drop Minimize / Maximize / Close
+        // 2) Drop Minimize / Maximize / Close
         try
         {
             int style = GetWindowLong(hwnd, GWL_STYLE);
@@ -84,17 +84,17 @@ public partial class MainWindow : Window
         }
         catch
         {
-            // // On failure keep the system buttons; nothing else is affected
+            // On failure keep the system buttons; nothing else is affected
         }
     }
 
     private readonly StateClient _client = new();
 
-    // // Main loop at 300 ms, mirroring self.root.after(delay, self.refresh) on the Python side
+    // Main loop at 300 ms, mirroring self.root.after(delay, self.refresh) on the Python side
     private readonly DispatcherTimer _uiTimer;
     private const int PollMs = 300;
 
-    // // Low-frequency "Outside Mercy" poll, mirroring _poll_assist
+    // Low-frequency "Outside Mercy" poll, mirroring _poll_assist
     private readonly DispatcherTimer _assistTimer;
     private const int AssistPollMs = 3000;
 
@@ -104,8 +104,8 @@ public partial class MainWindow : Window
     private readonly HashSet<(int Tick, string Text)> _logSeen = new();
     private readonly HashSet<string> _assistSeen = new();
 
-    /// /// <summary>Activity filter. The main window and the "Activity (all)" popup share this state,
-    /// /// mirroring self._log_filter in Python: switching a category in the popup changes the newest line outside too.</summary>
+    /// <summary>Activity filter. The main window and the "Activity (all)" popup share this state,
+    /// mirroring self._log_filter in Python: switching a category in the popup changes the newest line outside too.</summary>
     private string _logFilter = "all";
 
     public string LogFilter => _logFilter;
@@ -130,11 +130,11 @@ public partial class MainWindow : Window
     //   2) a replay after the window is minimised and restored and the UI is rebuilt.
         private bool _hugeWaveShowLatch;   // last rendered show value, used to detect the rising edge
 
-    // // The two exit-animation durations in milliseconds; change them only here.
-    // // Reference: the PvZ original scales its text in 200 ms (12 frames at 60 fps), but that is an 800x600 screen;
-    // // on a 1920-wide spectator it reads as rushed, so feedback moved it to 620/260.
-    // // Note hugewave.ogg itself runs 6.5709 s: that is "sound + hold", not the scale duration,
-    // // and the banner hold is driven by the 10-second timer below, which already covers it.
+    // The two exit-animation durations in milliseconds; change them only here.
+    // Reference: the PvZ original scales its text in 200 ms (12 frames at 60 fps), but that is an 800x600 screen;
+    // on a 1920-wide spectator it reads as rushed, so feedback moved it to 620/260.
+    // Note hugewave.ogg itself runs 6.5709 s: that is "sound + hold", not the scale duration,
+    // and the banner hold is driven by the 10-second timer below, which already covers it.
     private const int HugeWaveScaleMs = 620;
     private const int HugeWaveFadeMs = 260;
 
@@ -147,8 +147,8 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
-        // // Pick a size from the display work area: 1920x1080 at 2K and above, 1600x900 on 1080p (observers reported
-        // // a fixed 1920x1080 filling the whole 1080p screen). The 1920x1080 in XAML is only the design baseline.
+        // Pick a size from the display work area: 1920x1080 at 2K and above, 1600x900 on 1080p (observers reported
+        // a fixed 1920x1080 filling the whole 1080p screen). The 1920x1080 in XAML is only the design baseline.
         var prof = DisplayProfile.Pick();
         Width = prof.Width;
         Height = prof.Height;
@@ -163,7 +163,7 @@ public partial class MainWindow : Window
         _uiTimer.Tick += async (_, _) =>
         {
             try { await PollAsync(); }
-            catch (Exception ex) { TxtRunState.Text = "Refresh error: " + ex.Message; }
+            catch (Exception ex) { TxtRunState.Text = "Refresh error: " + ErrorText.Describe(ex); }
         };
 
         _assistTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(AssistPollMs) };
@@ -171,9 +171,9 @@ public partial class MainWindow : Window
 
         Loaded += (_, _) =>
         {
-            // // Design baseline is 1920x1080. This machine has a 2K panel, so it fits normally;
-            // // at 150% system scaling, though, 1920 DIP exceeds 2560 physical pixels,
-            // // so clamp here and make sure the window never lands off screen.
+            // Design baseline is 1920x1080. This machine has a 2K panel, so it fits normally;
+            // at 150% system scaling, though, 1920 DIP exceeds 2560 physical pixels,
+            // so clamp here and make sure the window never lands off screen.
             var wa = SystemParameters.WorkArea;
             if (Width > wa.Width) Width = wa.Width;
             if (Height > wa.Height) Height = wa.Height;
@@ -192,7 +192,7 @@ public partial class MainWindow : Window
         };
     }
 
-    // // ==================== Polling ====================
+    // ==================== Polling ====================
 
     private async Task PollAsync()
     {
@@ -211,7 +211,7 @@ public partial class MainWindow : Window
             // Both the first frame and a **mid-match** failure must update the status bar: guarding
             // on _state == null means that once the first frame succeeds, a later disconnect leaves
             // stale prices and countdown on screen with no hint at all — worse than crashing.
-            string msg = ex.Message.Replace("\r", " ").Replace("\n", " ");
+            string msg = ErrorText.Describe(ex);
             if (msg.Length > 80) msg = msg[..80] + "...";
             TxtRunState.Text = (_state is null ? "Connection failed: " : "Connection lost: ") + msg;
             TxtRunState.Foreground = Theme.Red;
@@ -241,8 +241,8 @@ public partial class MainWindow : Window
             {
                 foreach (var t in fresh) _assistSeen.Add(t);
 
-                // // Mirrors Python lines 584-594: a new ask rings the chime and raises the popup.
-                // // Without this, a player busy elsewhere misses the ask window entirely.
+                // Mirrors Python lines 584-594: a new ask rings the chime and raises the popup.
+                // Without this, a player busy elsewhere misses the ask window entirely.
                 System.Media.SystemSounds.Asterisk.Play();
 
                 string cn = n switch { 1 => "one", 2 => "two", 3 => "three", _ => n.ToString() };
@@ -260,11 +260,11 @@ public partial class MainWindow : Window
         }
         catch
         {
-            // // An unavailable assist channel never affects the main UI
+            // An unavailable assist channel never affects the main UI
         }
     }
 
-    // // ==================== Rendering ====================
+    // ==================== Rendering ====================
 
     private void Render(WatchState st)
     {
@@ -275,7 +275,7 @@ public partial class MainWindow : Window
         // ---------- challenge tasks (PvZ2 Level Objectives port) ----------
         RenderChallenge(st);
 
-        // // ---------- Top bar ----------
+        // ---------- Top bar ----------
         TxtTrader.Text = string.IsNullOrEmpty(st.Trader) ? "Guest" : st.Trader;
         TxtMode.Text = st.EventsOn ? "Random events ON" : "Ideal (no random events)";
         TxtMode.Foreground = st.EventsOn ? Theme.Blue : Theme.Muted;
@@ -287,7 +287,7 @@ public partial class MainWindow : Window
         ChipSlot.Visibility = slot ? Visibility.Visible : Visibility.Collapsed;
         ChipSpecial.Visibility = (fr || slot) ? Visibility.Collapsed : Visibility.Visible;
 
-        // // ---------- Metric cards ----------
+        // ---------- Metric cards ----------
         TxtEquity.Text = st.Equity.ToString("N0", CultureInfo.CurrentCulture);
         TxtEquity.Foreground = st.Equity >= 1_000_000 ? Theme.Green : Theme.Red;
 
@@ -308,7 +308,7 @@ public partial class MainWindow : Window
         TxtTargetPct.Text = st.TargetPct.ToString("0.0", CultureInfo.CurrentCulture) + "%";
         TxtTargetPct.Foreground = st.TargetPct >= 100 ? Theme.Green : Theme.Blue;
 
-        // // ---------- Funds row ----------
+        // ---------- Funds row ----------
         var loan = st.Loan;
         string rateTxt = loan is null ? "—" : $"{loan.RatePct:0.000}%/tick";
         TxtFunds.Text = loan is null
@@ -317,7 +317,7 @@ public partial class MainWindow : Window
               $"Debt {loan.Balance:N0} | Interest {loan.Interest:N0} | {rateTxt}";
         TxtFunds.Foreground = st.TotalBorrowed > 0 ? Theme.Red : Theme.Blue;
 
-        // // ---------- Status text ----------
+        // ---------- Status text ----------
         string stateTxt = "Trading normally";
         if (st.NegativeRemain is { } nr)
             stateTxt = $"Balance negative · {(int)nr}s to borrow or the round ends";
@@ -356,7 +356,7 @@ public partial class MainWindow : Window
                       || (st.MarginLevel is { } mlv2 && mlv2 < 50);
         TxtRunState.Foreground = danger ? Theme.Red : Theme.Muted;
 
-        // // ---------- Statistics row ----------
+        // ---------- Statistics row ----------
         string mddTxt = st.MaxDrawdown is { } mdd ? $"{mdd:0.00}%" : "—";
         string shp = st.Sharpe is { } s ? s.ToString("0.00", CultureInfo.CurrentCulture) : "—";
         // Profit factor (gross profit / gross loss) replaces the win rate here: with leverage,
@@ -371,7 +371,7 @@ public partial class MainWindow : Window
                         (st.TargetBonus > 0 ? $" (loan uplift +{st.TargetBonus:N0})" : "") +
                         $" | Drawdown {mddTxt} | Sharpe {shp} | {st.ClosedN} trades · profit factor {pf} | fees {fee:N0}";
 
-        // // ---------- Fast forward ----------
+        // ---------- Fast forward ----------
         if (st.Ff is { } ff)
         {
             double usedSum = ff.Records.Sum();
@@ -382,7 +382,7 @@ public partial class MainWindow : Window
             TxtFastForward.Foreground = ff.CoolLeft > 0 ? Theme.Red : Theme.Muted;
         }
 
-        // // ---------- Time progress ----------
+        // ---------- Time progress ----------
         double total = Math.Max(1, st.SessionMinutes * 60.0);
         double frac = Math.Clamp(st.ElapsedSeconds / total, 0, 1);
         double remain = Math.Max(0, total - st.ElapsedSeconds);
@@ -392,7 +392,7 @@ public partial class MainWindow : Window
         TxtTimeLeft.Text = $"Left {(int)remain / 60:00}:{(int)remain % 60:00}";
         TxtTimeLeft.Foreground = frac < 0.8 ? Theme.Muted : Theme.Orange;
 
-        // // ---------- Status panel ----------
+        // ---------- Status panel ----------
         TxtAudit.Text = st.Audit.Count > 0 ? $"{st.Audit.Count} warnings" : "passed (4 identities)";
         TxtAudit.Foreground = st.Audit.Count > 0 ? Theme.Red : Theme.Green;
 
@@ -408,10 +408,10 @@ public partial class MainWindow : Window
         if (slot) specialNames.Add(Theme.SlotName);
         TxtSpecialState.Text = specialNames.Count > 0 ? string.Join(", ", specialNames) : "None";
 
-        // // Peak / Trough: read the extremes straight off the curve so they match the chart annotations.
-        // // With only 1 point (right after the open) there is no "movement": peak and trough would equal
-        // // the Principal, which reads as "zero volatility all match" and disagrees with the chart "No data",
-        // // so both use a threshold of 2 and stay consistent with the curve.
+        // Peak / Trough: read the extremes straight off the curve so they match the chart annotations.
+        // With only 1 point (right after the open) there is no "movement": peak and trough would equal
+        // the Principal, which reads as "zero volatility all match" and disagrees with the chart "No data",
+        // so both use a threshold of 2 and stay consistent with the curve.
         if (st.EquityCurve.Count >= 2)
         {
             double peak = double.MinValue, trough = double.MaxValue;
@@ -442,7 +442,7 @@ public partial class MainWindow : Window
             ? "—"
             : string.Format("Total {0} | fired {1} | pending {2}", hwi.Total, hwi.Fired, hwi.Left);
 
-        // // ---------- Curve ----------
+        // ---------- Curve ----------
         ChartEquity.SetData(st.EquityCurve, baseLine: 1_000_000, target: st.Target);
 
         // ---------- Positions ----------
@@ -454,7 +454,7 @@ public partial class MainWindow : Window
         // ---------- Activity ----------
         AppendEvents(st);
 
-        // // ---------- Child windows follow the main loop ----------
+        // ---------- Child windows follow the main loop ----------
         RefreshHoldPanel();
     }
 
@@ -464,7 +464,7 @@ public partial class MainWindow : Window
 
         if (st.Positions.Count == 0)
         {
-            // // Empty-state collapse: draw no header, just one hint line, so 260 px are not left blank
+            // Empty-state collapse: draw no header, just one hint line, so 260 px are not left blank
             HoldHeader.Visibility = Visibility.Collapsed;
             TxtHoldEmpty.Visibility = Visibility.Visible;
             BtnHoldMore.Visibility = Visibility.Collapsed;
@@ -552,8 +552,8 @@ public partial class MainWindow : Window
                 VerticalAlignment = VerticalAlignment.Center,
             };
 
-            // // At 7 columns each cell is only about 200 px: instrument, price and change on one line get clipped,
-            // // so the layout splits into a "name + change" row and a "price" row.
+            // At 7 columns each cell is only about 200 px: instrument, price and change on one line get clipped,
+            // so the layout splits into a "name + change" row and a "price" row.
             chg.Margin = new Thickness(0);
             chg.HorizontalAlignment = HorizontalAlignment.Right;
 
@@ -647,18 +647,18 @@ public partial class MainWindow : Window
 
         if (!added) return;
 
-        // // Never truncate: the activity feed must scroll back to the very first entry. The renderer is already virtualized,
-        // // and the right column only draws the latest 30 entries, so keeping the full list in memory costs nothing.
+        // Never truncate: the activity feed must scroll back to the very first entry. The renderer is already virtualized,
+        // and the right column only draws the latest 30 entries, so keeping the full list in memory costs nothing.
 
         RenderLogFeed();
         _logWindow?.AppendAll(_logEvents);
     }
 
     /// <summary>
-    /// /// Right-column activity: newest on top, at most 30 rendered, the rest via scrolling.
-    /// /// The original main window showed the latest single line, giving a whole block to one row; this fills the space.
+    /// Right-column activity: newest on top, at most 30 rendered, the rest via scrolling.
+    /// The original main window showed the latest single line, giving a whole block to one row; this fills the space.
     /// </summary>
-    /// /// <summary>Called back by the "Activity (all)" popup so the filter is identical inside and out.</summary>
+    /// <summary>Called back by the "Activity (all)" popup so the filter is identical inside and out.</summary>
     public void SetLogFilter(string key)
     {
         if (_logFilter == key) return;
@@ -694,7 +694,7 @@ public partial class MainWindow : Window
 
 
     /// <summary>
-    /// /// Challenge card. Four stages:
+    /// Challenge card. Four stages:
     ///   none -- not rolled yet, shown as not enabled;
     ///   ask  -- waiting for the contestant, candidates listed with a countdown;
     ///   on   -- enabled, each row shows check / cross / dot;
@@ -924,7 +924,7 @@ public partial class MainWindow : Window
 
     private static string KindColor(string kind, string text)
     {
-        // // Mirrors kind_color in the Python _write_rows; the black-swan bucket must pull out "Liquidity drained"
+        // Mirrors kind_color in the Python _write_rows; the black-swan bucket must pull out "Liquidity drained"
         if (kind == "gap")
         {
             bool isLiq = text.Contains("Liquidity drained") || text.Contains("Liquidity drained");
@@ -950,7 +950,7 @@ public partial class MainWindow : Window
         return $"{s / 60}m {s % 60:00}s";
     }
 
-    // // ==================== Top-bar buttons ====================
+    // ==================== Top-bar buttons ====================
 
     private void OnMinimizeClick(object sender, RoutedEventArgs e)
         => WindowState = WindowState.Minimized;
@@ -968,12 +968,12 @@ public partial class MainWindow : Window
 
         try
         {
-            // // Same semantics as the Python-side "Stop related processes" button: let the service wind itself down first
+            // Same semantics as the Python-side "Stop related processes" button: let the service wind itself down first
             _ = _client.PostShutdownAsync();
         }
         catch
         {
-            // // Fine if the service is already gone
+            // Fine if the service is already gone
         }
 
         _closing = true;
@@ -1036,7 +1036,7 @@ public partial class MainWindow : Window
         if (_state is not null) _holdWindow.UpdateRows(_state.Positions);
     }
 
-    /// /// <summary>The Positions popup refreshes with the main loop, driven by it.</summary>
+    /// <summary>The Positions popup refreshes with the main loop, driven by it.</summary>
     public void RefreshHoldPanel()
     {
         if (_holdWindow is { IsLoaded: true } && _state is not null)

@@ -8,12 +8,12 @@ using TokensWatch.Services;
 namespace TokensWatch.Panels;
 
 /// <summary>
-/// /// "AI Actions" (Scratchpad). Mirrors tm_watch_ai.py lines 732-769.
+/// "AI Actions" (Scratchpad). Mirrors tm_watch_ai.py lines 732-769.
 ///
-/// /// One easy-to-miss detail: Python calls yview_moveto(0.0) twice (line 768 immediately,
-/// /// line 769 again after(80)). The WPF equivalent is to scroll once more after Loaded
-/// /// through Dispatcher.BeginInvoke(DispatcherPriority.Loaded),
-/// /// otherwise layout is not finished and the first ScrollToHome is a no-op.
+/// One easy-to-miss detail: Python calls yview_moveto(0.0) twice (line 768 immediately,
+/// line 769 again after(80)). The WPF equivalent is to scroll once more after Loaded
+/// through Dispatcher.BeginInvoke(DispatcherPriority.Loaded),
+/// otherwise layout is not finished and the first ScrollToHome is a no-op.
 /// </summary>
 public partial class ScratchWindow : Window
 {
@@ -36,7 +36,7 @@ public partial class ScratchWindow : Window
         catch (Exception ex)
         {
             TxtTitle.Text = "Scratchpad (load failed)";
-            ContentBox.Text = "Load failed: " + ex.Message;
+            ContentBox.Text = "Load failed: " + ErrorText.Describe(ex);
             return;
         }
 
