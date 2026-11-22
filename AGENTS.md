@@ -1,162 +1,41 @@
 # Tokens 交易市场 · 参赛者入口
 
-单文件启动说明。读完这一页就能开局；规则从接口读，不必逐个翻 `docs/`。
+难度定档后开始 45 分钟模拟赛。起始本金 100 万 Tokens，基础目标 200 万。当前目标见 `GET /state`。
 
-一局 45 分钟：初始权益 **1,000,000 Tokens**，目标 **2,000,000**。行情、事件、跳空全部是程序生成的虚构数据，与任何真实市场无关。
+## 启动服务
 
-## 文件在哪（项目地图，先看这一张表）
-
-```text
-TokensMarket-OpenSource-AI-v97/
-├── AGENTS.md          ← 你正在读的这一页
-├── README.md          人类入口（规则、接口、常见问题）
-├── run.py             ★ 启动服务的唯一入口（Agent 走这个）
-├── bench.py           配对评测
-├── guard.py           源码守卫（run.py 自己调，别手动起）
-├── launchers/         ★ 所有双击入口（内部自动切回仓库根）
-│   ├── 开一局.bat     人类双击（5 秒确认）
-│   ├── AI-Start.bat   无人值守（脚本 / Agent 用这个）
-│   ├── 只开观众席.bat 补挂窗口
-│   └── 进程深度清理.bat
-├── tools/deep-clean.ps1  非交互清理（AI 直接调这个）
-├── src/               引擎与 HTTP（对局中会被封存，不要改）
-├── viewer-cs/          ★ C# 观众席（默认界面；构建过就用它，否则退回 tkinter）
-│   └── TokensWatch/    WPF 工程：只读 /state，不碰引擎。Agent 不必碰它
-├── tests/             unittest 用例
-├── docs/              ★ 规则文档
-│   ├── rules.md       完整规则
-│   ├── ai-protocol.md 接入协议
-│   ├── cost-model.md  成本模型
-│   └── 给AI的启动提示词.txt
-└── examples/reports/  样例战报
-```
-
-三条硬规矩：
-
-1. **规则以 `GET /rules` 为准**：`docs/` 只是同一套规则的展开版，两者冲突时信接口。
-2. **启动只认两个位置**：Agent 用仓库根的 `python run.py`；人类双击 `launchers\开一局.bat`。
-   不要 `cd launchers` 之后再跑 `python run.py` —— `launchers\` 下没有 `run.py`。
-3. **`launchers\` 与 `tools\` 里的脚本已自动切回仓库根**，双击或在任意目录调用都能工作；
-   不要把它们复制到别处，否则相对路径会断。
-
-## 0. 用哪个 Python（硬要求）
-
-**Python 3.14**——观众席的 GUI 控件和 `.pyc` 都按 3.14 编译，其他版本起不来。
-**安装位置不限**：`run.py` 只校验版本号，不校验路径。本机通常在这条路径：
-
-```
-%LOCALAPPDATA%\Programs\Python\Python314\python.exe
-```
-
-**找解释器只有一条顺序，照做，不要自己发明探测流程**：
-
-```bat
-python --version
-```
-
-1. 打印 `Python 3.14.x` → 就用 `python`，`cd` 进目录直接开跑。**绝大多数机器到这一步就结束了。**
-2. `python` 不存在或版本不对 → 再用上面那条 `%LOCALAPPDATA%\...\python.exe` 全路径。
-3. 全路径也不存在 → 这条命令一次列出所有候选，别再一条条试：
-
-```bat
-dir /b "%LOCALAPPDATA%\Programs\Python" 2>nul & where python 2>nul & where python3 2>nul
-```
-
-**`py` 启动器不是必需的，很多机器根本没装**（本机就没有，`where py` 空输出）。`py -3.14` 只是「如果恰好装了」的顺带写法，试一次失败就立刻转第 2 步，**不要因为 `py` 不存在就认为环境坏了、转而去查注册表 / 环境变量 / 重装 Python**。
-
-`run.py` 只校验版本号，不校验安装路径：启动第一件事就是校验，不是 3.14 直接中止（退出码 2）并提示去哪里找。端口上已有对局时拒绝启动，退出码 4。
-不要用 `py -3.12`、`python3` 去找别的解释器——观众席控件和 `.pyc` 都按 3.14 编译，换版本只会拿到 `bad magic number`。
-
-## 1. 检查上一局残留（有则清，无则直接开始）
-
-正常结算会清理运行时文件并保留战报。如果对局异常中断，先确认当前目录的对局已经停止，再从项目根运行 Windows 清理脚本：
+从项目根用 Python 3.14 启动，安装路径和补丁版本不限。以下 PowerShell 命令会前台运行服务，另开终端调用 HTTP。参赛标识请按本局的模型、思考强度和平台填写。
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tools\deep-clean.ps1
+$env:TM_TRADER = 'GLM-5.3-深度思考-Cursor'
+$env:TM_EVENTS = '1'
+$env:TM_FR = '1'
+$env:TM_SLOT = '1'
+$env:TM_ASSIST = '1'
+python run.py
 ```
 
-历史战报保留在 `src/data/reports/`。
+`launchers/AI-Start.bat` 是 Windows 无人值守入口，`launchers/开一局.bat` 有开局确认。常规启动会打开观众席，无桌面环境使用 `--headless`。如果设了 `TM_PORT`，请替换以下命令的端口。
 
-## 2. 启动（一条命令，观众席会自己打开）
+## 等服务、答复挑战、定档
 
-```bash
-cd <项目目录>
+轮询 `GET /health` 至就绪，再读 `GET /state`。`challenge.stage` 为 `ask` 时，用 `POST /challenge/accept` 或 `POST /challenge/decline` 答复，75 秒后自动按拒绝处理。
 
-TM_TRADER="<模型名-思考强度-平台>" \
-TM_EVENTS=1 TM_FR=1 TM_SLOT=1 TM_ASSIST=1 \
-  nohup python run.py > run.log 2>&1 &     # 用 PATH 里的 3.14；没有就换成你的全路径
+答复后启动 30 秒盲盒，等待自动定档或调用 `POST /roll/stop`。确认 `rolled:true` 后才开始交易。下面以新局拒绝挑战为例。
 
-# 就绪检测：启动需要 3–8 秒，固定 sleep 会假失败
-for i in $(seq 1 30); do
-  curl -sf http://127.0.0.1:8734/health >/dev/null 2>&1 && break
-  sleep 1
-done
+```powershell
+curl.exe http://127.0.0.1:8734/health
+curl.exe -X POST http://127.0.0.1:8734/challenge/decline
+curl.exe -X POST http://127.0.0.1:8734/roll/stop
+curl.exe http://127.0.0.1:8734/state
 ```
 
-**`TM_TRADER` 第一段写模型、第三段写平台，不要反过来。** 例：模型 GLM-5.3 跑在豆包里 → `GLM-5.3-深度思考-豆包`。
-写成 `Doubao-MainAgent-深度思考-桌面端` 是把平台当模型，真正的参赛模型会从报告里消失。
+## 交易与结算
 
-**观众席是强制项，不是可选项。** `run.py`、`run.py server` 都会把只读观众席窗口拉起来。
-人类要能在屏幕上实时看到权益、持仓和活动流。
+参见[接入协议](docs/ai-protocol.md)、[游戏规则](docs/rules.md)和[成本模型](docs/cost-model.md)。`/rules` 是游戏内摘要，v1.2.28 的旧描述已在接入协议标明。比赛中用接口数据和自己的分析做决策。草稿用 `POST /scratchpad` 提交，本地草稿脚本在对局中会被封存。
 
-三个入口的区别：
+调用 `POST /quit` 前先看局面。达到目标且有仓时，先平仓并核对新净值。**v1.2.28 即使拒绝 `/quit` 也会安排停服。** 查看结算回包和 `src/data/reports/HTML Reports/` 下的战报。
 
-| 入口 | 行为 |
-|---|---|
-| `python run.py` | 标准方式，Agent 用这个 |
-| `launchers\AI-Start.bat` | 无人值守：设 `TM_NO_CONFIRM=1` 与 `TM_IDLE_ABORT=0` 后 `call launchers\开一局.bat`，启动逻辑只有一份；**脚本 / Agent 走这个** |
-| `launchers\开一局.bat` | 人类双击入口。5 秒内不按 `Y` 就取消开局；**在终端里 `cmd /c launchers\开一局.bat` 也会被当成人类**，5 秒后取消开局 |
+## 异常中断后的恢复
 
-- 不要自己另起 `python run.py spectator` 补窗口——正常启动就会有
-- 只有确实没有桌面环境（CI、容器、纯 SSH）才加 `--headless`，那是唯一的无窗口模式
-- 用错 Python 时 `run.py` 直接退出码 2，不会带着 `bad magic number` 报错糊过去
-
-| 变量 | 作用 |
-|---|---|
-| `TM_TRADER` | 参赛标识，格式 **模型名-思考强度-Agent平台**。第一段是**模型**（`GLM-5.3`），第三段才是**平台**（`豆包`）。在豆包里跑 GLM-5.3 → `GLM-5.3-深度思考-豆包`；写成 `Doubao-...` 就是把平台当模型，报告和观众席都会记错参赛者。经白名单过滤后写进报告文件名与正文 |
-| `TM_EVENTS` | `1` 开启随机事件（含黑天鹅跳空），`0` 只有黑天鹅；**未设置时按 1 处理** |
-| `TM_FR` | `1` 开启【优惠融资】：借款次数不限，目标上浮下限降到 0.01% |
-| `TM_SLOT` | `1` 开启【老虎机】：整局 3 次 |
-| `TM_ASSIST` | `1` 开启【外部的怜悯】：整局可向观众席求助 3 次 |
-| `TM_PORT` | 服务端口，默认 `8734` |
-| `TM_IDLE_ABORT` | 定档后连续多少分钟没有任何改变对局状态的动作就自动结算。默认 `0`（关闭）；`launchers\开一局.bat` 设 `12`，`launchers\AI-Start.bat` 保持 `0` |
-
-## 3. 定档
-
-先用 `POST /challenge/accept` 或 `POST /challenge/decline` 回答挑战询问，再定档。**未定档时 `/open`、`/loan`、`/slot`、`/fastforward` 全部被拒绝**，
-返回「难度尚未定档，请先 POST /roll/stop 或等抽选结束」；定档那一秒自动放开，不需要额外调用。
-
-```bash
-curl -X POST http://127.0.0.1:8734/roll/stop
-```
-
-## 4. 开局读这两样
-
-| 接口 | 内容 |
-|---|---|
-| `GET /rules` | 全部规则：交易细则、事件表、费率、完整接口清单 |
-| `GET /state` | 当前局面：权益、持仓、报价、盘口深度、事件流 |
-
-拿到这两个之后，参赛过程中不需要再读任何 Markdown。
-
-## 5. 结算
-
-```bash
-# 净值已达标但还有持仓：先全部平掉，否则 /quit 会被拒
-curl -X POST http://127.0.0.1:8734/close_all
-curl -X POST http://127.0.0.1:8734/quit
-```
-
-达标后仍有持仓时 `/quit` 返回 `ok:false` 并列出持仓，要先用 `/close_all` 落袋再退；
-不平仓就一直持有到 45 分钟到，由引擎强制清仓（中途回吐的话达标不算数）。
-HTML 报告写到 `src/data/reports/`。
-
-## 边界
-
-- 对局期间 `src/*.py` 被封存成诱饵。读到的是假文件，执行或 import 它会写入作弊标记并直接终止对局
-- 观众席只能在你主动求助（`POST /assist/ask`）之后回复，不能主动发消息，也不能替你下单
-- 求助整局 3 次上限；**只能在开局前开启**（`TM_ASSIST=1` 免费），v1.2.23 起取消局内付费开通，局中调用 `/assist/enable` 只会拿到错误
-
-## 分册文档
-
-`docs/rules.md`、`docs/ai-protocol.md`、`docs/cost-model.md` 是上述内容的分册展开版，供人类查阅。参赛期间以 `GET /rules` 的返回为准。
+确认当前目录的对局进程已退出后，若仍有遗留文件，在 Windows 项目根执行 `powershell -NoProfile -ExecutionPolicy Bypass -File tools\deep-clean.ps1`。历史战报会保留。

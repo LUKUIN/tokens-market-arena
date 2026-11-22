@@ -1,400 +1,99 @@
 # Agent Integration Protocol
 
-The HTTP interface is designed for **one thing: letting a large model understand the board in as
-few tokens as possible and make a decision**.
+> [中文](ai-protocol.md) · **English**
 
-> **What counts as a bug report**: the API contradicting this document, self-contradictory
-> numbers, a crash, or visibly corrupted data. Everything else — the difficulty draw, borrowing,
-> cutting a loss, the slot machine — is decided inside the game by whoever is playing.
+> This branch serves Chinese rule keys and display text. The `english` branch serves English text. Branch on HTTP status and structured fields such as `ok`, not translated messages.
 
-> **Note on language**: in this source edition, runtime messages returned by the API
-> (errors, event text, report) are in Chinese. Examples below keep the original Chinese strings
-> so you can match what you actually receive.
+The HTTP API is for a 45-minute simulation. Commands below use the default address `127.0.0.1:8734`. Use the actual `TM_PORT` if it differs. Start with [AGENTS.md](../AGENTS.md), then keep [game rules](rules.en.md) and [the cost model](cost-model.en.md) handy.
 
-## 0. Before you start: hard rules
+## Start and lock the difficulty
 
-### Requirements
+1. Run the project from its root on Python 3.14. The regular launcher opens a spectator. Use `--headless` for a session without a desktop.
+2. Wait for `GET /health` to return `ok:true`. This means HTTP is ready. The market may still be waiting for a challenge answer or a difficulty lock.
+3. For a fresh match, read `GET /state`. If `challenge.stage` is `ask`, call `POST /challenge/accept` or `POST /challenge/decline`. After 75 seconds with no answer, the engine declines. The challenge and difficulty wait do not use the 45-minute trading clock.
+4. The 30-second difficulty countdown starts automatically after the answer. Wait for it or call `POST /roll/stop` to lock immediately. Confirm `rolled:true` in `GET /state`. If you enabled challenges, their three objectives appear at the lock.
 
-1. **`GET /rules` + `GET /state` are enough**: those two responses carry the settlement rules,
-   the fee table, the event table and the full endpoint list.
-   This file and the other volumes under `docs/` are the complete manual for **humans**,
-   not required reading before a match; following `AGENTS.md` means never opening a Markdown
-   file mid-match.
-2. **Use Python 3.14, and start with the spectator window open.**
-   - Python **3.14 only** (any install location: `run.py` validates the version, not the path).
-     `run.py` checks the version first; a wrong version exits with code 2 and prints guidance.
-     Do not hunt for 3.10-3.13 or `python3` — the GUI widgets and the `.pyc` files are built for 3.14.
-     Every `python` in the commands below means your own 3.14 path.
-   - The start command is `run.py`, and a human has to be able to watch your equity, positions and
-     event feed live. `run.py` and `run.py server` both open the read-only spectator;
-     "use server to skip the window" does not exist. Double-clicking `launchers\开一局.bat` adds a
-     5-second mis-click guard (press `Y` to start). `launchers\AI-Start.bat` starts with no prompt and is what
-     scripts / agents should use; a cmd-invoked `launchers\开一局.bat` still counts as human.
-   - `--headless` is the only windowless mode, allowed only where there is genuinely no desktop
-     (CI, containers, pure SSH). It is forbidden for a local match.
-   - If you closed the window by accident, attach again with `launchers\只开观众席.bat` (or
-     `python run.py spectator`) — it changes nothing: no second server, no second seal.
-3. Get information and place orders **only through the HTTP interface**.
-
-### Forbidden
-
-- **Read the sources before the match.** Do not open `src/tm_engine.py`, `src/tm_api.py`,
-  `src/tm_watch_ai.py` or `run.py` before the match starts to look up parameters, probabilities,
-  the event pool or formulas. That is copying the answers, and every judgement you make afterwards
-  stops meaning anything.
-- **Use the sources to predict events.** Do not take constants out of the code to work out
-  "when the next gap will hit" or "which event will fire", and do not write a script that
-  reproduces the engine's internals so you know outcomes in advance.
-- **Modify code or data.** Do not edit any source file, do not read or write `src/data/session.json`
-  directly, do not patch the save file to get around the API.
-- **Use outside information.** Do not look up this project's past matches, other players' results,
-  or community discussion to build a strategy.
-
-### Allowed
-
-- Once the match has started you may write code, build models, compute expectations, run a Monte
-  Carlo, fit distributions — **as long as your inputs come from the game's API** (`/rules`,
-  `/state`, `/prices`, the event feed). Analytical skill is part of what this environment tests.
-- Write your reasoning into the scratchpad; it is preserved alongside the report.
-
-### The guard will actually catch you
-
-The moment a match starts, **`run.py` seals the three modules that carry game parameters** —
-`src/tm_engine.py`, `src/tm_api.py`, `src/scratchpad.py`. They are encrypted with a one-off key and
-written outside the project (`%LOCALAPPDATA%\TokensMarketGuard\<random>\`); decoys take their place
-in `src/`. `tm_watch_ai.py` stays readable on purpose: it is the spectator UI, it talks to `/state`
-over HTTP and never imports the engine, so it leaks nothing and keeping it readable lets a second
-spectator window attach to a running match.
-
-A crashed match leaves the vault behind; the next `python run.py` restores it automatically before
-loading anything. What you read will be:
-
-```
-#  CHEATING DETECTED
-#  This file is a decoy. The real sources are sealed while a match is running.
-```
-
-If you go further and execute or `import` a decoy, it drops a cheat flag and the guard immediately:
-
-1. sends `POST /shutdown` — **the match is terminated**
-2. prints `CHEATING DETECTED`
-3. leaves `_guard_vault/CHEAT_FLAG` for the referee to inspect
-
-The guard restores the sources and exits when the match ends. So: **do not touch the sources** —
-that ends your run.
-
-### Why
-
-This environment measures **decision-making under incomplete information and real friction**.
-Mining the API's data for patterns and computing probabilities is a skill. Copying answers out of
-the sources before the match is cheating. The line is simple: **did your input come from the game?**
-
----
-
-## 1. Startup
+For example, in a fresh session in Bash or with `curl.exe` on Windows, decline first, then lock.
 
 ```bash
-# 1. Clear leftovers from the previous match (never while a match is running)
-#    Preferred: python guard.py clean      (restores any sealed sources too)
-#    Manual:    delete src/data/session.json, .running, .seal, .rules_ack
-#               and remove the src/data/runtime leftovers except reports/
-
-# 2. Non-interactive start (does not read stdin; safe for background use)
-rem contestant ID: model-effort-agent-platform (segment 1 = model, segment 3 = platform)
-set TM_TRADER=GLM-5.3-thinking-Doubao
-set TM_EVENTS=1        # random events
-set TM_FR=1            # Preferred Financing (unlimited loans, target range 0.01%–100%)
-set TM_SLOT=0          # Slot Machine (3 plays, 80% nothing / 15% 5x / 5% 10x)
-python run.py
-```
-
-> **Nothing is ever prompted.** Every setting comes from an environment variable; anything unset
-> falls back to a default (`TM_TRADER=Guest`, `TM_EVENTS=1`, `TM_FR=1`, `TM_SLOT=1`, `TM_ASSIST=1`).
-> Order at startup: server up → difficulty draw (30 s) → clock starts.
-> Both global switches are read before the server starts.
-
-### Writable area
-
-`_agent/` in the project root is the writable workspace. Its **contents** are emptied on every
-exit path — before a new match starts, on `/quit`, on timeout settlement, and on `/reset` — while
-the directory itself stays. `.gitignore` ignores it, so nothing in it can reach the repository.
-
-That cleanup covers `_agent/` only. Files written anywhere else (the project root, `src/`) are not
-touched by it: `tools\deep-clean.ps1` clears `data/` (keeping `reports/`), `_agent/`, and stray `*.log`
-files in the root, and reports any other untracked file it notices.
-
-After startup:
-
-- the HTTP server listens on `127.0.0.1:8734`
-- the spectator GUI opens automatically (read-only)
-- the difficulty draw counts down **30 seconds**
-
-## 2. Lock the difficulty (mandatory — ticks do not advance before this)
-
-The engine **does not advance the match** until difficulty is locked. Two ways:
-
-```bash
-# Option A: let the 30 seconds run out (random combination)
-curl http://127.0.0.1:8734/roll/state
-# → {"ok": true, "roll_left": 23.4, "rolled": false}
-
-# Option B: lock it now (you get whatever combination is showing at that moment)
+curl -X POST http://127.0.0.1:8734/challenge/decline
 curl -X POST http://127.0.0.1:8734/roll/stop
+curl http://127.0.0.1:8734/state
 ```
 
-Once locked, `rolled` becomes `true` and `difficulty` exposes `gap` / `liq` with their values.
-The slot index is `gap + liq × 5` (0-24) and is printed on the report header; replaying with
-`TM_ROLL_INDEX=<index>` pins the same slot. `TM_SEED` alone cannot reproduce the slot — it
-follows the wall clock at roll_stop (one lap every 2.5 s).
+Use `TM_TRADER` before startup to set the contestant name. This also avoids the unnamed-session disqualification. For leftovers from an interrupted match, follow the Windows cleanup steps in [AGENTS.md](../AGENTS.md) after closing that checkout's process.
 
-**The match clock starts at the instant of locking** — the 30 seconds of drawing do not count
-against the 45 minutes.
+## GET endpoints
 
-## 3. HTTP interface
+| Endpoint | Response |
+|---|---|
+| `/health` | `ok`, `tick`, `equity`, `finished`, `protocol` and `engine_version`. |
+| `/state` | State object. With `?history=0`, `price_history` is `{}`. Equity history and recent events still appear. |
+| `/prices` | Map from symbol to `{price, name, spread_pct}`. History is in `/state`. |
+| `/rules` | In-game rule summary. In v1.2.28 some descriptions still refer to the previous challenge flow, paid assistance and the older Huge Wave schedule. Use the rules and endpoint contract on these pages for those items. |
+| `/roll/state` | `{ok, roll_left, rolled}`. While the challenge answer is pending, the roll timer does not count down. |
+| `/special` | Feature settings and counters. `fr_left` is always `null`. `slot_left` is `null` if disabled. |
+| `/scratchpad` | `{ok, items}` or `{ok, count}` with `?count=1`. |
+| `/assist/pending` | Spectator-side requests and recent conversation. |
+| `/assist/inbox` | Unread spectator replies in `items`. Fetching marks them as read. |
 
-Every endpoint lives at `http://127.0.0.1:8734`.
+## POST endpoints
 
-### Read-only
+Use a UTF-8 JSON object for bodies. Example bodies appear below. Check `ok` on actions even with HTTP 200. Some read endpoints return a bare object without an `ok` field. Expect transport failures separately from game rejections.
 
-| Method | Path | Notes |
-|---|---|---|
-| GET | `/health` | Liveness; returns tick / equity / finished / protocol / engine_version |
-| GET | `/state` | **Full board** (detailed below) |
-| GET | `/rules` | Rule text |
-| GET | `/prices` | Current prices and history per pair |
-| GET | `/roll/state` | Difficulty countdown |
-| GET | `/scratchpad` | Read scratchpad entries |
+| Endpoint | Body and behavior |
+|---|---|
+| `/open` | `{"pair":"AURA/CORE","side":"LONG","lots":1,"leverage":20}`. All four fields are required. |
+| `/close` | `{"pair":"AURA/CORE","side":"LONG","lots":1}`. Omit `lots` or pass zero to close all matching positions. Omit `side` to include both directions. A partial close without `side` starts at the newest matching position. |
+| `/close_all` | No body. Attempts every open position using normal close rules and can fail during a close restriction. Check the resulting state. |
+| `/loan` | `{"amount":100000}`. Subject to the remaining pool and current restrictions. Returns the target increase for this loan. |
+| `/repay` | `{"amount":50000}`, or omit `amount` to request full repayment. The payment is limited by debt and available cash. |
+| `/slot` | `{"amount":10000}`. If enabled, at most three plays, each 1–200,000 Tokens and capped by cash balance. |
+| `/special` | `{"name":"fr","on":true}` or `{"name":"slot","on":false}`. Turning a feature on requires a pre-start session. Turning it off is allowed during play. Use a JSON boolean for `on`. |
+| `/challenge/accept`, `/challenge/decline` | No body. Answer while `challenge.stage` is `ask`. |
+| `/roll/start`, `/roll/stop` | No body. The normal flow starts the draw automatically after the challenge answer. `/roll/stop` locks it. |
+| `/fastforward` | `{"seconds":300}` or `{"seconds":180}`. See the budget and cooldown below. |
+| `/scratchpad` | `{"text":"..."}` appends a note. `{"clear":true}` clears the notes. |
+| `/assist/ask` | `{"text":"..."}`. Returns a `ticket`. Up to three requests per match when assistance is enabled. |
+| `/assist/reply`, `/assist/reject` | Spectator-side response. Send `ticket` and, for a reply, `text`. |
+| `/assist/enable` | Retained for compatibility and always fails. Set `TM_ASSIST=1` before startup to enable assistance, or `0` to disable it. |
+| `/trader` | `{"name":"Model-Effort-Platform"}`. Changes the display name. Set `TM_TRADER` at startup for eligibility. |
+| `/pause`, `/begin` | Pre-start controls. `/pause` does not toggle or pause an already started match. No call is needed in the standard flow. |
+| `/reset` | No body. Replaces the match while the service is running, preserves reports and has a 30-second cooldown. A reset clears audience assistance; restart the service to apply `TM_ASSIST` again. |
+| `/quit` | No body. Check the settlement conditions below before calling it. |
+| `/shutdown` | Administrative stop. The service attempts to write an abnormal-exit snapshot without settlement. |
 
-### Trading
+## Reading state
 
-| Method | Path | Body |
-|---|---|---|
-| POST | `/open` | `{"pair":"AURA/CORE","side":"LONG","lots":10,"leverage":100}` |
-| POST | `/close` | `{"pair":"AURA/CORE","lots":10}`; if `lots` exceeds the held size it closes the whole position without error |
-| POST | `/loan` | `{"amount":1000000}` |
-| POST | `/repay` | `{"amount":600000}` |
-| POST | `/close_all` | No argument: close every open position at the current price |
+| Field | Meaning |
+|---|---|
+| `session_id`, `tick`, `elapsed_seconds` | Match ID, number of market steps, and elapsed match seconds. One market step normally takes 5 seconds; fast-forward and the post-target cadence affect how these values advance. |
+| `equity`, `balance`, `genesis`, `target` | Equity is cash plus unrealized P&L minus debt. Cash is the slot spend limit. `genesis` is the P&L baseline. Use `target` for the current goal. |
+| `rolled`, `difficulty`, `challenge` | Difficulty indices `gap` and `liq` are 0–4. `difficulty` is `null` before locking. Tasks are empty until an enabled challenge is drawn. Look for `key: double_goal` in `challenge.tasks`. |
+| `prices`, `liquidity`, `active_mods` | Current mid prices with base spreads, per-symbol liquidity relative to the selected tier, and active modifiers. `liquidity` is a multiplier, not the depth in Tokens. |
+| `positions`, `margin_used`, `maint_margin`, `maint_rate`, `margin_level` | Position rows, occupied margin, and the maintenance amount, base rate and current coverage. `margin_level` is a percentage or `null` with no open position. |
+| `loan`, `loan_bump_range`, `special` | Loan balance, limit, interest and target increases. `loan_bump_range` reports the standard financing setting. Double or Nothing uses 50–100% for each loan and slot payout. `special.slot_win_range` reflects that challenge. |
+| `ff`, `negative_remain`, `margin_call_remain` | Fast-forward quota and cooldown in seconds, remaining cash-rescue time in seconds, and margin-call grace in market steps. |
+| `price_history`, `equity_curve`, `events` | At most 600 prices per symbol, 900 equity points and the latest 60 events. Use `(session, seq)` to deduplicate events. Action responses that include a compact `state` omit these series' contents. |
+| `huge_wave` | Pre-warning flag for the current step and counters `total`, `left` and `fired`. |
+| `closed_n`, `win_n`, `profit_factor` | Closed-fill count, profitable close count, and gross profits divided by absolute gross losses; `null` if the denominator is zero. |
+| `audit`, `settlement`, `finished`, `disqualified` | Audit messages, latest settlement result, completion flag and eligibility indicator. An empty audit means those checks found no issues. |
+| `seed`, `assist_unread` | Seed is available after settlement. The unread count directs you to `/assist/inbox` for message contents. |
 
-### Control
+## Fast-forward
 
-| Method | Path | Notes |
-|---|---|---|
-| POST | `/fastforward` | `{"seconds":300}`, tier must be 300 or 180 |
-| POST | `/roll/start` | Start the draw |
-| POST | `/roll/stop` | Lock the difficulty |
-| POST | `/begin` | Release the pre-match freeze |
-| POST | `/pause` | Freeze (**only valid before the match starts; afterwards always rejected**) |
-| POST | `/trader` | `{"name":"MiniMax-M3.1"}`: set the operator name shown in the report title (max 60 chars, empty rejected) |
-| POST | `/scratchpad` | `{"text":"..."}`, append an entry |
-| GET | `/special` | Both global switches (`fr_left` is always `null` since v1.2.4) |
-| POST | `/special` | `{"name":"fr"|"slot","on":true}`, toggle a switch (**start of match only**; rejected once the match has begun) |
-| POST | `/slot` | `{"amount":10000}`, slot bet (1–200000, ≤ current equity, 3 plays) |
-| POST | `/reset` | Start a new match |
-| POST | `/quit` | Early exit: at/above target with nothing open -> `Target reached - early exit` (counts); at/above with positions -> `ok:false`, call `/close_all` first; below target -> `Abandoned below target` (does not count). **About 3 seconds later the service cleans up**: temp files removed, leftover port holders stopped |
-| POST | `/shutdown` | Stop the server (**records one abnormal exit**) |
+The total budget is 900 seconds. A 300-second advance starts a 120-second real-time cooldown. A 180-second advance starts a 90-second cooldown. Send options only when the corresponding `ff.can5` or `ff.can3` is true. A full 300-second request normally advances 60 steps. If the match ends during the request, inspect the returned `ticks`, `seconds` and `state.finished` before acting again. Market ticks continue automatically during cooldown.
 
-> `POST /quit` returns two settlement fields: `settled` (boolean, whether settlement was
-> complete) and `warnings` (string array listing leftover positions or unpaid loans).
-> When `settled=false` the report header reads "Settlement error"; do not treat it as a
-> clean result.
+## Settlement and reports
 
-## 4. The `/state` fields
+Read `/state` before `/quit`. At or above the current target, close open positions first and read the updated equity. If closing costs push equity below target, quitting counts as abandonment. Below target, quitting settles remaining positions and debt. Eligibility also matters to a recorded target hit.
 
-> `GET /state?history=0` drops `price_history` (up to 2000 points per pair,
-> growing through the match). With the parameter the response is smaller —
-> trading endpoints (`/open` `/close` `/loan` …) already return the trimmed form,
-> without history or the event feed.
+**v1.2.28 schedules a server shutdown about three seconds after a `/quit` request even when `ok:false`. Treat `/quit` as terminal, and use state polling for the preflight.** When time expires, the engine applies regular close costs in automatic settlement. `hit_at_tick` records the first observed target hit, and the final result can still be a miss.
 
-```jsonc
-{
-  "tick": 120,
-  "equity": 1043251.2,        // net value = cash + unrealised P&L − debt
-  "balance": 1200000.0,       // cash
-  "pnl_pct": 4.33,            // relative to starting capital
+A successful response contains `final_equity`, `report`, `settled` and `warnings`. Reports are under `src/data/reports/HTML Reports/` and `src/data/reports/JSON Reports/`. A false `settled` flag calls for checking `warnings`. Wait for a normal shutdown to finish before starting a new service from the same directory.
 
-  "positions": [ {"pair":"AURA/CORE","side":"LONG","lots":10,"leverage":100,
-                  "entry":150.2,"price":151.4,"upnl":12000,"margin":15140} ],
-  "margin_level": 680.5,      // equity / (notional x 10%); < 100% margin call, < 50% forced liquidation,
-                              // open orders must leave >= 150%
+## Notes and fair play
 
-  "prices": {"AURA/CORE": {"price":151.4, "spread_pct":0.06}},
+During a match use the scratchpad HTTP endpoints. The packaged `src/scratchpad.py` is one of the files sealed by the guard, and executing a decoy can terminate the match. Only notes submitted to the scratchpad are included there in the report. Spectator replies arrive via `/assist/inbox`, separate from the event stream.
 
-  "loan": {"balance":0, "limit":3000000, "borrowed":0, "interest":0},
-  "total_borrowed": 0,
-
-  "active_mods": [                      // active events (object list, at most 6 entries)
-    {"key": "loan_pool_mult", "name": "Central bank easing", "value": 1.35,
-     "label": "loan pool x1.35", "left_ticks": 42}
-  ],
-  "loan_bump_range": [1.0, 100.0],      // borrow uplift range (%): [1,100] normally, [0.01,100] with Preferred Financing
-  "special": {                          // the two global switches
-    "fr": true, "fr_left": null,        // Preferred Financing on; the per-run cap is gone, so this is always null
-    "slot": false, "slot_left": 3,      // Slot Machine off
-    "slot_win": 0.0, "fr_lo_pct": 0.01  // total slot winnings / borrow lower bound (%), 0.01 when on, 1.0 when off
-  },
-  "seed": null,                         // always null during a match; the seed is returned after settlement, for replay
-
-  "gap_level": "low", "liq_level": "normal",
-  "ff": {                               // fast-forward budget (an object, not a flat field)
-    "total": 900, "used": 0, "remain": 900,
-    "records": [], "cool_left": 0, "last_cd": 0,
-    "can5": true, "can3": true, "left5": 3, "left3": 5
-  },
-  "finished": false,
-  "settlement": null,                   // settlement result: {settled, warnings, reason}; null before the run ends
-  "audit": [],                          // ledger audit: empty array means cash/positions/loan/equity all reconcile
-  "huge_wave": {                        // Huge Wave warning (0-3 per session, 25% each)
-    "show": false,                      // true only on the warning tick; drops next tick
-    "left": 1,                          // occurrences still available this session
-    "fired": 1,                         // occurrences fired so far
-    "text": "A HUGE WAVE OF VOLATILITY IS APPROACHING!"
-  },
-  "challenge": {                        // Challenge tasks (a PvZ2 Level Objectives port)
-    "stage": "on",                      // none / ask (waiting for you) / on / off
-    "ask_left": 0.0,                    // seconds left while stage == "ask"
-    "tasks": [                          // 3 when enabled, empty otherwise
-      {"key": "pos_cap", "name": "Light Footprint", "desc": "Never hold more than 4 pairs at once",
-       "status": "pending", "note": ""} // status: pending / done / failed
-    ],
-    "cleared": 0,
-    "failed": 0,
-    "total": 3,
-    "hold_hits": 0,                     // positions already closed long enough for "Patience Pays"
-    "mdd_pct": 0.0                      // challenge-scope drawdown (%); independent of max_drawdown
-  },
-  "events": [ ... ]                     // recent events, full text included
-}
-```
-
-### The challenge answering window
-
-Once the difficulty roll is fixed (`POST /roll/stop`, or the roll timing out), `challenge.stage`
-becomes `ask`: **prices and the clock freeze** until you answer within `challenge.ask_left` seconds.
-
-```bash
-curl -X POST http://127.0.0.1:8734/challenge/accept   -d '{}'   # enable, locks the three objectives
-curl -X POST http://127.0.0.1:8734/challenge/decline  -d '{}'   # decline, run a normal round
-```
-
-No answer in time means "off" and the round simply proceeds. The 45-minute clock is rebased when
-you answer (or time out), so the waiting window is never charged to your session.
-
-Judging runs every tick: a process objective turns `failed` the moment it is violated and never
-recovers; a result objective turns `done` the moment it is met. The rule the engine actually
-compares is the sentence in `challenge.tasks[].desc`.
-
-### Seven things to check
-
-1. **`equity` vs `target`** — how far you still have to go
-2. **`margin_level`** — equity / (notional exposure x 10%); below 100% you need more margin, below 50% you get liquidated, opening orders must keep >= 150%
-3. **`active_mods`** — which temporary rules are currently moving prices
-4. **`loan_bump_range`** — the current cost of borrowing (`[1,100]` normal, `[0.01,100]` Preferred Financing)
-5. **`special`** — whether the switches are on; `slot_left` is the remaining slot plays, while `fr_left` is always `null` since v1.2.4 removed the loan-count cap (field kept for compatibility)
-6. **`ff`** — the fast-forward budget object: `remain` is seconds left, `cool_left` is the remaining cooldown,
-   and `can5` / `can3` tell you straight away whether each step is usable right now
-7. **`events`** — what just happened (**full text, no need to consult the docs**)
-
-## 5. Fast-forward budget rules
-
-900 seconds (15 minutes) per match, two tiers:
-
-| Tier | Advance | Cooldown |
-|---|---|---|
-| 5 minutes | 300 s | 120 s |
-| 3 minutes | 180 s | 90 s |
-
-**The cooldown follows the tier you used.** If remaining budget cannot cover the tier, the jump
-does not execute.
-
-```bash
-curl -X POST http://127.0.0.1:8734/fastforward \
-     -H "Content-Type: application/json" -d '{"seconds":300}'
-# → {"ok":true,"ticks":60,"state":{...}}
-# during cooldown → {"ok":false,"error":"Fast-forward cooling down, 78 s left (manual advance is also blocked during cooldown)"}
-```
-
-## 6. Scratchpad (optional)
-
-Scratchpad entries are merged into the HTML report at settlement so a human can see
-*why* a decision was made.
-
-```bash
-curl -X POST http://127.0.0.1:8734/scratchpad \
-     -H "Content-Type: application/json" \
-     -d '{"text":"t120 AURA is 8% off the mean, going short"}'
-```
-
-Git Bash's `curl -d` encodes Chinese text as GBK; the server decodes it as UTF-8 and
-receives mojibake.
-
-## 6.5. Ending early
-
-`POST /quit` is a **normal settlement**, not an abnormal exit, but the end reason splits in two:
-
-- **equity >= target -> `Target reached - early exit`**: counts as reached. Stopping once you have
-  made enough is skill in the real world, and this is a valid early exit.
-- **equity < target -> `Abandoned below target`**: does not count.
-
-At or above the target while still holding positions, `/quit` returns `ok:false`: `error` says how
-many positions are open and `positions` lists pair and side, requiring `POST /close_all` first.
-The engine will not turn floating profit into realised profit for you. If you never close, the
-match runs to time-up and gets force-liquidated; a give-back then means the target no longer counts
-and the report says it hit the target at m:ss and gave it back.
-
-Both end reasons close all positions immediately, clear loans and generate the full report; final equity is
-taken at that instant and rating/cost attribution are produced as usual. There is **no penalty,
-no abnormal flag, no effect on starting the next match**. They are distinguished because
-"locked in a gain" and "gave up" would otherwise look identical in the statistics.
-
-Hitting the target and choosing to keep holding is also allowed: the first moment it is hit is
-recorded in `/state` as `hit_at_tick`. If equity later slides back below the target, the final
-verdict is still "target missed", and the report says it hit the target at m:ss and gave it back.
-While holding past the target the engine runs at 4x pace (`TM_TAIL_SPEED=1` restores the real
-pace); prices are tick-driven, so nothing about the outcome changes.
-
-There are exactly two abnormal exits: `POST /shutdown` (stop immediately, leaves an "unsettled"
-marker) and killing the process.
-
-## 7. Finishing
-
-```bash
-curl -X POST http://127.0.0.1:8734/quit
-# → {"ok":true,"final_equity":...,"report":"...html"}
-```
-
-The report lands under `data/reports/`.
-
-**`/shutdown` is not a normal end** — it records an abnormal exit and the report shows "unsettled".
-Use `/quit` when you have actually finished.
-
-## 8. Safety boundaries
-
-These validations cannot be bypassed:
-
-- amounts must be finite positive numbers (`NaN` / `Infinity` / negatives / strings are all rejected)
-- borrowing beyond the available limit is rejected
-- out-of-range lots or leverage are rejected
-- **after settlement every write is rejected** (`finished=true` makes open/close/loan/repay all
-  return "This run is already over")
-- concurrent requests are protected by a `LOCK`; simultaneous orders result in exactly one success
-
-**The one thing that cannot be protected against is your own faulty logic** — the engine is
-deterministic: the same input always produces the same output.
-
-### Outside Mercy (optional, on by default)
-
-```bash
-POST /assist/ask      {"text": "..."}                     # 3 asks per match; returns a ticket
-GET  /assist/inbox                                        # collect spectator messages (once each)
-POST /assist/enable                                       # removed in v1.2.23: pre-match only, always returns an error
-GET  /assist/pending                                      # the spectator GUI polls this
-POST /assist/reply    {"ticket": "a1", "text": "..."}     # spectators answer
-POST /assist/reject   {"ticket": "a1"}                    # spectators decline
-```
-
-Set `TM_ASSIST=1` before starting to enable it for free. Asking does not block: `/assist/ask`
-returns at once and the contestant polls `/assist/inbox` on its own schedule.
-
-**Replies never enter the `/state` event feed.** Polling only `/state` means never seeing
-the answer -- `/state` carries just `assist_unread` (the unread count); the text itself needs
-`GET /assist/inbox`. Fetching marks them read; unread ones stay queued.
+Use API data and your own analysis during a competition. Run integrations as a single writer when the order matters. Serialization of engine operations does not make a repeated POST safe to retry after a timeout, so read back the state before resending a trade.

@@ -5,49 +5,9 @@
 
 ## Starting up
 
-The runtime requires **Python 3.14** (`.pyc` and the spectator widgets are built for 3.14).
-**Any install location works**: `run.py` validates the version, not the path. On this machine it is usually:
+Start from the repository root with Python 3.14. See [AGENTS.md](../AGENTS.md) for launcher commands. `python run.py` reads environment settings and opens the spectator. The interactive demo has its own console prompts. In a fresh HTTP session, answer the challenge prompt first (75 seconds, default decline), then wait for the 30-second draw or lock it early. The 45-minute trading clock starts at the lock.
 
-```
-%LOCALAPPDATA%\Programs\Python\Python314\python.exe
-```
-
-**Every `python` in the commands below means that absolute path.** `run.py` validates the version
-itself too and exits with code 2 when it does not match.
-
-```bash
-set TM_TRADER=Doubao-1.5-pro-thinking-coze
-set TM_EVENTS=1
-python run.py
-```
-
-**Idle abort**: with no **state-changing action** for `TM_IDLE_ABORT` minutes after the difficulty
-lock, the match settles itself and the report says "No contestant activity". It exists for accidental
-starts — the AI edition has no trading UI. Read-only calls (`/state`, `/prices`, `/rules`) do not
-count, so slow thinking is never cut short. **Default `0` (off)**: `launchers\开一局.bat` sets `12`,
-`launchers\AI-Start.bat` keeps `0`; the timer counts ticks, matching the headless baseline in `bench.py`.
-
-The server listens on `127.0.0.1:8734`; the GUI is a read-only spectator. **Nothing is prompted.**
-Every parameter comes from the environment, and anything unset falls back to a default
-(`TM_TRADER=Guest`, `TM_EVENTS=1`, `TM_FR=1`, `TM_SLOT=1`, `TM_ASSIST=1`). Startup order: read the environment →
-server starts → difficulty draw (30 s, lock early with `POST /roll/stop`) → **locked in** → clock starts →
-the model trades over HTTP.
-
-> **Nothing works before the lock-in**: opening a position, borrowing, slot bets and fast-forward
-> all return "Difficulty is not locked in yet". Everything unlocks the second the draw ends;
-> no extra call is needed.
-
-> `TM_TRADER` is written into the report filename and the report body after whitelist filtering; it is the field that
-> tells contestants apart.
-> For a manual demo, `python run.py --interactive` asks for the player name, random events,
-> **Preferred Financing** and **Slot Machine** in that order.
-
-You can also double-click `launchers\开一局.bat` — it asks once: press `Y` within 5 seconds, otherwise it cleans up and exits.
-
-> This document covers the **AI edition**. The Human edition (`TokensMarket-OpenSource-Human`) has
-> an investment panel; its rule parameters are the same as here.
-
----
+`TM_TRADER` records the contestant. Check `rolled:true` before trading. When an idle limit is configured, the engine measures successful state-changing actions in market steps. The normal script entry defaults to zero (disabled). The double-click launcher defaults to 12 minutes. See [the integration protocol](ai-protocol.md) for examples.
 
 ## Difficulty
 
@@ -59,43 +19,19 @@ things:
 
 ### Black Swan · gap probability per pair per tick
 
-| Tier | Chance | Expected gaps per pair in 45 min |
+| Tier | Chance | Expected per pair in 540 baseline steps |
 |---|---:|---:|
-| Very low | 0.24% | –1.3 |
-| Low | 0.60% | –3.2 |
-| Medium | 1.50% | –8.1 |
-| High | 3.75% | –20 |
-| Very high | 9.38% | –51 |
+| Very low | 0.24% | About 1.3 |
+| Low | 0.60% | About 3.2 |
+| Medium | 1.50% | About 8.1 |
+| High | 3.75% | About 20 |
+| Very high | 9.38% | About 51 |
 
-Gaps run 2%–12%, direction random. A resting stop can be skipped outright — placing a stop at 126.5
-and filling at 131 is common.
+Base gaps are 2%–12% up or down and may pass the planned exit price. The API has no resting stop orders.
 
 ### Liquidity · slippage cost
 
-| Tier (market depth) | 10M notional round trip | % of 1M principal |
-|---|---:|---:|
-| Ample (32M) | 17,500 | 1.75% |
-| Normal (16M) | 25,000 | 2.50% |
-| Thin (8M) | 40,000 | 4.00% |
-| Drained (4M) | 70,000 | 7.00% |
-| Black hole (2M) | 130,000 | 13.0% |
-
-The table is 10M notional at an AURA-grade spread (0.06%) and includes commission (4,000),
-spread (6,000) and slippage. **It is cost as a share of the 1M starting principal**, not of notional.
-
-**Slippage grows with the SQUARE of notional**: cost = `SLIP_K / (2 × market depth) × notional²`,
-`SLIP_K = 0.0024`. Doubling the notional quadruples the slippage cost. One-sided slippage is capped
-at 1.4% (6% during a liquidity shock).
-
-**End-game markup (v1.2.0)**: from `tick >= 360` (the last 15 minutes) the slippage multiplier climbs linearly to `1.5` at `tick = 540`. It gives nothing away -- quitting at tick 0 still returns 0 -- it just makes staying late more expensive.
-
-Difficulty is shown in the window title:
-
-```
-Tokens Trading Market | your name (ideal conditions) | Black Swan: low | Liquidity: thin
-```
-
----
+Base depths are 32M, 16M, 8M, 4M and 2M Tokens from Ample to Black Hole. Depth varies by symbol during play. See the [cost model](cost-model.en.md) for slippage and the opening limits.
 
 ## Global switches: Preferred Financing and Slot Machine
 
@@ -107,40 +43,21 @@ whole match. They can only be decided at the start.
 
 ### Preferred Financing
 
-When enabled:
+The standard target-uplift range is +1% to +100%. Preferred Financing lowers the floor to +0.01%. Both modes allow repeated loans subject to the remaining pool, normally 3M minus outstanding debt. The base ratio uses average cumulative pool utilization across the new loan, and each loan has a separate random factor. The realized uplift can change when the same total is split across loans.
 
-- **Unlimited** loans per match (still bounded by the 3,000,000 pool and the remaining borrowing limit); the only concession is the target-uplift floor dropping from +1% to +0.01%
-- Target-uplift range: `+1% – +100%` becomes `+0.01% – +100%` (**it always goes up, never reduces the target**; minimum 0.01%)
-- The uplift grows with cumulative borrowing: first 300k is about 4%-8%, a full 3M in one go is about 35%-66%
-- Splitting a loan into ten parts costs exactly the same as borrowing it all at once
-
-Example: target 2M, borrow 300k and draw +6% -> new target = 2M + 18k = **2.018M**
-
-When disabled: unlimited loans, uplift always `+1% – +100%` (also cumulative).
+For example, a 300k loan at a realized +6% adds 18k to the target. Repaying reduces outstanding debt and interest charges. Loan interest compounds at 0.01% per cost step. See the [cost model](cost-model.en.md).
 
 ### Slot Machine
 
 When enabled:
 
-- **3 plays** per match, `1 – 200,000` per play, never above your current equity at bet time
+- **3 plays** per match, `1 – 200,000` per play, capped by your cash balance
 - **80%** nothing / **15%** refund 5× / **5%** refund 10×
-- Winnings go to cash; the target also rises by `-5% – 100%` of the winnings
+- Winnings go to cash; each payout also adjusts the target by −5% to +100% of that payout
 
 ### Combined target formula
 
-```
-Total = original target
-      + sum over loans of amount × pct     ← pct rises with cumulative borrowing
-      (first 300k –4%–8%, borrowing the whole pool –35%–66%;
-       integrated over the cumulative amount, so splitting costs the same)
-      + total slot winnings × U(-5%–100%)  ← Slot Machine on
-```
-
-The two increments are drawn independently. If only one switch is on, only that term applies.
-
-Calling either after its uses run out returns `This run has used all of them; refused` (uses exhausted, refused).
-
----
+`target = base goal + sum(each loan × its draw) + sum(each slot payout × its draw)`. Double or Nothing doubles the target at the draw and uses a 50–100% uplift for later loans and payouts. The caps and odds still apply.
 
 ## Fast-forward
 
@@ -157,11 +74,11 @@ Each match gives **15 minutes (900 seconds)** of fast-forward budget. The two ti
 - If the remaining budget cannot cover a tier, that jump does not execute.
   Example: used `5′+3′+3′+3′ = 840 s`, 60 s left — neither tier is usable.
 - Budget and cooldown live in the `ff` field of `GET /state`: `used` / `remain` / `cool_left` / `can5` / `can3`.
-- Time advances one way only: fast-forward. 900 s per match, 300 or 180 s per step, 120/90 s cooldown — it cannot be bypassed.
+- The market continues to advance on its own during cooldown.
 
 ### What the spectator window can do
 
-The AI edition's spectator is **read-only**: no order buttons, no fast-forward button, and no "settle" button. The window offers exactly two actions:
+The AI edition's spectator is **read-only**: no order buttons, no fast-forward button, and no "settle" button. The window also provides an administrative stop and minimization.
 
 | Action | Effect |
 |---|---|
@@ -169,32 +86,16 @@ The AI edition's spectator is **read-only**: no order buttons, no fast-forward b
 | End processes | Stops the server and closes the window — **counts as one abnormal exit** |
 
 End a match normally with `POST /quit` (settles and writes the report); do not use "End processes" for that.
-At or above the target with positions still open, `/quit` is refused (`ok:false`, positions listed) -
-call `POST /close_all` first. If you never close, the match runs to time-up and is force-liquidated.
+At or above target, close all positions and check the resulting equity first. v1.2.28 schedules shutdown even if `/quit` rejects the request.
 
 ---
 
 ## FAQ
 
-**Q: Double-clicked the bat and it sits at "drawing difficulty"?**
-A: That is the 30-second countdown; `POST /roll/stop` freezes it early.
-
-**Q: The window never appears?**
-A: You are still in the difficulty draw or the rules window — check whether another window covers it.
-
-**Q: Where is the report?**
-A: One `.html` file per match under `src/data/reports/`. Its header carries the random seed
-and the difficulty slot index; to replay a match exactly, restart with
-`TM_SEED=<seed> TM_ROLL_INDEX=<index>` (the seed alone does not pin the slot).
-
-**Q: How do I start over?**
-A: `POST /reset` (30-second cooldown). The AI edition has no investment panel and no "restart match" button.
-
-**Q: Windows warned and blocked the file?**
-A: The source edition has no `.pyd`; only the `.bat` may be blocked by SmartScreen.
-Right-click the bat → Properties → tick "Unblock" → OK. Once is enough.
-
----
+- If a challenge is pending, answer it first. The difficulty countdown begins afterwards.
+- If the spectator is missing, check the terminal and the desktop requirements in the [README](../README.md). An occupied port or a missing WPF runtime can prevent the expected window from opening.
+- Reports are under `src/data/reports/HTML Reports/` and `src/data/reports/JSON Reports/`. The report seed, difficulty index, engine version and event settings are needed to reproduce the market path.
+- Use `/reset` only while the service is running. Once the service exits, start a new process.
 
 ## Challenge tasks (a port of PvZ2 Level Objectives)
 
@@ -210,16 +111,16 @@ breaking an objective marks it × permanently, meeting one marks it √ immediat
 | Objective | How it is judged | Tiers (low / medium / high difficulty) |
 |---|---|---|
 | No Borrowing | Never borrow from the loan pool | — |
-| No Blow-up | Never get force-liquidated | — |
+| No Blow-up | Avoid margin liquidation during play | — |
 | Self-reliant | Never use the Crowd's Mercy | — |
 | No Locked Pairs | Never hold long and short on the same pair | — |
 | Fee Discipline | Cumulative fees stay under X of capital | 1.5% / 1.0% / 0.7% |
 | Drawdown Guard | Max equity drawdown stays under X | 18% / 12% / 8% |
-| Light Footprint | Never hold more than X pairs at once | 4 / 3 / 2 |
+| Light Footprint | At most X position rows, counting long and short separately | 4 / 3 / 2 |
 | Margin Cushion | Margin level never drops below X while holding | 150% / 180% / 220% |
 | Patience Pays | Close at least X position(s) held for 5 ticks | 1 / 2 / 3 |
-| Beat the Target | Final equity reaches X of the target | 120% / 150% / 200% |
-| Double or Nothing | Final equity reaches the current target (doubled when drawn) | Target x2; slot and loan target bumps fixed at 50%-100% |
+| Beat the Target | Equity reaches X of the target | 120% / 150% / 200% |
+| Double or Nothing | Equity reaches the current target (doubled when drawn) | Target x2; slot and loan target bumps fixed at 50%-100% |
 
 Drawing rules:
 
@@ -228,7 +129,7 @@ Drawing rules:
 - The three are distinct; Double or Nothing and Beat the Target are mutually exclusive
   (the target is already doubled, stacking 200% would make it 4x and the round a certain loss)
 - Thresholds follow the difficulty tier: `tier = max(black-swan tier, liquidity tier)`,
-  0-1 uses the loose column, 2 the medium one, 3 the strict one
+  0–1 use the loose column, 2 the medium one, and 3–4 the strict one
 
 ### Three states
 
@@ -238,8 +139,7 @@ Drawing rules:
 | × | broken (a process objective is failed permanently once violated) |
 | · | in progress |
 
-End-of-round settlement closes every objective: process objectives that were never violated are
-recorded as cleared; result objectives still short of their goal are recorded as failed.
+At settlement the engine resolves pending objectives. A result objective confirmed earlier remains cleared even if equity later falls.
 
 The spectator window's "Challenge Tasks" card shows each objective's name, exact rule,
 current state and the reason it broke; the event feed records entries prefixed
@@ -250,45 +150,23 @@ Three boundaries:
 
 - **The answering window does not eat the 45 minutes**: the clock is rebased when you answer (or time out)
 - **A broken objective never recovers**: once ×, it stays ×
-- **Settlement is untouched**: challenge tasks are optional extra rules; target equity, cash settlement and the report are unchanged
+- Double or Nothing changes the target and later loan and payout uplifts.
 
 ## Huge Wave warning (a special event)
 
-One shape of random event stands apart: it fires **0 to 3 times per session**, and the
-count is rolled, not fixed. At session start the engine draws once from four equal tiers -
-0, 1, 2 or 3 times at 25% each. Nothing fires during the first 2.5 minutes.
-Two Huge Waves are at least 3 minutes (36 ticks) apart. That is a **cooldown**, not a fixed
-metronome: once it expires the trigger stays random at 1% per tick, so it may fire right
-away or much later. In the final 3 minutes the engine falls back to a 100% trigger and
-spreads whatever is left evenly over the remaining time, so every drawn wave fires
-before the 45 minutes end.
+When random events are enabled, the match draws 0–3 warnings with equal 25% chances. The first warning is eligible from market step 30. In the regular phase, warning starts are spaced by at least 36 steps and each eligible step has a 1% trigger probability. The final three minutes can shorten the spacing and remove the probability gate. An early exit can leave warnings unused.
 
+The warning banner is displayed on step `t`, with a Windows system sound in WPF. Ordinary news is suppressed while the warning is pending; normal price movement and Black Swan gaps can still occur. The burst on step `t+2` applies 3–5 weighted risk events in that step. Two market steps normally take 10 seconds. Fast-forward or a faster market cadence can shorten the real-time warning window.
 
-When it does fire it runs in three stages, timed after Plants vs. Zombies' "a huge wave of
-zombies is approaching":
-
-| Stage | What happens | Duration |
-|---|---|---|
-| 1. Warning | A red banner snaps open in the dead centre of the spectator window reading "A HUGE WAVE OF VOLATILITY IS APPROACHING!" while a Windows system notification sound plays; the event feed records one `kind=huge_wave` entry | instant |
-| 2. Hold | **No ordinary news is drawn at all**, though prices keep moving. These two ticks are your window to cut exposure or hedge | 2 ticks = 10 s |
-| 3. Burst | 3-5 shock events land at once (flash crash, Swiss franc moment, chained gaps, liquidity drought ...), all taking effect in the same tick | instant |
-
-Three boundaries worth knowing:
-
-- **It announces arrival, never direction or size** - the banner will not tell you whether
-  it is bullish or bearish. That judgement is yours.
-- **The burst pool contains no tailwind events** - "ample liquidity" and "market makers
-  return" cannot be drawn into it. That is deliberate, not an omission.
-- **The warning itself changes nothing** - all the damage is in the third stage. The silent
-  second stage is not a cushion, it is the countdown.
+`huge_wave.total` is the number drawn, `fired` is the number whose warnings started, and `left` is the number yet to start. The warning announces timing without revealing direction or magnitude.
 
 ## Platform-restriction events (random)
 
 | Event | Duration | Blocks | Exception |
 |---|---|---|---|
-| Risk review | 5 minutes | Borrowing | The 60-second self-rescue window while cash is negative still works |
-| Exchange maintenance | 5 seconds (1 tick) | Closing positions yourself | Blow-up liquidation and end-of-match settlement still work |
-| Slot maintenance | 8 minutes | Slot bets | — |
+| Risk review | 60 steps (about 5 min at normal speed) | Borrowing | The 60-second self-rescue window while cash is negative still works |
+| Exchange maintenance | 1 market step | Closing positions yourself | Blow-up liquidation and end-of-match settlement still work |
+| Slot maintenance | 96 steps (about 8 min at normal speed) | Slot bets | — |
 
 All three fire at random. The system will not skip them because you happen to be mid-action.
 

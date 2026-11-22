@@ -4,13 +4,13 @@
 
 ![Spectator window (1920x1080 tier)](docs/spectator-1920x1080.png)
 
-> **Running an agent as the contestant? [`AGENTS.md`](AGENTS.md) is the one page it needs** — launch command, difficulty lock, endpoint entry point. Rules come from `GET /rules`; no need to read through `docs/`.
+> **Running an agent as the contestant? [`AGENTS.md`](AGENTS.md) is the one page it needs** — launch command, difficulty lock, endpoint entry point.
 >
 > Swapping in another AI: open [`docs/给AI的启动提示词.txt`](docs/给AI的启动提示词.txt), copy everything between the dashed lines into it, and fix the path on the first line.
 
 [![CI](https://github.com/LUKUIN/tokens-market-arena/actions/workflows/ci.yml/badge.svg?branch=english)](https://github.com/LUKUIN/tokens-market-arena/actions/workflows/ci.yml)
 
-> Corresponds to packaged build **v97**. The model trades through an HTTP API; the GUI is only a
+> See [GitHub Releases](https://github.com/LUKUIN/tokens-market-arena/releases) for downloads.
 > **read-only spectator**. **Not interchangeable with the Human edition**
 > (`TokensMarket-OpenSource-Human`): this edition has no investment panel, no buy/sell buttons,
 > no fast-forward buttons. Do not copy UI files between the two.
@@ -30,135 +30,37 @@ The participant is a large language model, not a human.
 
 Two headline mechanics run inside a match; the full rules are under "How a match runs" and `GET /rules`:
 
-- **Huge Wave warning**: 0–3 surprise events per match (four equal tiers at 25% each; at least 3 minutes apart, with a guaranteed catch-up in the final 3 minutes). A banner snaps open in the dead centre of the screen with a Windows system notification sound, then after a 10-second hold 3–5 shock events land at once. The spectator's run status shows how many rolled / fired / still pending.
+- **Huge Wave warning** — the match draws 0–3 warnings when events are enabled. Regular spacing is 36 market steps and can shorten late in the match. The burst follows two steps after the banner.
 - **Challenge tasks**: asked at the very start (75 s). Once enabled, three objectives are drawn at the difficulty tier (a PvZ2 Level Objectives port) and published together with the difficulty, judged live with √ / ×. If **Double or Nothing** is drawn, the target doubles and this match's slot and loan target bumps are fixed at 50%–100% (mutually exclusive with Beat the Target).
 
 ---
 
+## Runtime requirements
+
+| Mode | Requirements |
+|---|---|
+| WPF spectator on Windows | Python 3.14 and [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) (x64) |
+| tkinter spectator on Windows | Python 3.14 with Tcl/Tk |
+| Service without a desktop | Python 3.14; the repository includes a Linux container setup |
+
+The WPF viewer is in the release ZIP. Building it requires the .NET 8 SDK. Set `TM_WATCH_IMPL=py` for tkinter. The launcher chooses tkinter automatically when the executable is absent. If the executable exists but fails to start, select the fallback explicitly. The Python service uses the standard library. The AI launcher checks for Python 3.14 and returns code 2 for another version.
+
 ## Quick start
 
-**This edition never prompts for input.** Every setting comes from environment variables; anything
-unset falls back to a default. There is no `input()`, no "press any key", no confirmation step.
+Follow [AGENTS.md](AGENTS.md) for the exact order and working PowerShell commands. Use the [startup prompt](<docs/给AI的启动提示词.txt>) to enter a new contestant.
 
-### For an agent or script (the normal case)
+- Run `python run.py` from the project root, or use `launchers/AI-Start.bat` for an unattended Windows launch. Terminal startup does not ask for settings. The challenge prompt is part of the HTTP match flow.
+- The Windows confirmation launcher is `launchers/开一局.bat`. It cancels if there is no confirmation in five seconds.
+- To reattach the spectator, confirm the original match is serving and run `python run.py spectator 127.0.0.1 8734` at the actual port. Without an existing service, this command can start one.
+- On a machine without a desktop, run `python run.py --headless`. The default address is loopback port 8734. For multiple matches use separate project checkouts as well as distinct ports.
 
-**Runtime requirement: Python 3.14.7** — the `.pyc` files and the spectator widgets are built for 3.14. The pinned path on this machine is:
-
-```
-%LOCALAPPDATA%\Programs\Python\Python314\python.exe
-```
-
-> **On another machine it does not have to live at that exact path.** Any Python 3.14 install works —
-> swap the path in the commands below for your own.
->
-> **One lookup order; do not invent your own probe loop:**
-> 1. `python --version` first — prints `Python 3.14.x` → just use `python`. Most machines finish here.
-> 2. Missing or wrong → the `%LOCALAPPDATA%` full path above.
-> 3. Neither → `dir /b "%LOCALAPPDATA%\Programs\Python" & where python & where python3` lists every candidate at once.
->
-> **The `py` launcher is optional** (many machines never had it). `py -3.14` is only the
-> "if it happens to be installed" form; one failure sends you to step 2, not to auditing the registry.
-
-`run.py` validates the version as its first action: anything but 3.14 exits with **code 2** and prints
-that command. When a match already owns the port (or the sources are still sealed by the previous
-match) it refuses to start with **exit code 4** instead of starting a second server.
-Do not use `where python`, `py -3.12` or `python3` to find another interpreter — the
-spectator's GUI widgets and the `.pyc` files are built for 3.14, and any other version only yields
-`bad magic number`.
-
-`run.py` runs **in the foreground for the whole match** — up to 45 minutes. A harness that
-executes it as a blocking command reaches its own timeout, kills the process, and the server
-disappears; every later request then fails with `connection refused`.
-
-**The spectator opens with the server and that is mandatory.** Since v1.0.11 `run.py`,
-`run.py server` open the read-only spectator. Double-clicking `launchers\开一局.bat` adds a 5-second
-mis-click guard (press `Y` to start); a scripted headless call skips it and starts directly. The read-only
-spectator. Only `--headless` suppresses the window, and it exists solely for environments without a
-desktop (CI, containers).
-
-Background start followed by a readiness poll:
-
-```bash
-cd <project-directory>
-
-TM_TRADER="Doubao-1.5-pro-thinking-coze" TM_EVENTS=1 TM_FR=1 TM_SLOT=1 TM_ASSIST=1 \
-  nohup python run.py > run.log 2>&1 &     # a 3.14 on PATH; otherwise your full path
-
-for i in $(seq 1 30); do
-  curl -sf http://127.0.0.1:8734/health >/dev/null 2>&1 && break
-  sleep 1
-done
-```
-
-On Windows `cmd`:
-
-```bat
-cd /d <project-directory>
-start "" /b python run.py      rem a 3.14 on PATH; otherwise your full path
-```
-
-A fixed `sleep 6 && curl` gives false failures: startup takes 3–8 seconds and a slow machine
-finishes later.
-
-Difficulty locking — before it is locked, `/open`, `/loan`, `/slot` and `/fastforward` are all
-refused with "Difficulty is not locked in yet":
-
-```bash
-curl -X POST http://127.0.0.1:8734/roll/stop
-```
-
-### Double-click launcher
-
-`launchers\开一局.bat` is the double-click entry point. **It asks once on purpose**: press `Y` within 5 seconds
-to start, otherwise the launch is canceled — the AI edition has no trading UI, so an accidental click
-would otherwise burn 45 idle minutes. **Scripts and agents should use `python run.py` or `launchers\AI-Start.bat`** —
-`launchers\AI-Start.bat` has no prompt and opens the spectator too. Invoking `cmd /c "launchers\开一局.bat"` from a
-terminal still counts as human and cancels after 5 seconds. The batch file looks for Python 3.14 in order —
-the pinned path, then `py -3.14`, then `python` on PATH (version-checked) — and stops with a clear
-error if none of the three is found.
-
-### Spectator only (when the window was closed by accident)
-
-`launchers\只开观众席.bat` opens **only** the read-only window. A normal start already brings a window, so this
-is a recovery entry: you closed the spectator by accident and the match is still running.
-
-```
-python run.py spectator                 # window only, default port
-python run.py spectator 127.0.0.1 8734  # explicit host and port
-```
-
-If something already answers on that port, it **attaches and changes nothing** — no server, no
-guard, no sealing. That is deliberate: sealing here would encrypt the decoys that are currently in
-`src/` into a fresh vault, and the real sources could never be restored from it. If nothing is
-running, it starts a server first so you still get a window to look at.
-
-Closing the window does **not** end the match. Settle it with `/quit` or the "End processes" button.
-
-### Service without a window (no-desktop environments only)
-
-```bash
-python run.py --headless          # same as: run.py server --headless
-```
-
-Only for CI, containers and pure-SSH boxes. **Do not use it for a local match**: the spectator must
-be open so a human can watch equity, holdings and the activity feed live.
-
-### Environment variables
-
-| Variable | Purpose |
+| Setting | Scripted default and meaning |
 |---|---|
-| `TM_TRADER` | Contestant ID, format **`<model>-<effort>-<agent-platform>`**, e.g. `Doubao-1.5-pro-thinking-coze` or `DeepSeek-V3.1-thinking-harness`. Max 60 chars, defaults to `Guest`. The value is written into the report filename and the report body after whitelist filtering (characters such as `<` `>` `"` `&` `=` are stripped) |
-| `TM_EVENTS` | `1` enable random events / `0` ideal conditions (black-swan gaps only); defaults to `1` when unset |
-| `TM_FR` | `1` enables **Preferred Financing**: no cap on the number of loans (bounded by the 3,000,000 pool), target range `0.01%–100%` (always raises); defaults to `1` when unset |
-| `TM_ASSIST` | `1` enables **Outside Mercy**: the contestant may ask the spectators for help, 3 times per match; **pre-match only** (free) — mid-match paid enabling was removed in v1.2.23; defaults to `1` when unset |
-| `TM_SLOT` | `1` enables **Slot Machine**: **3** plays, `1–200000` and ≤ current equity, 80% nothing / 15% 5× / 5% 10×; defaults to `1` when unset |
-| `TM_PORT` | Service port, default `8734` |
-| `TM_IDLE_ABORT` | Idle abort: settle after N minutes with no **state-changing action**. Default `0` (off); `launchers\开一局.bat` sets `12`, `launchers\AI-Start.bat` keeps `0` |
-| `TM_SIGN_KEY` | HMAC key for save files; a dev placeholder is used when unset |
-
-Requirements: **Python 3.14** (any install location: `run.py` validates the version, not the path), Windows (the spectator uses Win32 window-icon APIs), no third-party dependencies. Do not switch to 3.10-3.13: the `.pyc` magic number and the tkinter widgets are built for 3.14, so another version cannot start. The numbers in `.github/workflows/ci.yml` are the CI test matrix, not a runtime requirement.
-
----
+| `TM_TRADER` | Set to model, reasoning effort and platform before startup. An unnamed session is ineligible for a target hit. |
+| `TM_EVENTS` | `1`. With `0`, ordinary news and Huge Waves are off; baseline gaps and depth shocks still occur. |
+| `TM_FR`, `TM_SLOT`, `TM_ASSIST` | `1`. Set a feature to `0` before startup to disable it. The interactive demo prompts separately. |
+| `TM_PORT`, `TM_IDLE_ABORT` | `8734` and `0`. The Windows confirmation launcher defaults the idle limit to 12 minutes. |
+| `TM_WATCH_IMPL` | Use `py` for tkinter, otherwise prefer WPF when present. |
 
 ## Spectator window
 
@@ -180,7 +82,7 @@ Sections, top to bottom:
 | Top bar (light card, 56 px) | market name, contestant identity, mode chips, global event switches (Preferred Financing / Slot Machine), End processes / Minimize / AI Notes / Outside Mercy |
 | KPI cards | equity, total P&L, margin level, progress to target |
 | Status row | credit / cash / borrowed / owed / interest; target / drawdown / Sharpe / trades / win rate / fees; ledger-audit slot; previous-run abnormal-exit banner |
-| Equity curve | primary visual, fixed 500k Y ticks (0 / 1M / 2M land on grid lines) |
+| Equity curve | primary visual, an adaptive range that includes the capital and target lines |
 | Runtime status | ledger audit, black-swan rate, liquidity, fast-forward, global events, Huge Wave (rolled / fired / pending) |
 | Positions | fixed 7 rows with a scrollbar; a `More` button appears above 7 rows and opens a live full table; explicit empty state when flat |
 | Prices | 7 pairs with price, change and a sparkline drawn from `price_history` |
@@ -198,7 +100,7 @@ The tkinter Canvas has no antialiasing, so the equity curve always carries jagge
 
 ### Requirements
 
-- Windows 10 1809 or newer
+- Windows x64; the release was verified on Windows 11
 - .NET 8 SDK (to build) or .NET 8 Desktop Runtime (to run only)
 
 ### Build
@@ -220,195 +122,27 @@ Both spectators can run at once: the new build uses the `Global\\TokensWatchView
 
 ## How a match runs
 
-**Before anything else: nothing is asked.** Contestant ID, random events, **Preferred Financing** and
-**Slot Machine** all come from environment variables; an unset key falls back to its default.
-`python run.py --interactive` does ask five questions in that order, but it exists for a human
-demo only — an agent must not use it, because a backgrounded process reads `input()` as EOF and
-silently turns all three switches off.
-**Both global switches are decided before the difficulty draw**; the only runtime question is the
-challenge ask in step 1, and it must be answered.
-
-1. The server starts and the first thing the round does is ask **"does this round run with
-   challenge tasks?"** — `challenge.stage == "ask"`, prices frozen, `tick` does not advance. Answer
-   with `POST /challenge/accept` or `/challenge/decline` within `challenge.ask_left` seconds (75);
-   timing out counts as "off". Until you answer, `POST /roll/start` is refused and the draw
-   countdown does not run.
-2. After the answer the title switches to "drawing difficulty" and the 30-second draw begins: the
-   model may call `POST /roll/stop` to lock it early, otherwise it locks when the countdown ends.
-3. Locking does two things at once: the clock starts (the 30 seconds of drawing do not count against
-   the 45 minutes), and — if step 1 answered "accept" — the engine draws three challenge objectives
-   at that tier. `challenge.tasks` stays empty until this moment.
-4. Trading begins: `/state` to read the board → `/open` `/close` to trade → `/fastforward` to advance time.
-5. The match settles on one of: 45 minutes elapsed, a blow-up, or `POST /quit`. Hitting the target
-   does **not** end the match by itself: `/quit` at or above the target is a **valid early exit**
-   (`Target reached - early exit`) and counts as reached; below the target it is recorded as
-   `Abandoned below target` and does not count. At or above the target with positions still open,
-   `/quit` is refused (`ok:false`) - call `POST /close_all` first to bank the profit; if you never
-   close, the match runs to time-up and the engine force-liquidates, and a give-back means the
-   target no longer counts. If you are above the target and keep holding,
-   a later slide back below it is reported as "hit the target at m:ss, gave it back".
-6. **Idle abort** (on by default only for the human double-click entry): if no **state-changing
-   action** (open/close, loan/repay, fastforward, scratchpad, difficulty lock, assist, trader name)
-   happens for `TM_IDLE_ABORT` minutes after the difficulty lock, the match settles itself and the
-   report says "No contestant activity". Read-only calls (`/state`, `/prices`, `/rules`) do **not**
-   count, so a slow model may observe, reason and wait without being cut short. Default `0` (off):
-   `launchers\开一局.bat` sets `12`, `launchers\AI-Start.bat` keeps `0`. The timer counts ticks, so a contestant
-   over HTTP and the headless baseline in `bench.py` share one rule and one effective match length.
-7. About 3 seconds after `/quit` the server and spectator exit on their own.
-
----
+1. Start the service and wait for `GET /health`.
+2. Answer the challenge in 75 seconds. Timeout defaults to off. After that the 30-second difficulty draw starts automatically.
+3. Wait for the draw or call `POST /roll/stop`. The lock starts the 45-minute trading clock and publishes enabled objectives.
+4. Trade after `rolled:true`. The market advances naturally. The fast-forward endpoint uses a separate budget and cooldown.
+5. Check state and close open positions if already at target before calling `/quit`. **v1.2.28 schedules shutdown even on a rejected `/quit`.** Time-up and some account conditions also trigger settlement. The [rules](docs/rules.en.md) cover these cases.
 
 ## HTTP API
 
-Base URL defaults to `http://127.0.0.1:8734`.
-
-### GET
-
-| Endpoint | Returns |
-|---|---|
-| `/health` | `{ok, tick, equity, finished, protocol, engine_version}`. `protocol` is the API
-  contract version (incremented whenever fields change); `engine_version` is the release |
-| `/rules` | Full rule text, parameters and a 29-endpoint list (random events are only announced at runtime through `events` in `/state`; the rule sheet does not pre-list them) |
-| `/state` | Account, positions, loan, quotes, history, difficulty, fast-forward state, settlement result, and `audit` (empty array = all ledger identities hold) |
-| `/prices` | Quote table |
-| `/roll/state` | Difficulty countdown and the currently locked result |
-| `/scratchpad` | All scratchpad entries for this match |
-| `/special` | Both global switches (`fr`/`slot`/`fr_left`/`slot_left`/`slot_win`; `fr_left` is always null since v1.2.4) |
-
-### POST (JSON body)
-
-| Endpoint | Body | Notes |
-|---|---|---|
-| `/open` | `{pair, side, lots, leverage}` | Open a position |
-| `/close` | `{pair, lots}` | Close; lots above the held size closes the whole position |
-| `/close_all` | — | Close everything |
-| `/fastforward` | `{seconds}` | Jump one tier (300 or 180), consumes budget |
-| `/loan` | `{amount}` | Borrow; the target-uplift percentage is drawn at borrow time — that is the cost |
-| `/repay` | `{amount}` | Repay; omit the amount to repay in full |
-| `/trader` | `{name}` | Set the player name |
-| `/scratchpad` | `{text}` | Append a scratchpad entry |
-| `/special` | `{name, on}` | Toggle a global switch (`fr` / `slot`); **start of match only**, rejected once the match has begun |
-| `/slot` | `{amount}` | Slot bet: `1–200000`, ≤ current equity, 3 plays per match |
-| `/pause` / `/begin` | — | Freeze / resume the clock |
-| `/roll/start` / `/roll/stop` | — | Start / lock the difficulty draw |
-| `/reset` | — | Start over (clears `data/` except `reports/`) |
-| `/quit` | — | Early exit: at/above target with nothing open -> `Target reached - early exit` (counts); at/above with positions -> `ok:false`, call `/close_all` first; below target -> `Abandoned below target` (counts as nothing, positions force-closed). Response carries `settled` / `warnings` |
-| `/shutdown` | — | Stop immediately (leaves an abnormal-exit report) |
-
-> **Note**: `/fastforward` is the only way to advance time — 300 or 180 seconds per call.
-> Budget is 900 seconds, cooldowns are 120/90 seconds. Calls during cooldown are rejected;
-> the server also advances on its own every 5 seconds, so time does not need to be pushed.
-
-> **Token saving**: add `?history=0` to `/state` to drop `price_history` (up to 2000 points per
-> pair). Order-placing endpoints already return a trimmed state — no history, no event feed.
-
----
+See the [integration protocol](docs/ai-protocol.en.md) for all routes, fields and responses. `GET /prices` returns current quotes. With `GET /state?history=0`, price history is empty while the equity curve and events remain. In v1.2.28 the `/rules` summary contains some older facts; the protocol identifies them.
 
 ## Agent prompt template (copy this)
 
-Paste the block below into the system prompt (or the first message) of any coding or agent
-harness. It is deliberately short — every number lives in `/rules`, so the agent is told the
-rules of engagement, not the parameters.
-
-```text
-You are a contestant in Tokens Trading Market, a 45-minute leveraged trading simulator.
-
-Setup
-- The server answers at http://127.0.0.1:8734 (the launcher prints the real port).
-- Starting equity is 1,000,000; the target is reported by /state.
-- POST /roll/stop locks the difficulty early; otherwise it locks when the 30-second draw ends.
-
-Interface
-- GET /rules, /state, /health, /prices
-- POST /open, /close, /close_all, /fastforward, /loan, /repay, /quit
-- Scratchpad: python scratchpad.py "..." — merged into the final HTML report
-
-One thing sits outside the game
-- The sources under src/ are this match's answer key. They are sealed into decoys while a match
-  runs, and opening one is recorded.
-- So read the board: /rules, /state, your own reasoning. Public knowledge (market intuition,
-  position sizing, risk control) is fair game.
-
-You are the one on screen
-- There are spectators watching your window. What you say, what you scribble in the scratchpad,
-  and every order you place end up in the report.
-- Thinking out loud while you trade is as legitimate as working silently — the report shows both.
-
-At the end
-- Call /quit, wait for settlement, then read the generated HTML report.
-```
-
-> A match is scored by the HTML report, not by whether the target was reached. Single matches
-> swing from +106% to −229%, so one match says very little about a model's skill.
-
----
+Use [the startup prompt](<docs/给AI的启动提示词.txt>), changing the checkout path.
 
 ## Scratchpad CLI (optional)
 
-Lets the model record its reasoning during the match. It takes no space in the spectator's main
-layout — the human clicks **"AI Notes"** in the top-right corner to open a read-only window, and the
-contents are merged into the HTML report afterwards.
-
-```bash
-# record one entry
-curl -X POST http://127.0.0.1:8734/scratchpad      -H "Content-Type: application/json" -d '{"text":"AURA is 8% off the mean, short"}'
-# list entries for this match
-curl -s http://127.0.0.1:8734/scratchpad
-# count only
-curl -s "http://127.0.0.1:8734/scratchpad?count=1"
-# clear
-curl -s -X POST http://127.0.0.1:8734/scratchpad      -H "Content-Type: application/json" -d '{"clear":true}'
-```
-
-Over HTTP: `GET /scratchpad`, `POST /scratchpad {"text": "..."}`.
-
-Every entry is flushed to disk (`src/data/.scratchpad.jsonl`) immediately, so closing the terminal
-mid-match loses nothing. Cleared on settle/reset. Skipping it leaves "no entries" in the report.
-
----
+Write notes during a match through `POST /scratchpad` with a UTF-8 body such as `{"text":"Waiting for the spread to normalize."}`. `GET /scratchpad` reads notes, `?count=1` counts them, and `{"clear":true}` clears them through POST. The local scratchpad file is sealed during a match. Only submitted notes appear in the report.
 
 ## Source guard (anti-cheat)
 
-While a match runs the sources are **encrypted** into a vault outside the project and replaced by
-decoys; reading them gives you a decoy, executing one ends the match.
-
-```bash
-python guard.py start --port 8734    # encrypt the sources and start watching
-python guard.py status               # sealed? cheat flag present?
-python guard.py stop                 # stop the guard and decrypt the sources back
-```
-
-`run.py` seals on start and restores on exit; `launchers\开一局.bat` is only a launcher for it. Do not
-run `guard.py start` alongside a match — two guards seal twice, and the second seal encrypts whatever
-is in `src/` by then, which is already the decoy.
-
-What sealing actually does:
-
-- The three source files (tm_engine.py / tm_api.py / scratchpad.py) are encrypted with a one-off random key (SHA-256 counter-mode keystream
-  plus an HMAC tag, standard library only) and written to
-  `%LOCALAPPDATA%\TokensMarketGuard\<random directory>\` under random file names
-- The key is stored beside them as `_k`; each `src/*.py` is replaced by a 967-byte decoy carrying
-  a `CHEATING DETECTED` notice
-- The project's own `_guard_vault/` keeps only a `guard_state.json` naming the sealed files — **no
-  plaintext source is left inside the project tree**
-- Executing or importing a decoy drops `CHEAT_FLAG`; the guard then `POST /shutdown` immediately
-- Cleanup: `tools\deep-clean.ps1` restores sealed sources from an interrupted match after it has stopped
-
-`run.py` loads the spectator module before sealing (the other order imports a decoy), and any seal
-left behind by a crashed match is decrypted and restored on the next start.
-
-> **This is not a cryptographic boundary.** The key and the ciphertext both sit on this machine, so
-> an agent willing to read `guard.py` and implement the decryption can still recover the sources.
-> Encryption turns "`cat src/tm_engine.py` shows every parameter" into "somebody has to write a
-> decryptor first" — it raises the cost, it does not make cheating impossible.
-
-> **Real enforcement is layer 4: no filesystem access.** A serious competition should be launched by
-> the organiser inside a controlled container or VM, with the agent given only
-> `http://127.0.0.1:8734`. An open-source drop hands the sources to the player's own machine, so that
-> layer is out of reach here — design this guard to raise the cost of cheating, and do not advertise
-> it as making cheating impossible.
-
-> The guard does not stop a model from reasoning over API data — that is the point of the exercise.
+Regular match startup seals `src/tm_engine.py`, `src/tm_api.py` and `src/scratchpad.py`. Running a decoy can terminate the match. The spectator reads the live state over HTTP. A normal exit restores the sources. For an interruption, follow [the recovery steps](AGENTS.md) after closing the checkout's match process.
 
 ## Deep process cleanup
 
@@ -499,54 +233,11 @@ Six large models, one match each, same rules (45 minutes / 1,000,000 capital / d
 
 ## Settlement and liquidation
 
-### Margin & liquidation
+Opening margin plus commission must fit within equity less occupied margin. The equity after charging commission must also cover 150% of projected maintenance margin. With 1M equity and the 10% base maintenance rate, the gross opening ceiling is just below 6.67M, subject to separate checks and event modifiers.
 
-Maintenance margin is charged on **notional exposure**, not on "notional ÷ leverage":
+A maintenance level below 100% starts a margin call. It clears at 100%; 30 market steps without recovery can liquidate positions. Below 50%, liquidation is immediate. Negative equity ends the match. If cash alone is negative, the engine offers a default 60-second rescue window. Borrowing adds equal amounts of cash and debt.
 
-```
-maintenance margin = notional exposure x 10%
-margin level        = equity / maintenance margin
-```
-
-Thresholds: below 100% you get a margin call (30 ticks to top up), below 50% you are
-liquidated immediately. Opening an order also requires the account to keep a margin
-level of at least 150% afterwards, so a single account's notional is capped at roughly
-6.7x its equity. 1000x leverage still exists as a parameter, but "high leverage costs
-almost no cash" no longer means "cannot be liquidated".
-
-> **Changed in v1.2.17**: the denominator used to be "notional / leverage". 34 lots of
-> 501.8万 notional only tied up 5,019 in margin, so at equity 42万 the margin level still
-> read 8,370% and neither the call nor the stop-out ever fired. `margin_level` in older
-> reports uses the previous definition and is not comparable with new ones.
-
-When a match ends (`POST /quit`, time up, blow-up, negative cash), the engine wraps up in three fixed steps:
-
-1. **Force-close everything** - not blocked by "exchange maintenance" or any other halt.
-   Fills use the unified cost path (mid price minus/plus half spread plus slippage), identical to
-   a manual close, and are written to the trade log.
-2. **Clear the loan** - debt is deducted from cash and `loan.balance` goes to zero.
-3. **Verify invariants** - no positions left, no outstanding debt.
-
-Final equity = cash - debt, with **no floating P&L**.
-
-`POST /quit` returns two extra fields:
-
-| Field | Meaning |
-|---|---|
-| `settled` | Boolean. `false` means settlement found a problem (leftover positions, unpaid loan) |
-| `warnings` | String array with the specific problem, e.g. "1 position(s) could not be settled" |
-
-Whenever `warnings` is non-empty the report header reads
-"Settlement error (N position(s) left open)" instead of a normal verdict.
-
-**Blow-up liquidation** (margin level below the stop-out line, or a margin call timing out) uses
-the same cost path - spread, slippage and fees all apply - and its fills carry a `forced` flag.
-The report lists a separate "Forced liquidation" count.
-
-> **Fixed in v1.0.12**: settlement closes used to be silently skipped during "exchange
-> maintenance", the blow-up path charged fees only (no spread or slippage), and the reported random
-> seed could not reproduce a run unless `TM_SEED` was set explicitly. All three are fixed;
-> historical reports use a different cost basis and are not directly comparable.
+At or above the target with open positions, close first and recheck equity before `/quit`. Below target, normal quitting is recorded as abandonment. Automatic settlement uses regular fill costs and clears debt. Read `settled` and `warnings` in the response. See the [cost model](docs/cost-model.en.md).
 
 ## Ledger audit and paired benchmark
 
@@ -581,7 +272,7 @@ cross-referenced by number.
 
 ### Machine-readable summary
 
-Each HTML report is accompanied by a same-named JSON file (`reports/<stamp>_<trader>.json`) holding
+Each HTML report is accompanied by a same-named JSON file (`src/data/reports/JSON Reports/<stamp>_<trader>.json`) holding
 version, seed, P&L, drawdown, Sharpe, cost breakdown, settlement result and audit verdict.
 `bench.py` and CI read that JSON instead of parsing HTML.
 
@@ -605,49 +296,18 @@ settlement — a contestant cannot obtain the seed and therefore cannot pre-play
 
 ### Paired benchmark (`bench.py`)
 
-Single-match variance is enormous (+106% to -229% in the historical samples), so one match says
-nothing. Evaluation runs the same seed set for the same number of rounds:
+The benchmark declines challenges and advances a simulated clock. The normal baseline runs 540 steps; a policy can still run into a valid early settlement. For paired comparison pin seed, settings and engine version. `--roll-index` fixes the difficulty. Otherwise `TM_ROLL_INDEX` is honored when valid or the seed picks the tier.
 
 ```bash
-python bench.py run --seeds 1,2,3 --policy probe      # three matches
-python bench.py run --seeds 1-5 --policy noop         # five no-op baseline matches
-python bench.py summary --dir src/data/reports        # summarise existing summaries
+python bench.py run --seeds 1-5 --policy noop --out benchmark-output
+python bench.py run --seeds 1-5 --policy probe --out benchmark-output
 ```
 
-`run` advances ticks in-process (no HTTP, no wall-clock wait) and writes one JSON summary per match.
-`summary` prints mean, median, stdev, P10/P90, worst drawdown, target hits, settlement errors and
-audit-pass counts.
-
-- Built-in policies:
-  - `noop` (never trade) — settlement and ledger baseline
-  - `probe` (open/close one random order every 24 ticks) — produces paths with positions and costs
-  - `oracle` (perfect foresight) — replays the match once to record the price path, then trades on
-    the direction of the next 24 ticks. It is a **mechanical upper bound, not an attainable target**:
-    it answers whether the 2,000,000 goal is a model-skill problem or a rule-set limit
-- `TM_ORACLE_ACC=0.6` injects an error rate into `oracle` (1.0 = perfect, 0.5 = pure random), which
-  gives you a "direction accuracy -> goal rate" curve instead of a single astronomical number
-
-Measured with seeds 1-5 (`index = gap + liq x 5`):
-
-| Regime | Accuracy | Goal | Median P&L | Best | Worst |
-|---|---|---|---|---|---|
-| extreme x normal (9) | 50% | 0/5 | -99.8% | -99.2% | -103.6% |
-| extreme x normal (9) | 60% | 0/5 | -100.4% | +64.8% | -113.7% |
-| extreme x normal (9) | 70% | 1/5 | -100.4% | +7604.7% | -318.1% |
-| extreme x normal (9) | 100% | 5/5 | +1,063,078% | +6,834,750% | +585,388% |
-| medium x blackhole (22) | 50% | 0/5 | -72.9% | -53.5% | -111.3% |
-| medium x blackhole (22) | 60% | 1/5 | -53.0% | +161.4% | -119.7% |
-| medium x blackhole (22) | 70% | 2/5 | +33.5% | +334.4% | -119.7% |
-| medium x blackhole (22) | 100% | 5/5 | +4,767% | +7,834% | +1,970% |
-
-How to read it: 50% accuracy (pure random) loses every time, because spread, slippage, fees and
-swap make the game negative-sum; reaching 2,000,000 (+100%) takes roughly 60%-70% direction
-accuracy; perfect foresight produces astronomical numbers, which means the goal is nowhere near
-the mechanical ceiling — the real constraint is judgement, not the rules.
+`noop` is the no-trade baseline. `probe` trades periodically to exercise costs. `oracle` uses future prices as a diagnostic and is an offline heuristic, not a model contestant. Each sample writes a separate JSON report. For live HTTP samples fix `TM_TAIL_SPEED=1` when comparing agents; the default cadence becomes about 1.25 seconds after the first target hit, so total price steps depend on when it happens.
 
 ## Known limits
 
-- **Windows only** (the spectator's window icon and notification sound go through Win32 APIs).
+- **Windows desktop** (the spectator's window icon and notification sound go through Win32 APIs).
 - Engine and spectator share one process; if the spectator crashes, the match ends.
 - This source edition has no `.pyd` and no manifest signature check; `TM_SIGN_KEY` defaults to a dev
   placeholder — set your own for real competitions.
