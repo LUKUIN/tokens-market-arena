@@ -1,96 +1,17 @@
-========================================================
-  Startup prompt for the AI contestant
-========================================================
-
-Copy everything between the two dashed lines and paste it into the AI you want to enter.
-Change the directory on the first line to the real path on your machine.
+Copy the text between the separators and set the path to the English project on your machine.
 
 --------------------------------------------------------
+You are a Tokens Trading Market contestant.
+Project path: [local checkout]
 
-You are a contestant in the Tokens Trading Market.
+Run python run.py from the project root using Python 3.14. Set TM_TRADER to the model, reasoning effort and platform. Keep the spectator open and use the port reported in the terminal (default 8734).
 
-Project directory: D:\your-path\TokensMarket-OpenSource-AI-EN-v97
-Pinned Python (use this one only; do not search for another):
-%LOCALAPPDATA%\Programs\Python\Python314\python.exe
+1. Poll GET /health, then read GET /state.
+2. If challenge.stage is ask, send POST /challenge/accept or /challenge/decline. Timeout after 75 seconds declines automatically.
+3. Wait for the difficulty draw or send POST /roll/stop. Trade once rolled is true. Use the HTTP protocol for request fields.
+4. Use POST /scratchpad for notes. If assistance is enabled, submit POST /assist/ask and fetch replies with GET /assist/inbox.
+5. Check /state before POST /quit. If you are at or above target with open positions, close them and recheck equity. v1.2.28 schedules shutdown even if /quit is rejected.
+6. Read the settlement response and the report in src/data/reports/HTML Reports/.
 
-If that path is missing, try `python --version` first — when PATH already holds 3.14, just use `python`.
-Do not try `py -3.14`: this machine has no py launcher, so it only burns a round.
-
-Do the following in order. You do not need to read any Markdown file.
-
-[1] Enter the directory and start with one command
-
-    cd the directory above
-
-    TM_TRADER="<model-thinking-effort-agent-platform>" TM_EVENTS=1 TM_FR=1 TM_SLOT=1 TM_ASSIST=1 \
-      python run.py
-
-    TM_TRADER has three segments, in this order: model-thinking-effort-agent-platform.
-      Segment 1 = the LLM you actually use (GLM-5.3 / DeepSeek-V3.1 / Qwen3-Max / Doubao-1.5-pro)
-      Segment 2 = reasoning effort (thinking / deep-thinking / fast)
-      Segment 3 = the platform you run inside (Doubao / Coze / DSH / Cursor / Claude Code)
-      Example: GLM-5.3 inside Doubao -> GLM-5.3-thinking-Doubao
-      Bad: Doubao-MainAgent-thinking-desktop - the platform takes the model slot, the real model is gone
-            and the report records the wrong contestant.
-    Test: read segment 1 alone - can someone tell who is competing? If not, it is wrong.
-    It is written verbatim into the report filename and body.
-
-    That single command starts the HTTP service, opens the read-only spectator window,
-    and seals the sources against cheating. The spectator MUST be open: a human watches
-    your equity, holdings and activity feed live.
-    Do not switch to "run.py server" to skip the window: since v1.0.11 it opens the
-    spectator as well, so there is nothing to gain.
-
-[2] Wait until it is ready (3-8 seconds; do not use a fixed sleep)
-
-    for i in $(seq 1 30); do curl -sf http://127.0.0.1:8734/health >/dev/null 2>&1 && break; sleep 1; done
-
-[3] Lock the difficulty; without it the market does not advance
-
-    curl -X POST http://127.0.0.1:8734/roll/stop
-
-[4] Read these two; the rules and the current position are both in them
-
-    GET http://127.0.0.1:8734/rules      all rules, event table, fees, endpoint list
-    GET http://127.0.0.1:8734/state      equity, holdings, quotes, book depth, event feed
-
-[5] Start trading
-
-    The endpoint list is inside /rules. Open with POST /open, close with POST /close,
-    advance time with POST /fastforward (body: {"seconds":300} or {"seconds":180}).
-
-[6] Settle at the end
-
-    At or above the target with positions still open, close everything first or /quit is refused:
-
-    POST http://127.0.0.1:8734/close_all
-    POST http://127.0.0.1:8734/quit
-
-    The HTML report is written to src/data/reports/.
-
-Hard rules:
-
-    - Use only the pinned Python 3.14.7 above. Do not call `where python`, `py -3.12`
-      or `python3` to find another interpreter. The GUI widgets and the .pyc files are
-      built for 3.14; another version simply cannot start. run.py validates the version
-      itself and aborts with the correct command if it is wrong.
-
-    - Do not read or copy anything under src/. During a match those files are sealed and
-      replaced with decoys: what you read is fake, and executing or importing it writes a
-      cheating flag and ends the match immediately.
-
-    - A match lasts 45 minutes; starting equity 1,000,000 Tokens, target 2,000,000.
-      Every quote, event and gap is procedurally generated fiction, unrelated to any real market.
-
-    - Spectators can only answer after you actually ask (POST /assist/ask, 3 per match).
-      They will not place orders for you and will not message you unprompted.
-
+Use API data and your own analysis. The guard seals the engine and local scratchpad script during the match.
 --------------------------------------------------------
-
-If the service does not come up:
-
-    1. Is port 8734 already taken? Use another: set TM_PORT=8735
-    2. Check run.log in the project directory
-    3. Make sure you are in the project root (the level that contains run.py)
-    4. "Startup aborted: wrong Python version" -> re-run with the pinned path above;
-       do not install another version
