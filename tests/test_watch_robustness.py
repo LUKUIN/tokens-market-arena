@@ -1,19 +1,11 @@
 # -*- coding: utf-8 -*-
-"""v1.2.22 回归：本机轮询链路的编码与代理健壮性。
-
-背景（现场证据）：
-    17:29 那一局退出时 run.err.log 留下
-        UnicodeDecodeError: 'utf-8' codec can't decode byte 0xbb in position 2
-    run.log 紧接着
-        收尾清理失败：'NoneType' object has no attribute 'splitlines'
-    两者是同一条链：subprocess(text=True) 在 UTF-8 模式下解 GBK 的 netstat 输出，
-    reader 线程崩 → stdout=None → splitlines() 崩。
-
-这些用例只断言「结构与解码行为」，不做计时型并发断言
-（v1.2.21 的教训：CI 的 Windows runner 上计时断言会假失败）。
-"""
+"""本机轮询与对局清理的回归测试。"""
 import os
+from pathlib import Path
+import shutil
+import subprocess
 import sys
+import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -28,28 +20,36 @@ def _read(rel):
         return f.read()
 
 
-@unittest.skipUnless(IS_RUNNABLE, "run.py 的版本守卫只允许 Python 3.14 导入，其余版本 import 即退出 2")
-class TestConsoleDecode(unittest.TestCase):
-    def setUp(self):
-        import run
-        self.run_mod = run
+@unittest.skipUnless(os.name == "nt", "Windows PowerShell required")
+class TestCleanup(unittest.TestCase):
+    def test_preserves_live_match_and_reports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            checkout = Path(tmp)
+            tools = checkout / "tools"
+            tools.mkdir()
+            script = tools / "deep-clean.ps1"
+            shutil.copyfile(Path(ROOT) / "tools" / script.name, script)
+            (checkout / "run.py").touch()
+            data = checkout / "src" / "data"
+            reports = data / "reports"
+            reports.mkdir(parents=True)
+            (reports / "history.html").touch()
+            save = data / "session.json"
+            save.touch()
+            marker = data / ".running"
+            marker.write_text(f"session-id\t{os.getpid()}\n")
+            command = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                       "-File", str(script)]
 
-    def test_gbk_bytes(self):
-        # netstat 的「活动连接」在中文 Windows 上是 GBK 字节
-        raw = "活动连接".encode("gbk")
-        self.assertEqual(self.run_mod._decode_bytes(raw), "活动连接")
+            result = subprocess.run(command, capture_output=True, timeout=20)
+            self.assertNotEqual(result.returncode, 0, result.stdout)
+            self.assertTrue(save.is_file())
+            marker.unlink()
 
-    def test_utf8_bytes(self):
-        raw = "活动连接".encode("utf-8")
-        self.assertEqual(self.run_mod._decode_bytes(raw), "活动连接")
-
-    def test_empty_and_none_safe(self):
-        self.assertEqual(self.run_mod._decode_bytes(b""), "")
-        self.assertEqual(self.run_mod._decode_bytes(None), "")
-
-    def test_listening_pids_never_raises(self):
-        # 端口随便给一个：无论有没有监听，都必须是 list，不能抛异常
-        self.assertIsInstance(self.run_mod._listening_pids(65533), list)
+            result = subprocess.run(command, capture_output=True, timeout=20)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse(save.exists())
+            self.assertTrue((reports / "history.html").is_file())
 
 
 @unittest.skipUnless(IS_RUNNABLE, "run.py 的版本守卫只允许 Python 3.14 导入，其余版本 import 即退出 2")

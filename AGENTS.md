@@ -69,29 +69,13 @@ dir /b "%LOCALAPPDATA%\Programs\Python" 2>nul & where python 2>nul & where pytho
 
 ## 1. 检查上一局残留（有则清，无则直接开始）
 
-**正常打完一局时，这一步什么都不用做**：结算完成后 `run.py` 会自己删掉临时文件、收掉相关进程，
-`src/data/` 下只会剩下 `reports/`。只有手动中断、进程崩溃、或窗口没关干净时才需要动手。
+正常结算会清理运行时文件并保留战报。如果对局异常中断，先确认当前目录的对局已经停止，再从项目根运行 Windows 清理脚本：
 
-先看一眼，有没有残留一看便知：
-
-```bash
-cd <项目目录>
-ls -A src/data/ | grep -v '^reports$' | grep -q . && echo "有残留，需要清理" || echo "干净，直接进第 2 步"
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\deep-clean.ps1
 ```
 
-**显示「干净」就跳过本节，直接启动。** 显示「有残留」时再执行：
-
-```bash
-# 上一局服务可能还占着端口：先重置再停服（/reset 会清 data/ 下除 reports/ 外的文件）
-curl -s -X POST http://127.0.0.1:8734/reset    >/dev/null 2>&1 || true
-curl -s -X POST http://127.0.0.1:8734/shutdown >/dev/null 2>&1 || true
-
-# 服务没跑时直接删存档
-rm -f src/data/session.json src/data/.scratchpad.jsonl
-rm -rf src/data/_agent
-```
-
-**不要删 `src/data/reports/`** —— 那是历史战报，每局结算会往里写新文件。
+历史战报保留在 `src/data/reports/`。
 
 ## 2. 启动（一条命令，观众席会自己打开）
 
@@ -121,7 +105,7 @@ done
 |---|---|
 | `python run.py` | 标准方式，Agent 用这个 |
 | `launchers\AI-Start.bat` | 无人值守：设 `TM_NO_CONFIRM=1` 与 `TM_IDLE_ABORT=0` 后 `call launchers\开一局.bat`，启动逻辑只有一份；**脚本 / Agent 走这个** |
-| `launchers\开一局.bat` | 人类双击入口。5 秒内不按 `Y` 就清理退出；**在终端里 `cmd /c launchers\开一局.bat` 也会被当成人类**，5 秒后被杀 |
+| `launchers\开一局.bat` | 人类双击入口。5 秒内不按 `Y` 就取消开局；**在终端里 `cmd /c launchers\开一局.bat` 也会被当成人类**，5 秒后取消开局 |
 
 - 不要自己另起 `python run.py spectator` 补窗口——正常启动就会有
 - 只有确实没有桌面环境（CI、容器、纯 SSH）才加 `--headless`，那是唯一的无窗口模式
@@ -139,7 +123,7 @@ done
 
 ## 3. 定档
 
-难度是开局抽的。**未定档时 `/open`、`/loan`、`/slot`、`/fastforward` 全部被拒绝**，
+先用 `POST /challenge/accept` 或 `POST /challenge/decline` 回答挑战询问，再定档。**未定档时 `/open`、`/loan`、`/slot`、`/fastforward` 全部被拒绝**，
 返回「难度尚未定档，请先 POST /roll/stop 或等抽选结束」；定档那一秒自动放开，不需要额外调用。
 
 ```bash

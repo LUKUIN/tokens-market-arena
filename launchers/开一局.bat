@@ -67,7 +67,7 @@ echo   接口地址     http://127.0.0.1:%TM_PORT%
 echo   参赛模型     %TM_TRADER%
 echo   随机事件     %TM_EVENTS%
 echo   优惠融资 %TM_FR%    老虎机 %TM_SLOT%    外部的怜悯 %TM_ASSIST%
-echo   5 秒内按 Y 才启动对局；不按则清理退出。
+echo   5 秒内按 Y 才启动对局；不按则取消开局。
 echo   要让 AI 参赛：回到项目根目录运行 python run.py（本窗口已切到根目录）
 echo.
 echo   !! 本版是 AI 参赛版：界面只读，没有下单 / 平仓 / 快进按钮。
@@ -76,7 +76,7 @@ echo   !! 用 python run.py 启动时，定档后 %IDLE_WARN% 分钟无操作会自动结算（TM_I
 
 rem ==================================================================
 rem v1.2.12：本入口增加「误点保护」，但保留真正的启动能力。
-rem   - 人类双击（有控制台）：5 秒内不按 Y 就清理退出，不会空转 45 分钟。
+rem   - 人类双击（有控制台）：5 秒内不按 Y 就取消开局，不会空转 45 分钟。
 rem   - 脚本 / AI 调用（无控制台 stdin）：choice 返回 255，直接启动对局。
 rem 这样既拦住误点，也不会误伤真正要比赛的 Agent。
 rem ==================================================================
@@ -86,7 +86,7 @@ if defined TM_NO_CONFIRM goto :direct_start
 
 echo.
 echo   5 秒内按 Y 启动对局（仅限已有 Agent 会连上来操作）；
-echo   不按则自动清理并退出。
+echo   不按则自动取消开局。
 choice /c YN /t 5 /d N /n /m " " 2>nul
 if errorlevel 255 goto :direct_start
 if errorlevel 2 goto :abort_start
@@ -102,12 +102,5 @@ goto :eof
 
 :abort_start
 echo.
-echo   已取消。正在清理残留进程与临时文件……
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\tools\deep-clean.ps1"
-echo.
-echo   [已清理]
-echo   - 要让 AI 参赛：在项目根目录运行  python run.py
-echo   - 人类要玩：请用 TokensMarket-OpenSource-Human
-echo.
-pause
-goto :eof
+echo   已取消开局。
+exit /b 0

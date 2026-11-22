@@ -1,5 +1,7 @@
 # Tokens Trading Market · AI Edition (source)
 
+> Original project code was written by **DeepSeek V4.1 Flash 1017 (High)** in **DeepSeek Harness**.
+
 ![Spectator window (1920x1080 tier)](docs/spectator-1920x1080.png)
 
 > **Running an agent as the contestant? [`AGENTS.md`](AGENTS.md) is the one page it needs** — launch command, difficulty lock, endpoint entry point. Rules come from `GET /rules`; no need to read through `docs/`.
@@ -28,7 +30,7 @@ The participant is a large language model, not a human.
 
 Two headline mechanics run inside a match; the full rules are under "How a match runs" and `GET /rules`:
 
-- **Huge Wave warning**: 0–3 surprise events per match (four equal tiers at 25% each; at least 3 minutes apart, with a guaranteed catch-up in the final 3 minutes). A banner snaps open in the dead centre of the screen with the original *Plants vs. Zombies* horn sample, then after a 10-second hold 3–5 shock events land at once. The spectator's run status shows how many rolled / fired / still pending.
+- **Huge Wave warning**: 0–3 surprise events per match (four equal tiers at 25% each; at least 3 minutes apart, with a guaranteed catch-up in the final 3 minutes). A banner snaps open in the dead centre of the screen with a Windows system notification sound, then after a 10-second hold 3–5 shock events land at once. The spectator's run status shows how many rolled / fired / still pending.
 - **Challenge tasks**: asked at the very start (75 s). Once enabled, three objectives are drawn at the difficulty tier (a PvZ2 Level Objectives port) and published together with the difficulty, judged live with √ / ×. If **Double or Nothing** is drawn, the target doubles and this match's slot and loan target bumps are fixed at 50%–100% (mutually exclusive with Beat the Target).
 
 ---
@@ -108,10 +110,10 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 ### Double-click launcher
 
 `launchers\开一局.bat` is the double-click entry point. **It asks once on purpose**: press `Y` within 5 seconds
-to start, otherwise it cleans up and exits — the AI edition has no trading UI, so an accidental click
+to start, otherwise the launch is canceled — the AI edition has no trading UI, so an accidental click
 would otherwise burn 45 idle minutes. **Scripts and agents should use `python run.py` or `launchers\AI-Start.bat`** —
 `launchers\AI-Start.bat` has no prompt and opens the spectator too. Invoking `cmd /c "launchers\开一局.bat"` from a
-terminal still counts as human and is cleaned up after 5 seconds. The batch file looks for Python 3.14 in order —
+terminal still counts as human and cancels after 5 seconds. The batch file looks for Python 3.14 in order —
 the pinned path, then `py -3.14`, then `python` on PATH (version-checked) — and stops with a clear
 error if none of the three is found.
 
@@ -390,7 +392,7 @@ What sealing actually does:
 - The project's own `_guard_vault/` keeps only a `guard_state.json` naming the sealed files — **no
   plaintext source is left inside the project tree**
 - Executing or importing a decoy drops `CHEAT_FLAG`; the guard then `POST /shutdown` immediately
-- Cleanup: `tools\deep-clean.ps1` kills the guard too, and decrypts the sources first
+- Cleanup: `tools\deep-clean.ps1` restores sealed sources from an interrupted match after it has stopped
 
 `run.py` loads the spectator module before sealing (the other order imports a decoy), and any seal
 left behind by a crashed match is decrypted and restored on the next start.
@@ -420,15 +422,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\deep-clean.ps1
 > **When calling from an AI agent or a script, use the command above.** Do not run
 > `launchers\进程深度清理.bat` directly: it contains two `pause` calls (stdin piped in will hang) and prints
 > GBK text (garbled in a UTF-8 terminal). `tools\deep-clean.ps1` is the same logic in non-interactive
-> form and forces UTF-8 output; **exit code 0 means success**.
+> form; **exit code 0 means success**.
 > Double-clicking the `.bat` still works for humans (pass `-y` to skip the pauses).
 
-It does two things:
-
-1. Kills leftover Python game processes by command-line keyword and by ports 8734–8745;
-2. Removes every runtime file under `src/data/` except `reports/` (including the scratchpad cache).
-
-`reports/` holds historical match reports and is never touched.
+The script checks this checkout's running marker, restores sealed sources if needed, and removes known runtime files. It preserves reports and leaves other processes alone.
 
 ---
 

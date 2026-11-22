@@ -72,7 +72,6 @@ NEWS_COOLDOWN = 3          # 两次事件的最小间隔（tick）
 #   ② 静默演出期，场上不产任何东西（mHugeWaveCountDown = 750 帧 ≈ 12.5 秒，且 return 截住出怪）
 #   ③ 演出结束，一批僵尸同时涌入（NextWaveComing）
 # 这里按同样的三段式移植，用 tick 计时：5 秒/tick，2 tick = 10 秒，
-# 正好包住 hugewave.ogg 的 6.57 秒时长并留出余韵。
 HUGE_WAVE_TEXT = "一大波异常行情正在接近！"   # 横幅文案；对齐原版 "A HUGE WAVE OF ZOMBIES IS APPROACHING!"
 HUGE_WAVE_MAX = 3              # 每局**上限**，不是默认次数。
                                # 实际次数开局掷一次骰：0 / 1 / 2 / 3 次，四档等概率各 25%
@@ -166,11 +165,6 @@ _SPECIAL_CACHE = {}
 _SEED_ENV = (os.environ.get("TM_SEED") or "").strip()
 # 评测/回放专用：显式锁定难度档位索引（0-24）。人类与正常参赛者都不该设。
 _ROLL_INDEX_ENV = (os.environ.get("TM_ROLL_INDEX") or "").strip()
-if _SEED_ENV:
-    try:
-        random.seed(int(_SEED_ENV))
-    except Exception:
-        pass
 
 
 def _roll_index_from_env():
@@ -191,7 +185,7 @@ def _new_seed():
             return int(_SEED_ENV)
         except Exception:
             pass
-    return random.getrandbits(32)
+    return int.from_bytes(os.urandom(4), "big")
 
 
 def _env_flag(name, default=True):
@@ -215,9 +209,9 @@ def _sanitize_trader(name):
     return s.strip()
 
 
-def _pick_news_rate():
+def _pick_news_rate(rng):
     """每一局开头抽一个新闻强度，让不同局的密度天差地别。"""
-    r = random.random()
+    r = rng.random()
     acc = 0.0
     for rate, p in NEWS_REGIMES:
         acc += p
@@ -226,13 +220,13 @@ def _pick_news_rate():
     return NEWS_REGIMES[1][0]
 
 
-def _pick_huge_wave_count():
+def _pick_huge_wave_count(rng):
     """本局会来几次「一大波」：0 / 1 / 2 / 3，四档等概率，各 25%。
 
     四档均分意味着 25% 的局一次都不来，也有 25% 的局来满三次；
     次数上限仍然由 HUGE_WAVE_MAX 卡住。
     """
-    return min(HUGE_WAVE_MAX, random.choices([0, 1, 2, 3], weights=HUGE_WAVE_COUNT_W)[0])
+    return min(HUGE_WAVE_MAX, rng.choices([0, 1, 2, 3], weights=HUGE_WAVE_COUNT_W)[0])
 
 
 SAFE_HAVEN = ("FROST/CORE", "AMBER/CORE")
@@ -398,7 +392,7 @@ def _idle_rule_text():
             % (IDLE_ABORT_MINUTES, "、".join(IDLE_ACTION_LABELS)))
 
 
-ENGINE_VERSION = "1.2.27"  # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.28"  # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -510,21 +504,13 @@ def purge_agent_dir(home):
     return removed
 
 
-def _new_session(seed=None, apply_rng=True, roll_index=None):
-    """构造一局新会话。
-
-    seed 的来源优先级：显式参数 > TM_SEED > 随机生成。
-    无论哪种来源，这里都会用它重置全局随机流 —— 报告里印出的
-    「随机种子 X · 复现方式：TM_SEED=X 重开一局」只有在随机流真的
-    由这个 seed 驱动时才成立，否则那句话属于虚假承诺。
-    """
+def _new_session(seed=None, roll_index=None):
+    """创建新会话，初始化相互独立的市场与玩家随机流。"""
     trader, unnamed = _env_trader()
     events_on = _env_events()
     seed = _new_seed() if seed is None else int(seed)
-    if apply_rng:
-        random.seed(seed)
-    # 显式锁档优先于环境变量。这里不得调用 random ——
-    # 任何新增的随机调用都会让历史 seed 的行情整体错位。
+    market_rng = random.Random(seed)
+    player_rng = random.Random(seed ^ 0x54_4D_50_4C)
     if roll_index is None:
         roll_index = _roll_index_from_env()
     return {
@@ -558,11 +544,11 @@ def _new_session(seed=None, apply_rng=True, roll_index=None):
         "mods": {},
         "last_news_tick": -999,
         "events_on": events_on,
-        "news_rate": _pick_news_rate() if events_on else 0.0,
+        "news_rate": _pick_news_rate(market_rng) if events_on else 0.0,
         "last_news_name": None,
         # ---- 一大波预警：本局余量 + 演出期截止 tick + 已触发次数 ----
         # 余量在开局一次性 roll 定（0~2 次），之后只减不增，保证「全场最多两次」是硬上限。
-        "huge_wave_left": _pick_huge_wave_count() if events_on else 0,
+        "huge_wave_left": _pick_huge_wave_count(market_rng) if events_on else 0,
         "huge_wave_warn_until": 0,   # 非 0 表示正处于演出期，到该 tick 才爆发
         "huge_wave_show_tick": -1,   # 预警横幅出现的那一 tick；观众席只认这一个 tick
         "huge_wave_fired": 0,        # 已触发次数，供报告与 /state 核对
@@ -590,7 +576,7 @@ def _new_session(seed=None, apply_rng=True, roll_index=None):
         "roll_started_at": 0.0,      # 盲盒开始时刻（time.time()）
         "roll_index": (int(roll_index) % ROLL_COMBOS
                        if roll_index is not None else None),  # 显式锁档，见 TM_ROLL_INDEX
-        "roll_phase": random.uniform(0, ROLL_COMBOS),   # 打散取模相位（见 _roll_index）
+        "roll_phase": market_rng.uniform(0, ROLL_COMBOS),   # 打散取模相位（见 _roll_index）
         "loan": {"balance": 0.0, "borrowed": 0.0, "repaid": 0.0, "interest": 0.0,
                  "loans": 0, "goal_bumps": []},
         # ---------------- 外部的怜悯（观众席 ↔ 参赛者） ----------------
@@ -623,6 +609,8 @@ def _new_session(seed=None, apply_rng=True, roll_index=None):
         "paused_at": 0.0,
         "begun": False,
         "last_notice_mark": 0,
+        "market_rng_state": market_rng.getstate(),
+        "player_rng_state": player_rng.getstate(),
     }
 
 
@@ -702,6 +690,8 @@ class Engine:
         # 难度盲盒未定档 = 尚未开局，计时一律为 0
         if not self.s.get("difficulty"):
             return 0.0
+        if self._simulated:
+            return self.s["tick"] * TICK_SECONDS
         if self.s.get("paused") and self.s.get("paused_at"):
             # 暂停期间（规则确认前）计时冻结，不随真实时间流逝
             raw = float(self.s["paused_at"]) - self.s["created_at"]
@@ -717,7 +707,8 @@ class Engine:
         self._elapsed_watch = max(last, raw)
         return raw
 
-    def __init__(self, home, readonly=False):
+    def __init__(self, home, readonly=False, *, simulated=False):
+        self._simulated = simulated
         self.home = home
         self._elapsed_watch = 0.0
         os.makedirs(home, exist_ok=True)
@@ -728,7 +719,7 @@ class Engine:
         # 上次进程有没有留下「未正常收尾」的标记
         leftover = os.path.exists(self.running_path)
         with LOCK:
-            self.s = self._load()
+            self._use_session(self._load())
             if self.s.get("finished") and not readonly:
                 # 上一局已结算（结束即结束，结算后不再自动重置）。
                 # 本次启动本身就是新的一局：沿用玩家名与重开计数。
@@ -737,7 +728,7 @@ class Engine:
                     fresh["trader"] = self.s.get("trader", fresh["trader"])
                     fresh["unnamed"] = self.s.get("unnamed", True)
                 fresh["resets"] = self.s.get("resets", 0)
-                self.s = fresh
+                self._use_session(fresh)
                 self._save()
             self._elapsed_watch = float(self.s.get("elapsed_seen", 0.0))
             if leftover and not readonly:
@@ -749,6 +740,15 @@ class Engine:
                 self._save()
             if not readonly:
                 self._mark_running()
+
+    def _use_session(self, state):
+        self.s = state
+        self._market_rng = random.Random()
+        self._player_rng = random.Random()
+        for rng, key in ((self._market_rng, "market_rng_state"),
+                         (self._player_rng, "player_rng_state")):
+            version, sequence, gaussian = state[key]
+            rng.setstate((version, tuple(sequence), gaussian))
 
     def _load(self):
         if os.path.exists(self.path):
@@ -767,12 +767,13 @@ class Engine:
                     fresh = _new_session()
                     fresh["tampered"] = True
                     return fresh
-                base = _new_session(apply_rng=False)
+                has_rng_state = "market_rng_state" in s and "player_rng_state" in s
+                base = _new_session(seed=s.get("seed"))
                 for k, v in base.items():
                     s.setdefault(k, v)
                 s["session_id"] = s.get("session_id") or os.urandom(8).hex()
-                # 重启后随机流无法回到存档时刻，报告必须诚实标注复现边界
-                if not s.get("finished"):
+                # 旧存档没有随机数状态，无法精确接续历史行情。
+                if not has_rng_state and not s.get("finished"):
                     s["rng_resumed"] = True
                 return s
             except Exception:
@@ -1223,6 +1224,8 @@ class Engine:
             return {"ok": True, "challenge": self._challenge_view()}
 
     def _save(self):
+        self.s["market_rng_state"] = self._market_rng.getstate()
+        self.s["player_rng_state"] = self._player_rng.getstate()
         self.s.pop("_sig", None)
         self.s["_sig"] = _sign(self.s)
         tmp = self.path + ".tmp"
@@ -1334,13 +1337,13 @@ class Engine:
                 continue  # 枯竭期内不动
             if st["L"] < self._liq_base() * 0.20:
                 # 刚熬过枯竭：快速回补到正常区间，而不是从 8% 慢慢爬回来
-                st["L"] = self._liq_base() * random.uniform(0.70, 1.30)
+                st["L"] = self._liq_base() * self._market_rng.uniform(0.70, 1.30)
                 continue
-            L = st["L"] * math.exp(random.gauss(0.0, LIQ_SIGMA))
+            L = st["L"] * math.exp(self._market_rng.gauss(0.0, LIQ_SIGMA))
             L = min(self._liq_base() * LIQ_MAX_MULT, max(self._liq_base() * LIQ_MIN_MULT, L))
             st["L"] = L
-            if random.random() < LIQ_SHOCK_P:
-                st["shock_until"] = tick + random.randint(*LIQ_SHOCK_TICKS)
+            if self._market_rng.random() < LIQ_SHOCK_P:
+                st["shock_until"] = tick + self._market_rng.randint(*LIQ_SHOCK_TICKS)
                 st["L"] = self._liq_base() * LIQ_SHOCK_MULT
                 self._event("【流动性枯竭】%s（%s）盘口瞬间变薄，现在下单滑点极高"
                             % (sym, PAIR_NAMES[sym]), "gap")
@@ -1503,10 +1506,10 @@ class Engine:
                     if r[2] in HUGE_WAVE_BURST_KINDS and r[0] not in HUGE_WAVE_EXCLUDE_NAMES]
             if not pool:
                 return False
-            n = random.randint(*HUGE_WAVE_BURST)
+            n = self._market_rng.randint(*HUGE_WAVE_BURST)
             self._event("【爆发】冲击全面到来 —— %d 条风险事件同时生效" % n, "huge_wave")
             for _ in range(n):
-                name, _w, kind, params = random.choices(pool, weights=[r[1] for r in pool])[0]
+                name, _w, kind, params = self._market_rng.choices(pool, weights=[r[1] for r in pool])[0]
                 self._apply_news(name, kind, params)
                 self.s["last_news_name"] = name
             return True
@@ -1533,7 +1536,7 @@ class Engine:
             _gap = HUGE_WAVE_GAP_TICKS
         if t - int(self.s.get("huge_wave_last_tick") or -10 ** 6) < _gap:
             return False
-        if not _rush and random.random() >= HUGE_WAVE_RATE:
+        if not _rush and self._market_rng.random() >= HUGE_WAVE_RATE:
             return False
 
         self.s["huge_wave_left"] = int(self.s["huge_wave_left"]) - 1
@@ -1552,34 +1555,34 @@ class Engine:
             return
         if self.s["tick"] - self.s.get("last_news_tick", -999) < NEWS_COOLDOWN:
             return
-        if random.random() >= rate:
+        if self._market_rng.random() >= rate:
             return
         self.s["last_news_tick"] = self.s["tick"]
         # 同一个事件不连续出现两次
         last = self.s.get("last_news_name")
         pool = [row for row in NEWS_TABLE if row[0] != last] or NEWS_TABLE
-        name, _w, kind, params = random.choices(pool, weights=[row[1] for row in pool])[0]
+        name, _w, kind, params = self._market_rng.choices(pool, weights=[row[1] for row in pool])[0]
         self.s["last_news_name"] = name
         self._apply_news(name, kind, params)
 
     def _apply_news(self, name, kind, params):
         if kind == "pair_rand":
-            sym = random.choice(list(PAIRS))
-            mag = random.uniform(*params) * random.choice([-1, 1])
+            sym = self._market_rng.choice(list(PAIRS))
+            mag = self._market_rng.uniform(*params) * self._market_rng.choice([-1, 1])
             self._shock(sym, mag)
             self._event("【突发】%s → %s（%s）%+.1f%%" % (name, sym, PAIR_NAMES[sym], mag * 100), "news")
         elif kind == "all_rand":
-            mag = random.uniform(*params) * random.choice([-1, 1])
+            mag = self._market_rng.uniform(*params) * self._market_rng.choice([-1, 1])
             for sym in PAIRS:
-                self._shock(sym, mag * random.uniform(0.6, 1.0))
+                self._shock(sym, mag * self._market_rng.uniform(0.6, 1.0))
             self._event("【突发】%s → 全线 %+.1f%%" % (name, mag * 100), "news")
         elif kind == "haven":
-            mag = random.uniform(*params)
+            mag = self._market_rng.uniform(*params)
             for sym in PAIRS:
                 if sym in SAFE_HAVEN:
                     self._shock(sym, mag)
                 else:
-                    self._shock(sym, -mag * random.uniform(0.2, 0.5))
+                    self._shock(sym, -mag * self._market_rng.uniform(0.2, 0.5))
             self._event("【突发】%s → 避险货币大涨" % name, "news")
         elif kind == "mod":
             key, val, ticks = params
@@ -1604,7 +1607,7 @@ class Engine:
             if not hasattr(self, "_gap_pairs"):
                 self._gap_pairs = set()   # 单独调用 _apply_news 时也要能记
             for sym in PAIRS:
-                g = random.choice([-1, 1]) * random.uniform(lo, hi)
+                g = self._market_rng.choice([-1, 1]) * self._market_rng.uniform(lo, hi)
                 self._shock(sym, g)
                 self._gap_pairs.add(sym)
             self._event("【天灾】%s → 全品种同时跳空 %.0f%%~%.0f%%" % (name, lo * 100, hi * 100), "gap")
@@ -1629,7 +1632,7 @@ class Engine:
                 "【平台】%s → 未来 %d 个 tick（%.0f 分钟）暂停老虎机投注" % (
                     name, n, n * TICK_SECONDS / 60.0), "warn")
         elif kind == "flavor":
-            self._event("【%s】%s" % (name, random.choice(FLAVOR_LINES[name])), "info")
+            self._event("【%s】%s" % (name, self._market_rng.choice(FLAVOR_LINES[name])), "info")
 
     def _advance_prices(self):
         self._expire_mods()
@@ -1640,9 +1643,9 @@ class Engine:
             self._roll_news()       # 本 tick 由 gap_burst 记下的标记要留到下面读
         for sym, cfg in PAIRS.items():
             p = self.s["prices"][sym]
-            r = random.gauss(0, cfg["vol"] * self._mod("vol_mult"))
-            if random.random() < self._gap_chance() * self._mod("gap_mult"):
-                g = random.choice([-1, 1]) * random.uniform(GAP_MIN, GAP_MAX)
+            r = self._market_rng.gauss(0, cfg["vol"] * self._mod("vol_mult"))
+            if self._market_rng.random() < self._gap_chance() * self._mod("gap_mult"):
+                g = self._market_rng.choice([-1, 1]) * self._market_rng.uniform(GAP_MIN, GAP_MAX)
                 self._gap_pairs.add(sym)
                 self._event("【黑天鹅】%s（%s）跳空 %+.1f%%" % (sym, PAIR_NAMES[sym], g * 100), "gap")
                 r += g
@@ -2427,7 +2430,7 @@ class Engine:
             self.s["balance"] -= stake
             sp["slot_paid"] = float(sp.get("slot_paid", 0.0)) + stake
             sp["slot_plays"] = played + 1
-            r = random.random()
+            r = self._player_rng.random()
             if r < SLOT_P_LOSE:
                 mult, payout = 0, 0.0
             elif r < SLOT_P_LOSE + SLOT_P_X5:
@@ -2440,9 +2443,9 @@ class Engine:
                 self.s["balance"] += payout
                 sp["slot_win"] = float(sp.get("slot_win", 0.0)) + payout
                 if self._challenge_rule("double_goal"):
-                    bump_pct = random.uniform(0.50, 1.00)
+                    bump_pct = self._player_rng.uniform(0.50, 1.00)
                 else:
-                    bump_pct = random.uniform(SLOT_WIN_LO, SLOT_WIN_HI)
+                    bump_pct = self._player_rng.uniform(SLOT_WIN_LO, SLOT_WIN_HI)
                 bump = payout * bump_pct
                 self.s["target"] = self.s.get("target", TARGET_EQUITY) + bump
                 self.s["target_bonus"] = self.s.get("target_bonus", 0.0) + bump
@@ -2499,9 +2502,9 @@ class Engine:
             _ratio = (_r0 + _r1) / 2.0
             _base = _lo + (1.0 - _lo) * _ratio
             if self._challenge_rule("double_goal"):
-                pct = random.uniform(0.50, 1.00)
+                pct = self._player_rng.uniform(0.50, 1.00)
             else:
-                pct = min(1.0, max(_lo, _base * random.uniform(0.7, 1.3)))
+                pct = min(1.0, max(_lo, _base * self._player_rng.uniform(0.7, 1.3)))
             bump = amount * pct
             _relief = pct < 0
             self.s["target"] = self.s.get("target", TARGET_EQUITY) + bump
@@ -3262,7 +3265,7 @@ class Engine:
                     "复现：TM_SEED=%s TM_ROLL_INDEX=%s 重开一局%s" % (
                         self.s.get("seed") or "—", _r[0], _r[1], _r[2],
                         self.s.get("seed") or "—", _r[0],
-                        "（注意：本局服务曾中途重启，seed 只能复现重启前的行情）"
+                        "（从不含随机数状态的旧存档续局，无法复现完整行情）"
                         if self.s.get("rng_resumed") else "")))(self._roll_index_text()),
                 "pftxt": ("—" if not m["trades_n"]
                           else ("∞" if m["profit_factor"] is None
@@ -3552,7 +3555,7 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
                             "state": self._state_light()}
             trader = self.s.get("trader", "访客")
             n = self.s.get("resets", 0) + (1 if count else 0)
-            self.s = _new_session(seed=seed, roll_index=roll_index)
+            self._use_session(_new_session(seed=seed, roll_index=roll_index))
             self.s["trader"] = trader
             self.s["resets"] = n
             self.s["last_reset_at"] = now
@@ -3713,7 +3716,7 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
                 "elapsed_seconds": int(self._elapsed()),
                 "unnamed": bool(self.s.get("unnamed")),
                 "events_on": bool(self.s.get("events_on", True)),
-                # 一大波预警：观众席据此决定要不要出横幅、要不要播 hugewave.ogg。
+                # 一大波预警：观众席据此决定要不要出横幅、要不要播 系统提示音。
                 # show 只在预警那一 tick 为真（演出期与已爆发后都为假），
                 # 所以观众席不会因为轮询间隔错过它，也不会重复播放。
                 "huge_wave": {

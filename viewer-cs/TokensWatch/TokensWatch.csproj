@@ -20,17 +20,4 @@
     <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
   </PropertyGroup>
 
-  <ItemGroup>
-    <!--
-      一大波预警音效：从 PvZ 的 main.pak 里提的原版 hugewave.ogg
-      （sounds\hugewave.ogg，111,507 B，44.1kHz / 立体声 / 6.57 秒），
-      转成 PCM WAV 是为了绕开 WPF 播放 Ogg 需要额外解码器的问题
-      —— SoundPlayer 只吃 WAV，带编解码依赖的 MediaPlayer 在干净机器上会静音。
-      用 Content + CopyToOutputDirectory：不进程序集资源流，避免拖大单文件体积。
-    -->
-    <Content Include="Assets\hugewave.wav">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
-
 </Project>

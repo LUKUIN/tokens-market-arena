@@ -132,14 +132,10 @@ public partial class MainWindow : Window
     // 出场动画的两个时长（毫秒），只在这里改。
     // 参考：PvZ 原版文字缩放到位实测是 200ms（60fps 下 12 帧），但那是 800×600 的画面；
     // 放到 1920 宽的观众席上观感偏急，按用户反馈放慢到 620/260。
-    // 注意 hugewave.ogg 本身长 6.5709 秒，那是「音效 + 停留」的总长，不是缩放时长，
-    // 横幅停留时间由下面的 10 秒定时器控制，已经覆盖。
     private const int HugeWaveScaleMs = 620;
     private const int HugeWaveFadeMs = 260;
 
     private DispatcherTimer? _hugeWaveTimer;
-    private readonly SoundPlayer _hugeWavePlayer = new();
-    private bool _hugeWaveAudioReady;
 
     public MainWindow()
     {
@@ -830,7 +826,6 @@ public partial class MainWindow : Window
 
         // PvZ 原版横幅在 mHugeWaveCountDown == 0 时 ClearAdvice 消失。
         // 换算到本引擎正好是一个演出期：HUGE_WAVE_WARN_TICKS = 2 tick = 10 秒，
-        // 正好包住 hugewave.wav 的 6.57 秒并留约 3.4 秒余韵。
         _hugeWaveTimer?.Stop();
         _hugeWaveTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
         _hugeWaveTimer.Tick += (_, _) =>
@@ -859,29 +854,15 @@ public partial class MainWindow : Window
         HugeWaveBanner.BeginAnimation(UIElement.OpacityProperty, fade);
     }
 
-    private void PlayHugeWaveSound()
+    private static void PlayHugeWaveSound()
     {
-        if (_hugeWaveAudioReady)
-        {
-            _hugeWavePlayer.Play();
-            return;
-        }
         try
         {
-            // 音效来自 PvZ 的 main.pak（sounds\hugewave.ogg），已转成 PCM WAV：
-            // WPF 的 SoundPlayer 只吃 WAV，而带解码依赖的 MediaPlayer 在干净机器上会静音。
-            string path = System.IO.Path.Combine(
-                AppDomain.CurrentDomain.BaseDirectory, "Assets", "hugewave.wav");
-            if (!System.IO.File.Exists(path)) return;   // 缺资源就只出画面，不影响对局
-            _hugeWavePlayer.SoundLocation = path;
-            _hugeWavePlayer.LoadAsync();     // 1.1 MB，Play() 会自己等加载完成
-            _hugeWaveAudioReady = true;
-            _hugeWavePlayer.Play();
+            SystemSounds.Exclamation.Play();
         }
         catch
         {
-            // 声卡被别的程序独占、音频服务没起，都不该让观众席崩——
-            // 横幅才是主体，音效是配角。
+            // 音频不可用时仍保留预警横幅。
         }
     }
 

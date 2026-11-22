@@ -1,5 +1,7 @@
 # Tokens 交易市场 · AI 版（源码版）
 
+> 项目原始代码由 **DeepSeek Harness** 中的 **DeepSeek V4.1 Flash 1017（High）** 编写。
+
 ![观众席界面（1920×1080 档）](docs/spectator-1920x1080.png)
 
 ## 本仓库有三条产品线
@@ -12,9 +14,8 @@
 | [`english`](../../tree/english) | **AI 版（英文）** | 同上 | 全英文界面与文档 |
 | [`human`](../../tree/human) | **人类版（中文）** | 玩家亲手点按钮 | 完整交互 GUI：投资界面、难度盲盒、规则窗 |
 
-人类版引擎与 AI 版 **同源**：v1.2.26 起人类版多一行 `CHALLENGE_EXCLUDE = ("no_assist",)`
-（本版没有「外部的怜悯」入口，那条挑战目标永远无法违反），其余逐字节相同，差别只在"谁来下单"。
-不想读源码的直接下人类版成品包：[Releases · human-v1.2.26](https://github.com/LUKUIN/tokens-market-arena/releases/tag/human-v1.2.26)。
+人类版与 AI 版共享交易和行情规则。人类版有操作界面，挑战池不包含场外求助类目标。
+不想读源码的直接下人类版成品包：[Releases · human-v1.2.28](https://github.com/LUKUIN/tokens-market-arena/releases/tag/human-v1.2.28)。
 
 > **让 Agent 参赛？读 [`AGENTS.md`](AGENTS.md) 一页就够** —— 启动命令、定档、接口入口都在里面，规则从 `GET /rules` 取，不需要逐个翻 `docs/`。
 >
@@ -46,7 +47,7 @@
 
 局内有两个重点机制，完整规则见「一局的流程」与 `GET /rules`：
 
-- **一大波预警**：整局 0–3 次的突发大事件（四档等概率各 25%；两次至少隔 3 分钟，末 3 分钟兜底放完），屏幕正中弹出横幅 + 《植物大战僵尸》原版号角音效，10 秒静默后一次性涌出 3–5 条冲击事件；观众席「运行状态」常驻显示本局总次数 / 已触发 / 未触发
+- **一大波预警**：整局 0–3 次的突发大事件（四档等概率各 25%；两次至少隔 3 分钟，末 3 分钟兜底放完），屏幕正中弹出横幅 + Windows 系统提示音，10 秒静默后一次性涌出 3–5 条冲击事件；观众席「运行状态」常驻显示本局总次数 / 已触发 / 未触发
 - **挑战任务**：开局先询问是否开启（75 秒），开启后按难度档位抽 3 条目标（PvZ2 关卡目标移植），定档时与难度一起公布，全程实时打 √ / ×；抽到「孤注一掷」时目标直接翻倍、本局老虎机与借款的目标上浮固定 50%–100%（与「更上层楼」互斥）；局终清算给每条目标收尾——过程型全程未破功即记达成，结果型未达标记未达成
 
 ---
@@ -127,8 +128,8 @@ Windows 11 Insider build 26300（26H2）、Python 3.14.7、.NET SDK 8.0.428 / 9.
 `run.py` 是**前台阻塞**命令，会一直跑到本局结束（最长 45 分钟）：执行器若把它当普通命令等待返回，会触发自己的超时并 kill 进程，服务随之消失，之后所有请求都是 `connection refused`。
 
 **观众席会随服务自动打开，这是强制项。** `run.py`、`run.py server` 都会拉起只读观众席；
-`launchers\开一局.bat` 双击时多一步防误点确认（5 秒内按 `Y` 才启动，不按就清理退出）。
-**脚本 / Agent 请用 `launchers\AI-Start.bat` 或直接 `python run.py`**——`cmd /c launchers\开一局.bat` 这种终端调用也会被当成人类，5 秒后被杀。
+`launchers\开一局.bat` 双击时多一步防误点确认（5 秒内按 `Y` 才启动，不按就取消开局）。
+**脚本 / Agent 请用 `launchers\AI-Start.bat` 或直接 `python run.py`**——`cmd /c launchers\开一局.bat` 这种终端调用也会被当成人类，5 秒后取消开局。
 只有加 `--headless` 才是真正的无窗口模式，仅供没有桌面环境的 CI / 容器使用。
 
 后台启动后轮询就绪：
@@ -162,10 +163,10 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 
 ### 双击启动
 
-`launchers\开一局.bat` 是双击入口。**双击时会先问一次**：5 秒内按 `Y` 才启动，不按就清理退出。
+`launchers\开一局.bat` 是双击入口。**双击时会先问一次**：5 秒内按 `Y` 才启动，不按就取消开局。
 `launchers\AI-Start.bat` 是无人值守入口，不做确认，直接启动，专给脚本 / Agent 用——
 AI 版没有操作界面，人类误点本来会空转 45 分钟。**脚本 / Agent 请走 `python run.py` 或 `launchers\AI-Start.bat`**；
-在终端里 `cmd /c launchers\开一局.bat` 同样会被当成人类，5 秒后清理退出。
+在终端里 `cmd /c launchers\开一局.bat` 同样会被当成人类，5 秒后取消开局。
 脚本按顺序找 Python 3.14：本机固定路径 → `py -3.14` → PATH 里的 `python`（先校验版本）。三条都不命中时明确报错并停住，不会带病启动。
 
 ### 只开观众席（窗口被误关时用）
@@ -349,8 +350,7 @@ launchers\只开观众席(新版).bat
    慢模型观望与推理不会被提前结算。默认 `0`（关闭），`launchers\开一局.bat` 设 `12`，`launchers\AI-Start.bat` 保持 `0`；
    计时按 tick 推进，与 `bench.py` 的离线基线同语义。
 7. `/quit` 后约 3 秒服务与观众席自动退出。**退出前会自动收尾**：删掉本局临时文件
-   （`session.json`、草稿纸、`_agent` 残留），只保留 `reports/` 下的历史战报，
-   并收掉仍占着 8734 / 8735 的残留进程——下一局不需要手动清理。
+   （`session.json`、草稿纸、`_agent` 残留），保留 `reports/` 下的历史战报。
 
 ---
 
@@ -476,7 +476,7 @@ python guard.py stop                 # 结束守卫并解密还原源码
 - 密钥单独存成同目录下的 `_k`；`src/*.py` 原位置换成 967 字节、写着 `CHEATING DETECTED` 的诱饵
 - 项目内的 `_guard_vault/` 只留一个 `guard_state.json`（记录封了哪几个文件），**没有任何明文源码**
 - 执行 / `import` 诱饵：落下 `CHEAT_FLAG`，守卫立刻 `POST /shutdown` 终止对局
-- 清理：`tools\deep-clean.ps1` 会把守卫进程一起杀掉，并先解密还原源码
+- 清理：`tools\deep-clean.ps1` 会在对局停止后恢复封存源码、清理遗留文件
 
 `run.py` 启动时先加载观众席模块、再封存源码（顺序反了会 import 到诱饵）；上一次对局异常中断留下的封存，会在下次启动时自动解密还原。
 
@@ -488,7 +488,7 @@ python guard.py stop                 # 结束守卫并解密还原源码
 
 ## 进程深度清理
 
-对局结束、或启动异常（端口被占、窗口不出现）时运行：
+异常中断后，确认该目录的对局已经停止，再运行：
 
 ```bash
 cd <项目目录>
@@ -497,15 +497,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\deep-clean.ps1
 
 > **由 AI 或脚本调用时请用上面这条命令**，不要直接跑 `launchers\进程深度清理.bat`：
 > 它内部有两个 `pause`（管道或重定向喂 stdin 会卡住），而且用 GBK 输出（UTF-8 终端下是乱码）。
-> `tools\deep-clean.ps1` 是同一套逻辑的非交互版本，已强制 UTF-8 输出；**退出码 0 即成功**。
+> `tools\deep-clean.ps1` 是同一套逻辑的非交互版本；**退出码 0 即成功**。
 > 人工双击 `launchers\进程深度清理.bat` 仍然可用（加 `-y` 参数则跳过暂停）。
 
-它做两件事：
-
-1. 按命令行关键字 + 8734–8745 端口，杀掉所有残留的 python 游戏进程；
-2. 清掉 `src/data/` 下除 `reports/` 之外的全部运行时文件（含草稿纸缓存）。
-
-`reports/` 是历史战报，不会被删。
+脚本会检查当前目录的运行标记，按需恢复源码，只清除已知的运行时文件，并保留战报和其他进程。
 
 ---
 
@@ -521,7 +516,7 @@ TokensMarket-OpenSource-AI-v97/
 ├── README.md / README.en.md
 ├── AGENTS.md               给 Agent 的单页入口 + 项目地图（AI 先读这个）
 ├── launchers/              所有双击入口（内部自动切回仓库根）
-│   ├── launchers\开一局.bat                双击入口（5 秒内按 Y 才启动，不按就清理退出）
+│   ├── launchers\开一局.bat                双击入口（5 秒内按 Y 才启动，不按就取消开局）
 │   ├── launchers\AI-Start.bat              无人值守入口（不做确认；脚本 / Agent 专用）
 │   ├── launchers\只开观众席.bat            tkinter 观众席：窗口被误关时补挂
 │   ├── launchers\构建观众席(新版).bat      C# 观众席的构建入口（需要 .NET 8 SDK）
@@ -676,7 +671,7 @@ TokensMarket-OpenSource-AI-v97/
 |---|---|---|
 | 同样的行情（价格 / 跳空 / 新闻） | `TM_SEED=<种子>` | 未定档时按 1.5% 基准概率；定档后按档位概率，档位不同则行情必然不同 |
 | 同样的难度档位 | `TM_ROLL_INDEX=<索引>` | 0-24，`索引 = gap + liq × 5`；设了它，盲盒无论何时叫停都定格在这一档 |
-| 完全复现一局 | 两个都给 | 例如 `TM_SEED=576407804 TM_ROLL_INDEX=9` |
+| 复现行情路径 | 两个都给 | 使用同版本引擎与相同的随机事件设置 |
 
 只给 seed 不给索引，重开时抽到哪档取决于叫停时刻的墙钟（每 2.5 秒一圈），大概率不是同一档。
 `bench.py run` 加 `--roll-index N` 可以让多局对齐同一档位。
@@ -693,7 +688,7 @@ python bench.py run --seeds 1-5 --policy noop         # 跑 5 局（空跑基线
 python bench.py summary --dir src/data/reports        # 汇总已有摘要
 ```
 
-- `run` 在进程内直接推进 tick，不开 HTTP、不等真实时间；每局结束落一份 JSON 摘要
+- 跑分会关闭挑战任务，按模拟时钟推进。未锁档时，按种子确定难度；每局单独保存 JSON 摘要。
 
 > **做模型横评时，凡是走真实对局（`run.py` 起服务）的那部分，务必固定 `TM_TAIL_SPEED=1`。**
 > 达标后引擎会自动把 tick 间隔压到 1.25 秒（4 倍速），同一局 45 分钟内 tick 数从 540 涨到 2160。

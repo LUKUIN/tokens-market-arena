@@ -6,17 +6,15 @@ echo   ============================================================
 echo     进程深度清理 - Tokens 交易市场
 echo   ============================================================
 echo.
-echo   作用：杀掉所有残留的游戏进程（按命令行 + 端口识别），
-echo         并清掉 data 目录下的运行时文件和 _agent 目录。
-echo         reports 子目录里的历史战报不会被动。
-echo.
-echo   什么时候用：每次运行「一键重置游戏」之后，立刻跑这个。
+echo   请先关闭对局，再清理遗留的运行时文件。历史战报会保留。
 echo.
 if /i "%~1"=="-y" goto SKIPPAUSE1
 pause
 :SKIPPAUSE1
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\tools\deep-clean.ps1"
+set "CLEANUP_STATUS=%ERRORLEVEL%"
 echo.
 if /i "%~1"=="-y" goto END
 pause
 :END
+exit /b %CLEANUP_STATUS%

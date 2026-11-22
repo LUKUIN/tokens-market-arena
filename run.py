@@ -52,32 +52,6 @@ def _local_open(url, timeout=3, data=None, headers=None):
     return _LOCAL_OPENER.open(req, timeout=timeout)
 
 
-def _decode_bytes(raw):
-    """把控制台命令的原始字节解成 str：不依赖 locale，GBK / UTF-8 / 系统码页都能落地。"""
-    if not raw:
-        return ""
-    for enc in ("utf-8", "gb18030", "mbcs"):
-        try:
-            return raw.decode(enc)
-        except (UnicodeDecodeError, LookupError):
-            continue
-    return raw.decode("utf-8", "replace")
-
-
-def _run_text(cmd, timeout=8):
-    """执行控制台命令并把 stdout 解成 str。
-
-    不能依赖 text=True 的默认编码：中文 Windows 下 netstat 输出是 GBK，
-    而 PYTHONUTF8=1 / -X utf8 启动时 subprocess 会按 UTF-8 解码，reader 线程抛
-    UnicodeDecodeError、stdout 变成 None，下游 splitlines() 直接崩
-    （v1.2.21 现场日志：'NoneType' object has no attribute 'splitlines'）。
-    这里拿原始字节自己解码，任何编码都能落地。
-    """
-    try:
-        raw = subprocess.run(cmd, capture_output=True, timeout=timeout).stdout or b""
-    except Exception:
-        return ""
-    return _decode_bytes(raw)
 
 
 # 控制台编码兜底：英文 Windows 或输出被重定向到文件时，默认编码可能是
@@ -320,47 +294,8 @@ def _start_server(host="127.0.0.1", port=8734):
     return None
 
 
-def _listening_pids(port):
-    """返回监听该端口的 PID 列表（Windows 走 netstat -ano；其它平台尽力而为）。"""
-    pids = []
-    # 走 _run_text：text=True 在 UTF-8 模式下解 GBK 的 netstat 会崩，
-    # stdout 变 None 后 splitlines() 报 NoneType —— 这正是现场 run.err.log 的堆栈。
-    out = _run_text(["netstat", "-ano"])
-    if not out:
-        return pids
-    for line in out.splitlines():
-        if "LISTENING" not in line.upper():
-            continue
-        parts = line.split()
-        if len(parts) < 5:
-            continue
-        if parts[1].endswith(":%d" % port):
-            try:
-                pids.append(int(parts[-1]))
-            except ValueError:
-                pass
-    return pids
-
-
-def _is_our_process(pid):
-    """判断某个 PID 是不是本项目的 python run.py。
-
-    命令行里必须同时出现 python 与 run.py；拿不到命令行时当作陌生进程，一律不杀。
-    """
-    cmd = [
-        "powershell", "-NoProfile", "-Command",
-        "(Get-CimInstance Win32_Process -Filter \"ProcessId=%d\").CommandLine" % pid,
-    ]
-    try:
-        out = _run_text(cmd)
-    except Exception:
-        return False
-    low = out.lower()
-    return ("python" in low) and ("run.py" in low)
-
-
 def _autoclean(home):
-    """结算后的自动收尾：删本局临时文件（保留 reports/），再收掉占着端口的残留进程。"""
+    """清理本局运行时文件，保留历史战报。"""
     if os.path.isdir(home):
         for name in os.listdir(home):
             if name == "reports":
@@ -371,19 +306,6 @@ def _autoclean(home):
                     shutil.rmtree(p, ignore_errors=True)
                 else:
                     os.remove(p)
-            except Exception:
-                pass
-    me = os.getpid()
-    for port in (8734, 8735):
-        for pid in _listening_pids(port):
-            if pid == me:
-                continue
-            # 只收自己的残留：端口可能被别的程序占着，盲杀会误伤
-            if not _is_our_process(pid):
-                continue
-            try:
-                subprocess.run(["taskkill", "/F", "/PID", str(pid)],
-                               capture_output=True, timeout=8)
             except Exception:
                 pass
 
