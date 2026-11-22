@@ -391,7 +391,7 @@ def _idle_rule_text():
             % (IDLE_ABORT_MINUTES, "、".join(IDLE_ACTION_LABELS)))
 
 
-ENGINE_VERSION = "1.2.28"  # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.27"  # 发布版本号：报告页脚与文档口径以此为准
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -2821,8 +2821,8 @@ class Engine:
             "trades_all": len(self.s.get("trades", [])),
         }
 
-    def _curve_svg(self, curve, w=880, h=300, last_close=None):
-        """权益曲线：含 X 轴（分钟）、0 轴生死线、基准线、关键事件标记。
+    def _curve_svg(self, curve, w=1050, h=350, last_close=None):
+        """权益曲线：含行情步横轴、0 轴生死线、基准线、关键事件标记。
 
         设计要点（全部自适应，不写死任何一局的数值）：
         - Y 轴同时容纳历史最高点与最终权益，负值区必须完整可见
@@ -2847,7 +2847,7 @@ class Engine:
         lo = (int(min(cand) // _STEP) - 1) * _STEP
         hi = (int(max(cand) // _STEP) + 1) * _STEP
 
-        pad_l, pad_r, pad_t, pad_b = 76, 104, 20, 44
+        pad_l, pad_r, pad_t, pad_b = 82, 123, 20, 54
         plot_w = w - pad_l - pad_r
         plot_h = h - pad_t - pad_b
         t0, t1 = ticks[0], ticks[-1]
@@ -2871,65 +2871,50 @@ class Engine:
             _vals = [lo + (hi - lo) * k / 4 for k in range(5)]
         for v in _vals:
             gy = Y(v)
-            parts.append('<line x1="%d" y1="%.1f" x2="%d" y2="%.1f" stroke="#ececec"/>'
+            parts.append('<line x1="%d" y1="%.1f" x2="%d" y2="%.1f" stroke="var(--chart-grid)"/>'
                          % (pad_l, gy, w - pad_r, gy))
-            parts.append('<text x="%d" y="%.1f" text-anchor="end" font-size="10" fill="#8a8a8a">%s</text>'
+            parts.append('<text x="%d" y="%.1f" text-anchor="end" font-size="11" fill="var(--muted)">%s</text>'
                          % (pad_l - 8, gy + 3.5, "{:,.0f}".format(v)))
 
-        # ---- X 轴：按分钟刻度 ----
-        total_min = max(1, int(round(tspan * TICK_SECONDS / 60.0)))
-        step = 5 if total_min > 20 else (2 if total_min > 8 else 1)
-        minute = 0
-        while minute <= total_min:
-            frac = (minute * 60.0 / TICK_SECONDS) / float(tspan)
-            gx = pad_l + plot_w * min(1.0, frac)
-            parts.append('<line x1="%.1f" y1="%d" x2="%.1f" y2="%d" stroke="#f4f4f4"/>'
+        # 横轴是记录的行情步，不用步数推算真实分钟。
+        axis_ticks = sorted({round(t0 + (t1 - t0) * column / 5) for column in range(6)})
+        for tick in axis_ticks:
+            gx = pad_l + plot_w * (tick - t0) / tspan
+            parts.append('<line x1="%.1f" y1="%d" x2="%.1f" y2="%d" stroke="var(--chart-grid)"/>'
                          % (gx, pad_t, gx, h - pad_b))
-            parts.append('<text x="%.1f" y="%d" text-anchor="middle" font-size="10" fill="#9a9a9a">%d′</text>'
-                         % (gx, h - pad_b + 15, minute))
-            minute += step
-        parts.append('<text x="%.1f" y="%d" text-anchor="middle" font-size="10" fill="#b0b0b0">%s</text>'
-                     % (pad_l + plot_w / 2.0, h - 6, "对局时间（分钟）"))
+            parts.append('<text x="%.1f" y="%d" text-anchor="middle" font-size="11" fill="var(--muted)">%d</text>'
+                         % (gx, h - pad_b + 17, tick))
+        parts.append('<text x="%.1f" y="%d" text-anchor="middle" font-size="11" fill="var(--muted)">行情步</text>'
+                     % (pad_l + plot_w / 2.0, h - 6))
 
-        # ---- 基准线：初始本金 / 目标 / 0 轴 ----
         def baseline(v, color, label, dash, width=1.2, op=0.85):
             if not (lo <= v <= hi):
                 return ""
             gy = Y(v)
             return ('<line x1="%d" y1="%.1f" x2="%d" y2="%.1f" stroke="%s" stroke-width="%.1f" '
                     'stroke-dasharray="%s" opacity="%.2f"/>'
-                    '<text x="%d" y="%.1f" font-size="10" fill="%s" opacity="0.9">%s</text>'
+                    '<text x="%d" y="%.1f" font-size="11" fill="%s" opacity="0.9">%s</text>'
                     % (pad_l, gy, w - pad_r, gy, color, width, dash, op,
                        w - pad_r + 6, gy + 3.5, color, label))
 
-        parts.append(baseline(start_eq, "#0d9458", "初始本金", "5 4"))
+        parts.append(baseline(start_eq, "var(--up)", "初始本金", "5 4"))
         if target_eq > start_eq:
-            parts.append(baseline(target_eq, "#c9971b", "获胜目标", "5 4"))
-        parts.append(baseline(0.0, "#c62828", "本金归零", "2 3", width=1.4, op=0.95))
+            parts.append(baseline(target_eq, "var(--warn)", "获胜目标", "5 4"))
+        parts.append(baseline(0.0, "var(--down)", "本金归零", "2 3", width=1.4, op=0.95))
 
         # ---- 峰值 / 谷值 / 最后平仓：图上直接给精确数字 ----
         _pi = eqs.index(max(eqs))
         _li = eqs.index(min(eqs))
-        for _i, _label, _color, _dy in (
-                (_pi, "峰 " + "{:,.0f}".format(max(eqs)), "#c9971b", -7),
-                (_li, "谷 " + "{:,.0f}".format(min(eqs)), "#c62828", 16)):
-            _mx, _my = X(_i), Y(eqs[_i])
-            parts.append('<circle cx="%.1f" cy="%.1f" r="3" fill="%s"/>' % (_mx, _my, _color))
-            _anchor = "start" if _mx < w * 0.7 else "end"
-            _dx = 6 if _mx < w * 0.7 else -6
-            parts.append('<text x="%.1f" y="%.1f" text-anchor="%s" font-size="10" '
-                         'font-weight="600" fill="%s">%s</text>'
-                         % (_mx + _dx, _my + _dy, _anchor, _color, _label))
         if last_close:
             _ct = int(last_close.get("tick") or 0)
             _ci = min(range(n), key=lambda i: abs(ticks[i] - _ct))
             _cx, _cy = X(_ci), Y(eqs[_ci])
-            parts.append('<line x1="%.1f" y1="%d" x2="%.1f" y2="%d" stroke="#9a9a9a" '
+            parts.append('<line x1="%.1f" y1="%d" x2="%.1f" y2="%d" stroke="var(--muted)" '
                          'stroke-dasharray="3 3" opacity="0.7"/>'
                          % (_cx, pad_t, _cx, h - pad_b))
-            parts.append('<circle cx="%.1f" cy="%.1f" r="2.6" fill="#5a5a5a"/>' % (_cx, _cy))
+            parts.append('<circle cx="%.1f" cy="%.1f" r="2.6" fill="var(--muted)"/>' % (_cx, _cy))
             parts.append('<text x="%.1f" y="%d" text-anchor="middle" font-size="9" '
-                         'fill="#5a5a5a">%s %s</text>'
+                         'fill="var(--muted)">%s %s</text>'
                          % (_cx, h - pad_b + 30,
                             "最后平仓", "{:,.0f}".format(eqs[_ci])))
 
@@ -2947,11 +2932,11 @@ class Engine:
             return '<polygon points="%s" fill="%s" opacity="%.2f"/>' % (" ".join(p), color, opacity)
 
         end_eq = eqs[-1]
-        line_color = "#0d9458" if end_eq >= start_eq else "#d93025"
+        line_color = "var(--accent)" if end_eq >= start_eq else "var(--down)"
         parts.append(area_poly(line_color, 0.07, False))
         first_neg = next((i for i, v in enumerate(eqs) if v < 0), None)
         if first_neg is not None:
-            parts.append(area_poly("#a31515", 0.28, True))
+            parts.append(area_poly("var(--down)", 0.28, True))
 
         # ---- 曲线本体：穿仓后换深红加粗 ----
         if first_neg is not None and first_neg > 0:
@@ -2959,10 +2944,10 @@ class Engine:
             below = " ".join("%.1f,%.1f" % (X(i), Y(eqs[i])) for i in range(first_neg, n))
             parts.append('<polyline points="%s" fill="none" stroke="%s" stroke-width="1.8"/>'
                          % (above, line_color))
-            parts.append('<polyline points="%s" fill="none" stroke="#8b0000" stroke-width="2.3"/>'
+            parts.append('<polyline points="%s" fill="none" stroke="var(--down)" stroke-width="2.3"/>'
                          % below)
         elif first_neg is not None:
-            parts.append('<polyline points="%s" fill="none" stroke="#8b0000" stroke-width="2.3"/>'
+            parts.append('<polyline points="%s" fill="none" stroke="var(--down)" stroke-width="2.3"/>'
                          % " ".join("%.1f,%.1f" % (X(i), Y(eqs[i])) for i in range(n)))
         else:
             parts.append('<polyline points="%s" fill="none" stroke="%s" stroke-width="1.8"/>'
@@ -2971,40 +2956,58 @@ class Engine:
         # ---- 关键事件标记（自动挑点，不写死文案） ----
         marks = []
         if first_neg is not None:
-            marks.append((first_neg, "穿仓", "#8b0000"))
+            marks.append((first_neg, "穿仓", "var(--down)", "down"))
         closes = [t for t in self.s.get("trades", []) if t.get("type") == "close"]
         if closes:
             worst = min(closes, key=lambda t: float(t.get("pnl") or 0.0))
             if float(worst.get("pnl") or 0.0) < 0:
                 wt = int(worst.get("tick") or 0)
                 idx = min(range(n), key=lambda i: abs(ticks[i] - wt))
+                # 只跟已有标记比距离；与极值点重合也没关系，下面的排版会错开
                 far = all(abs(ticks[idx] - ticks[m[0]]) > tspan * 0.02 for m in marks)
                 if far:
-                    marks.append((idx, "最大单笔亏损", "#c62828"))
+                    marks.append((idx, "最大单笔亏损", "var(--down)", "up"))
 
-        # 标记点贴着曲线放，文字按上下交替避免互相压住
-        for mi, (idx, label, color) in enumerate(marks):
-            mx, my = X(idx), Y(eqs[idx])
-            below = (mi % 2 == 0)
-            ty = my + (16 if below else -10)
-            anchor = 'middle'
-            if mx > w - pad_r - 60:
-                anchor = 'end'
-                mx_t = mx
-            elif mx < pad_l + 60:
-                anchor = 'start'
-                mx_t = mx
+        # ---- 所有标注统一排版：先按偏好方向，撞上了就逐级外推 ----
+        tags = [(_pi, "峰 " + "{:,.0f}".format(max(eqs)), "var(--warn)", "up", False),
+                (_li, "谷 " + "{:,.0f}".format(min(eqs)), "var(--down)", "down", False)]
+        tags += [(i, lab, col, pref, True) for i, lab, col, pref in marks]
+
+        placed = []
+        for _ti, _lab, _col, _pref, _dashed in tags:
+            _mx, _my = X(_ti), Y(eqs[_ti])
+            _half = max(18.0, len(_lab) * 3.1)          # 字号 10 时的半宽估算
+            if _mx - _half < pad_l:
+                _anch, _tx, _x0 = "start", _mx + 5, _mx + 5
+            elif _mx + _half > w - pad_r:
+                _anch, _tx, _x0 = "end", _mx - 5, _mx - 5 - _half * 2
             else:
-                mx_t = mx
-            parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" '
-                         'stroke-width="1" stroke-dasharray="3 3" opacity="0.55"/>'
-                         % (mx, my, mx, ty - (0 if below else 6), color))
-            parts.append('<circle cx="%.1f" cy="%.1f" r="3.4" fill="%s" stroke="#fff" stroke-width="1"/>'
-                         % (mx, my, color))
-            parts.append('<text x="%.1f" y="%.1f" text-anchor="%s" font-size="10" fill="%s" '
-                         'font-weight="600">%s</text>' % (mx_t, ty, anchor, color, label))
+                _anch, _tx, _x0 = "middle", _mx, _mx - _half
+            _order = (-9, 15, -22, 28, -35, 41) if _pref == "up" else (15, -9, 28, -22, 41, -35)
+            _ty = None
+            for _dy in _order:
+                _cand = _my + _dy
+                if _cand < pad_t + 10 or _cand > h - pad_b - 4:
+                    continue
+                if all(not (abs(_cand - q[1]) < 12 and _x0 < q[2] and q[0] < _x0 + _half * 2)
+                       for q in placed):
+                    _ty = _cand
+                    break
+            if _ty is None:
+                _ty = _my + _order[len(placed) % len(_order)]
+            placed.append((_x0, _ty, _x0 + _half * 2))
 
-        return ('<svg viewBox="0 0 %d %d" class="curve" xmlns="http://www.w3.org/2000/svg">%s</svg>'
+            if _dashed:
+                parts.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" '
+                             'stroke-width="1" stroke-dasharray="3 3" opacity="0.55"/>'
+                             % (_mx, _my, _mx, _ty - 5 if _ty < _my else _ty - 6, _col))
+            parts.append('<circle cx="%.1f" cy="%.1f" r="3.2" fill="%s" stroke="var(--surface)" stroke-width="1"/>'
+                         % (_mx, _my, _col))
+            parts.append('<text x="%.1f" y="%.1f" text-anchor="%s" font-size="11" '
+                         'font-weight="600" fill="%s">%s</text>'
+                         % (_tx, _ty, _anch, _col, _lab))
+
+        return ('<svg viewBox="0 0 %d %d" class="curve" role="img" aria-labelledby="curve-title" xmlns="http://www.w3.org/2000/svg">%s</svg>'
                 % (w, h, "".join(parts)))
 
     def _manifest_version(self):
@@ -3220,8 +3223,8 @@ class Engine:
                 "ff_records": _ff_txt,
                 "ff_count": str(len(_ffr)),
                 "mode": "已开启随机事件" if self.s.get("events_on", True) else "理想情况",
-                "flagline": ("<div class=\"sub\" style=\"color:#d93025;font-weight:600\">⚠ %s</div>" % flag_txt) if flag_txt else "",
-                "diffline": ("<div class=\"sub\" style=\"color:#0b6bcb;font-weight:600\">本条难度 · 黑天鹅频率：%s ｜ 流动性枯竭程度：%s</div>" % (
+                "flagline": ("<div class=\"sub flag\">⚠ %s</div>" % flag_txt) if flag_txt else "",
+                "diffline": ("<div class=\"sub difficulty\">本局难度 · 黑天鹅频率：%s ｜ 流动性枯竭程度：%s</div>" % (
                     _dl_gap, _dl_liq)) if (_dl_gap and _dl_liq) else "",
                 "gap_lv": _dl_gap or "—",
                 "liq_lv": _dl_liq or "—",
@@ -3282,100 +3285,304 @@ class Engine:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>赛后报告 - {trader} - {now}</title>
 <style>
-:root{{--bg:#F3F3F3;--card:#FFFFFF;--line:#E1E1E1;--ink:#1A1A1A;--muted:#6B6B6B;
---up:#107C10;--down:#C42B1C;--accent:#0078D4;--warn:#CA5010;--soft:#FAFAFA}}
-*{{box-sizing:border-box}}
-body{{margin:0;background:var(--bg);color:var(--ink);
-font:14px/1.7 "Microsoft YaHei UI","Microsoft YaHei","Segoe UI","Cascadia Mono","Consolas",system-ui,sans-serif;
--webkit-font-smoothing:antialiased}}
-.wrap{{width:100%;max-width:none;margin:0;padding:20px 24px 48px}}
-header{{background:var(--card);border:1px solid var(--line);border-radius:8px;
-padding:20px 24px;margin-bottom:14px}}
-h1{{margin:0 0 6px;font-size:21px;font-weight:700;letter-spacing:-.2px}}
-.sub{{color:var(--muted);font-size:13px;line-height:1.8}}
-.badge{{display:inline-block;margin-left:10px;padding:2px 10px;border-radius:10px;
-font-size:12px;font-weight:600;vertical-align:2px}}
-.badge.hit{{background:#E8F4EA;color:var(--up)}}
-.badge.miss{{background:#FCE9E7;color:var(--down)}}
-.toc{{display:flex;flex-wrap:wrap;gap:6px 16px;margin:0 0 14px;padding:10px 18px;
-background:var(--card);border:1px solid var(--line);border-radius:8px;font-size:13px}}
-.toc a{{color:var(--accent);text-decoration:none}}
-.toc a:hover{{text-decoration:underline}}
-.cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
-gap:12px;margin-bottom:14px}}
-.card{{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px 18px}}
-.card .k{{color:var(--muted);font-size:13px;margin-bottom:8px}}
-.card .v{{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.5px}}
-.up{{color:var(--up)}} .down{{color:var(--down)}}
-section{{background:var(--card);border:1px solid var(--line);border-radius:8px;
-padding:18px 22px;margin-bottom:14px}}
-h2{{margin:0 0 14px;padding-bottom:10px;border-bottom:1px solid var(--line);
-font-size:15px;font-weight:700}}
-.curve{{width:100%;height:auto;display:block}}
-.grid2{{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}}
-.kv{{display:flex;flex-direction:column;gap:4px;padding:10px 14px;
-border:1px solid var(--line);border-radius:6px;background:var(--soft)}}
-.kv span:first-child{{color:var(--muted);font-size:12.5px}}
-.kv.sub{{background:transparent;border-style:dashed}}
-.kv.sub span:first-child{{padding-left:16px}}
-.kv span:last-child{{font-weight:600;font-size:15px;font-variant-numeric:tabular-nums}}
-table{{width:100%;border-collapse:collapse;font-size:13px}}
-th,td{{padding:8px 12px;text-align:right;border-bottom:1px solid var(--line);
-font-variant-numeric:tabular-nums}}
-th{{color:var(--muted);font-weight:600;background:var(--soft)}}
-th:first-child,td:first-child,th:nth-child(2),td:nth-child(2),
-th:nth-child(3),td:nth-child(3),th:nth-child(4),td:nth-child(4){{text-align:left}}
-tbody tr:hover{{background:#FAFAFA}}
-ul.ev{{list-style:none;padding:0;margin:0;font-size:13px;max-height:420px;overflow:auto}}
-ul.ev li{{padding:6px 0;border-bottom:1px solid #F0F0F0}}
-ul.ev li:last-child{{border-bottom:0}}
-.tag{{display:inline-block;min-width:78px;font-size:11.5px;color:var(--muted)}}
-.muted{{color:var(--muted)}}
-footer{{text-align:center;color:var(--muted);font-size:12.5px;padding:6px 0 20px}}
-.kvbox{{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
-gap:2px 28px;background:var(--soft);border:1px solid var(--line);border-radius:6px;
-padding:14px 18px;margin-bottom:10px}}
-.note{{color:var(--muted);font-size:12.5px;line-height:1.8;padding:2px 0 0}}
-.scratch{{background:var(--soft);border:1px solid var(--line);border-radius:6px;
-padding:12px 16px;max-height:560px;overflow:auto;
-font-family:"Microsoft YaHei UI","Microsoft YaHei","Segoe UI","Cascadia Mono","Consolas",sans-serif;
-font-size:13.5px;line-height:1.8}}
-.sc-item{{padding:7px 0;border-bottom:1px dashed #ECECEC;white-space:pre-wrap;word-break:break-word}}
-.sc-item:last-child{{border-bottom:0}}
-.asline{{padding:7px 0;border-bottom:1px dashed #ECECEC;white-space:pre-wrap;word-break:break-word}}
-.asline:last-child{{border-bottom:0}}
-.astag{{font-weight:600;margin-right:6px}}
-.as-ai .astag{{color:var(--accent)}}
-.as-human .astag{{color:var(--up)}}
-.as-sys .astag{{color:var(--muted)}}
-.sc-meta{{color:var(--muted);margin-right:10px;font-size:12px}}
-.ev .tag{{display:inline-block;padding:0 7px;border-radius:4px;background:#EEF4FB;
-color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
-.ev .evt{{color:var(--muted);font-size:12px;margin-right:8px}}
-@media (max-width:760px){{
-.wrap{{padding:14px 14px 32px}}
-.cards,.grid2{{grid-template-columns:1fr}}
-.card .v{{font-size:22px}}
+:root {{
+  color-scheme: light dark;
+  --bg: #edf1f7;
+  --surface: #fff;
+  --inset: #f6f8fb;
+  --line: #dbe2eb;
+  --ink: #182334;
+  --muted: #505e70;
+  --accent: #005fb8;
+  --accent-soft: #e9f3ff;
+  --hover: #f0f5fc;
+  --up: #08703d;
+  --up-soft: #e6f4ec;
+  --down: #ae251f;
+  --down-soft: #fceceb;
+  --warn: #7a5300;
+  --chart-grid: #dfe6f0;
+  --shadow: 0 2px 4px #1b36510d, 0 8px 24px #1b36510a;
+  --radius: 12px;
+}}
+@media screen and (prefers-color-scheme: dark) {{
+  :root {{
+    --bg: #141922;
+    --surface: #1c2430;
+    --inset: #171e28;
+    --line: #374453;
+    --ink: #f0f4fb;
+    --muted: #bac7d6;
+    --accent: #78bcff;
+    --accent-soft: #20374e;
+    --hover: #27384b;
+    --up: #7ddeaa;
+    --up-soft: #203a31;
+    --down: #ff9a94;
+    --down-soft: #442c30;
+    --warn: #ffd16b;
+    --chart-grid: #344351;
+    --shadow: 0 8px 24px #0003;
+  }}
+}}
+* {{ box-sizing: border-box; }}
+body {{
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.55 "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+}}
+.wrap {{
+  width: min(100%, 1360px);
+  margin-inline: auto;
+  padding: clamp(14px, 2.8vw, 40px);
+}}
+.hero, .toc, .card, section {{
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}}
+.hero {{
+  position: relative;
+  overflow: hidden;
+  padding: clamp(20px, 3vw, 36px);
+  margin-bottom: 16px;
+  background: linear-gradient(115deg, var(--accent-soft), var(--surface) 52%);
+}}
+.hero::before {{
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--accent);
+}}
+.hero-heading {{
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+}}
+h1, h2 {{
+  font-family: "Segoe UI Variable Display", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  line-height: 1.18;
+}}
+h1 {{ margin: 0; font-size: clamp(25px, 3vw, 42px); font-weight: 650; }}
+.badge {{
+  max-width: min(100%, 34ch);
+  padding: 5px 11px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}}
+.badge.hit {{ background: var(--up-soft); color: var(--up); }}
+.badge.miss {{ background: var(--down-soft); color: var(--down); }}
+.meta {{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 155px), 1fr));
+  gap: 10px 20px;
+  margin: 22px 0 12px;
+}}
+.meta div {{ min-width: 0; }}
+.meta dt {{ color: var(--muted); font-size: 12px; }}
+.meta dd {{ margin: 2px 0 0; font-weight: 600; overflow-wrap: anywhere; }}
+.sub {{ color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }}
+.difficulty {{ color: var(--accent); font-weight: 600; margin-top: 8px; }}
+.flag {{ color: var(--down); font-weight: 600; margin-top: 8px; }}
+.replay {{ padding-top: 10px; border-top: 1px solid var(--line); margin-top: 12px; }}
+.replay summary {{ color: var(--accent); font-size: 13px; cursor: pointer; width: fit-content; }}
+.replay[open] > div {{ padding-top: 7px; }}
+
+.cards {{
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}}
+.card {{ padding: clamp(14px, 2vw, 23px); }}
+.card:first-child {{ background: var(--accent-soft); }}
+.card .k {{ color: var(--muted); font-size: 13px; margin-bottom: 7px; }}
+.card .v {{
+  font-size: clamp(20px, 2.7vw, 34px);
+  font-weight: 650;
+  line-height: 1.18;
+  letter-spacing: -.03em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}}
+.card .pct {{ display: block; font-size: 13px; margin-top: 4px; letter-spacing: normal; }}
+.up {{ color: var(--up); }}
+.down {{ color: var(--down); }}
+.muted {{ color: var(--muted); }}
+
+.toc {{
+  position: sticky;
+  z-index: 1;
+  top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px 5px;
+  margin-bottom: 16px;
+  padding: 6px;
+}}
+.toc a {{
+  padding: 6px 10px;
+  border-radius: 6px;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}}
+.toc a:hover {{ background: var(--hover); text-decoration: underline; }}
+:focus-visible {{ outline: 2px solid var(--accent); outline-offset: 2px; }}
+
+section {{
+  padding: clamp(15px, 2.3vw, 28px);
+  margin-bottom: 16px;
+  scroll-margin-top: 94px;
+}}
+h2 {{ margin: 0 0 15px; font-size: clamp(17px, 1.9vw, 22px); font-weight: 650; }}
+.insights {{
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}}
+.grid2 {{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 146px), 1fr));
+  gap: 8px;
+}}
+.kv {{ min-width: 0; overflow-wrap: anywhere; }}
+.kv > span:first-child {{ color: var(--muted); font-size: 13px; }}
+.kv > span:last-child {{ font-weight: 650; font-variant-numeric: tabular-nums; }}
+.grid2 .kv {{
+  display: grid;
+  align-content: start;
+  gap: 3px;
+  padding: 9px 11px;
+  background: var(--inset);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}}
+.kvbox, .scratch, .ev, .curve-view, .table-view {{
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--inset);
+}}
+.kvbox .kv {{
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+  align-items: start;
+  gap: 12px;
+  padding: 8px 12px;
+}}
+.kvbox .kv + .kv {{ border-top: 1px solid var(--line); }}
+.kvbox .kv > span:last-child {{ text-align: end; }}
+.kvbox .kv.sub > span:first-child {{ padding-inline-start: 10px; }}
+#p2 .kv:last-child {{ background: var(--accent-soft); border-radius: 0 0 8px 8px; }}
+.note {{ margin-top: 10px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }}
+.audit {{ margin-top: 13px; padding: 8px 10px; background: var(--inset); border-radius: 6px; font-weight: 600; }}
+
+.curve-view {{ overflow: auto; padding: 6px; }}
+.curve-view > p {{ margin: 12px; }}
+.curve {{ display: block; width: 100%; min-width: 580px; height: auto; }}
+.curve polyline {{ stroke-linecap: round; stroke-linejoin: round; }}
+
+.table-view {{ overflow: auto; max-height: 38rem; }}
+table {{ width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }}
+th, td {{
+  padding: 9px 12px;
+  text-align: end;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}}
+th {{ position: sticky; top: 0; color: var(--muted); background: var(--inset); font-weight: 650; }}
+th:nth-child(-n+4), td:nth-child(-n+4) {{ text-align: start; }}
+tbody tr {{ background: var(--surface); }}
+tbody tr:nth-child(even) {{ background: var(--inset); }}
+tbody tr:hover {{ background: var(--hover); }}
+tbody tr:last-child td {{ border-bottom: 0; }}
+.scratch, .ev {{ padding: 4px 12px; max-height: 35rem; overflow: auto; }}
+.scratch > .muted {{ padding-block: 8px; }}
+.sc-item, .asline, .ev li {{ padding: 8px 0; overflow-wrap: anywhere; }}
+.sc-item, .asline {{ white-space: pre-wrap; }}
+.sc-item + .sc-item, .asline + .asline, .ev li + li {{ border-top: 1px solid var(--line); }}
+.astag {{ font-weight: 650; margin-right: 6px; }}
+.as-ai .astag {{ color: var(--accent); }}
+.as-human .astag {{ color: var(--up); }}
+.as-sys .astag, .sc-meta, .ev .evt {{ color: var(--muted); }}
+.sc-meta, .ev .evt {{ font-size: 12px; margin-right: 8px; }}
+.ev {{ list-style: none; margin: 0; }}
+.ev .tag {{
+  display: inline-block;
+  padding: 2px 7px;
+  margin-right: 6px;
+  border-radius: 5px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+}}
+.ev-gap .tag, .ev-warn .tag, .ev-margin_call .tag {{ background: var(--down-soft); color: var(--down); }}
+footer {{ color: var(--muted); font-size: 13px; text-align: center; padding-block: 8px 16px; }}
+@media (max-width: 920px) {{
+  .insights {{ grid-template-columns: 1fr; gap: 0; }}
+}}
+@media (max-width: 640px) {{
+  .cards {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+  .meta {{ grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; margin-top: 16px; }}
+  .meta div:first-child {{ grid-column: 1 / -1; }}
+  .toc {{ position: static; }}
+  section {{ scroll-margin-top: 12px; }}
+  .kvbox .kv {{ gap: 8px; }}
+}}
+@media print {{
+  body {{ background: #fff; }}
+  .wrap {{ width: 100%; padding: 0; }}
+  .hero, .toc, .card, section {{ box-shadow: none; }}
+  .hero, .cards, h2, tr {{ break-inside: avoid; }}
+  .toc {{ display: none; }}
+  .curve-view, .table-view, .scratch, .ev {{ overflow: visible; max-height: none; }}
+  .curve {{ min-width: 0; }}
+  th, td {{ padding: 3px 5px; white-space: normal; }}
+  th {{ position: static; }}
 }}
 </style></head><body><div class="wrap">
-<header>
-  <h1>Tokens 交易市场 · 赛后报告<span class="badge {hitcls}">{verdict}</span></h1>
-  <div class="sub">玩家 {trader}（{mode}） · 用时 {dur} · 结束原因 {reason} · 生成于 {now}</div>
-  <div class="sub">{seedline}</div>
+<header class="hero">
+  <div class="hero-heading">
+    <h1>Tokens 交易市场 · 赛后报告</h1>
+    <span class="badge {hitcls}">{verdict}</span>
+  </div>
+  <dl class="meta">
+    <div><dt>玩家</dt><dd>{trader}</dd></div>
+    <div><dt>模式</dt><dd>{mode}</dd></div>
+    <div><dt>用时</dt><dd>{dur}</dd></div>
+    <div><dt>结束原因</dt><dd>{reason}</dd></div>
+    <div><dt>生成时间</dt><dd><time>{now}</time></dd></div>
+  </dl>
   {diffline}
   {flagline}
+  <details class="replay"><summary>行情复现信息</summary><div class="sub">{seedline}</div></details>
 </header>
-<nav class="toc">
-  <a href="#p1">关键指标</a><a href="#p2">成本归因</a><a href="#p3">交易明细</a>
-  <a href="#p8">挑战任务</a><a href="#p4">借贷账目</a><a href="#p5">草稿纸</a><a href="#p7">场外援助</a><a href="#p6">关键事件</a>
-</nav>
+<main>
 <div class="cards">
   <div class="card"><div class="k">最终权益</div><div class="v">{finaleq}</div></div>
-  <div class="card"><div class="k">盈亏</div><div class="v {pnlcls}">{pnl}（{pnlpct}%）</div></div>
+  <div class="card"><div class="k">盈亏</div><div class="v {pnlcls}">{pnl}<span class="pct">{pnlpct}%</span></div></div>
   <div class="card"><div class="k">目标</div><div class="v">{target}</div></div>
   <div class="card"><div class="k">评级</div><div class="v">{ring}</div></div>
 </div>
-<section><h2>权益曲线</h2>{svg}</section>
+<nav class="toc" aria-label="战报章节">
+  <a href="#equity">权益曲线</a><a href="#p1">关键指标</a><a href="#p2">成本归因</a><a href="#p8">挑战任务</a><a href="#p3">交易明细</a><a href="#p4">借贷账目</a><a href="#p5">草稿纸</a><a href="#p7">场外援助</a><a href="#p6">关键事件</a>
+</nav>
+<section id="equity"><h2 id="curve-title">权益曲线</h2><div class="curve-view" role="region" aria-labelledby="curve-title" tabindex="0">{svg}</div></section>
+<div class="insights">
 <section id="p1"><h2>关键指标</h2><div class="grid2">
   <div class="kv"><span>黑天鹅频率</span><span>{gap_lv}</span></div>
   <div class="kv"><span>流动性枯竭程度</span><span>{liq_lv}</span></div>
@@ -3396,17 +3603,20 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
   <div class="kv"><span>异常退出</span><span>{abn} 次</span></div>
   <div class="kv"><span>累计借款</span><span>{borrowed_txt}</span></div>
 </div>
-<div class="note" style="color:{auditcolor}">{auditline}</div></section>
-{chalblock}
+<div class="note audit" style="color:{auditcolor}">{auditline}</div></section>
 <section id="p2"><h2>成本归因</h2><div class="kvbox">{attrib}</div>
 <div class="note">净盈亏 = 毛盈亏 − 滑点 − 点差 − 手续费 − 隔夜利息 − 老虎机投入 + 老虎机返还。毛盈亏只含方向判断与跳空冲击，是「不看成本时本该赚/亏多少」——老虎机的任何流水都不会出现在这一行。</div></section>
-<section id="p3"><h2>交易明细（共 {rowsn} 条）</h2>
+</div>
+{chalblock}
+<section id="p3"><h2 id="trade-title">交易明细（共 {rowsn} 条）</h2>
+<div class="table-view" role="region" aria-labelledby="trade-title" tabindex="0">
 <table><thead><tr><th>tick</th><th>动作</th><th>品种</th><th>方向</th><th>手数</th><th>杠杆</th><th>成交价</th><th>保证金</th><th>手续费</th><th>盈亏</th></tr></thead>
-<tbody>{rows}</tbody></table></section>
+<tbody>{rows}</tbody></table></div></section>
 {loanblock}
-<section id="p5"><h2>草稿纸（{scn} 条）</h2><div class="scratch">{scrows}</div></section>
-<section id="p7"><h2>场外援助（{asn} 条）</h2><div class="scratch">{asrows}</div></section>
-<section id="p6"><h2>关键事件</h2><ul class="ev">{evrows}</ul></section>
+<section id="p5"><h2 id="p5-title">草稿纸（{scn} 条）</h2><div class="scratch" aria-labelledby="p5-title" tabindex="0" role="region">{scrows}</div></section>
+<section id="p7"><h2 id="p7-title">场外援助（{asn} 条）</h2><div class="scratch" aria-labelledby="p7-title" tabindex="0" role="region">{asrows}</div></section>
+<section id="p6"><h2 id="p6-title">关键事件</h2><ul class="ev" aria-labelledby="p6-title" tabindex="0">{evrows}</ul></section>
+</main>
 <footer>{verline}</footer>
 </div></body></html>""".format(rowsn=len(rows), **body)
 
