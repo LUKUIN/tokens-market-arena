@@ -15,7 +15,7 @@
 | [`human`](https://github.com/LUKUIN/tokens-market-arena/tree/human) | **人类版（中文）** | 玩家亲手点按钮 | 完整交互 GUI：投资界面、难度盲盒、规则窗 |
 
 人类版与 AI 版共享交易和行情规则。人类版有操作界面，挑战池不包含场外求助类目标。
-不想读源码的直接下人类版成品包：[Releases · human-v1.2.28](https://github.com/LUKUIN/tokens-market-arena/releases/tag/human-v1.2.28)。
+不想读源码的直接下人类版成品包：[Releases · human-v1.2.27](https://github.com/LUKUIN/tokens-market-arena/releases/tag/human-v1.2.27)。
 
 > **让 Agent 参赛？读 [`AGENTS.md`](AGENTS.md) 一页就够** —— 启动命令、定档、接口入口都在里面，详细接口见接入协议。
 >
