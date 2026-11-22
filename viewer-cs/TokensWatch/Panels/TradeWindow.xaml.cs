@@ -19,7 +19,6 @@ public partial class TradeWindow : Window
 {
     private readonly StateClient _client;
     private WatchState? _state;
-    private string? _selectedPair;
 
     public TradeWindow(StateClient client)
     {
@@ -31,12 +30,6 @@ public partial class TradeWindow : Window
         CmbPair.SelectedIndex = 0;
 
         SourceInitialized += (_, _) => WindowChrome.Apply(this);
-
-        // 关窗只清选中态，真正的销毁交给「关闭窗口」
-        HoldList.SelectionChanged += (_, _) =>
-        {
-            if (HoldList.SelectedItem is TradeRowVm vm) _selectedPair = vm.Pair;
-        };
     }
 
     // ==================== 数据推送 ====================
@@ -100,14 +93,12 @@ public partial class TradeWindow : Window
     {
         var rows = st.Positions.Select(p => new TradeRowVm(p)).ToList();
 
-        // 刷新时保持选中同一交易对，否则列表一重填选中就丢了
-        string? keep = _selectedPair;
+        var selected = HoldList.SelectedItem as TradeRowVm;
         HoldList.ItemsSource = rows;
-
-        if (keep is not null)
+        if (selected is not null)
         {
-            var hit = rows.FirstOrDefault(r => r.Pair == keep);
-            if (hit is not null) HoldList.SelectedItem = hit;
+            HoldList.SelectedItem = rows.FirstOrDefault(row =>
+                row.Pair == selected.Pair && row.SideCode == selected.SideCode);
         }
 
         TxtHoldEmpty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -152,8 +143,8 @@ public partial class TradeWindow : Window
             return;
         }
 
-        var (ok, err) = await _client.CloseAsync(vm.Pair, vm.LotsInt);
-        Say(ok ? $"已平仓：{vm.Pair} {vm.LotsInt} 手"
+        var (ok, err) = await _client.CloseAsync(vm.Pair, vm.SideCode);
+        Say(ok ? $"已平仓：{vm.Pair}（{vm.Side}）"
                : (string.IsNullOrEmpty(err) ? "平仓失败" : err),
             ok ? Theme.Green : Theme.Red);
     }
@@ -249,13 +240,13 @@ public partial class TradeWindow : Window
 public sealed class TradeRowVm
 {
     public string Pair { get; }
+    public string SideCode { get; }
     public string Side { get; }
     public string Lots { get; }
     public string Leverage { get; }
     public string Entry { get; }
     public string Price { get; }
     public string Upnl { get; }
-    public int LotsInt { get; }
 
     public Brush PairBrush { get; }
     public Brush SideBrush { get; }
@@ -264,13 +255,13 @@ public sealed class TradeRowVm
     public TradeRowVm(Position p)
     {
         Pair = p.Pair;
-        Side = p.Side == "LONG" ? "多" : "空";
+        SideCode = p.Side;
+        Side = SideCode == "LONG" ? "多" : "空";
         Lots = p.Lots.ToString("0.##", CultureInfo.CurrentCulture);
         Leverage = p.Leverage.ToString("0", CultureInfo.CurrentCulture) + "x";
         Entry = p.Entry.ToString("0.##", CultureInfo.CurrentCulture);
         Price = p.Price.ToString("0.##", CultureInfo.CurrentCulture);
         Upnl = p.Upnl.ToString("+#,0;-#,0;0", CultureInfo.CurrentCulture);
-        LotsInt = (int)Math.Round(p.Lots);
 
         PairBrush = Theme.Brush(Theme.PairColor(p.Pair));
         SideBrush = p.Side == "LONG" ? Theme.Green : Theme.Red;

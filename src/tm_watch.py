@@ -2166,14 +2166,8 @@ class Watch:
                     self._tp_loan.config(
                         text="可贷 %.0f%s   |   欠款已结清   |   累计利息 %.0f（早已随欠款一并还清）"
                         % (_limit, _ev_s, _itr))
-                # 记住当前选中（pair + 开仓价可唯一标识一笔），重建后恢复。
-                # 否则每 400ms 的整表重建会把选中清掉，「平掉选中」永远点不动。
-                prev_key = None
-                sel = self._tp_tree.selection()
-                if sel:
-                    v = self._tp_tree.item(sel[0], "values")
-                    if v:
-                        prev_key = "%s|%s" % (v[0], v[4])
+                selected = self._tp_tree.selection()
+                prev_key = selected[0] if selected else None
                 self._tp_tree.delete(*self._tp_tree.get_children())
                 for p in st.get("positions") or []:
                     # state 里的 prices 是 {品种: {"price":..,"name":..}} 结构；
@@ -2182,7 +2176,7 @@ class Watch:
                     px = float(p.get("price") or entry)
                     lots = float(p.get("lots") or 0)
                     upnl = float(p.get("upnl") or 0)
-                    iid = "%s|%.4f" % (p.get("pair"), entry)
+                    iid = "%s|%s" % (p["pair"], p["side"])
                     self._tp_tree.insert("", "end", iid=iid, values=(
                         p.get("pair"), "做多" if p.get("side") == "LONG" else "做空",
                         "%.0f" % lots, "%dx" % int(p.get("leverage") or 1),
@@ -2247,9 +2241,9 @@ class Watch:
         if not sel:
             self._tp_say("先在持仓表里点选一行，再点「平掉选中」", ORANGE)
             return
-        pair = self._tp_tree.item(sel[0], "values")[0]
+        pair, side = sel[0].rsplit("|", 1)
         try:
-            r = post("/close", {"pair": pair})
+            r = post("/close", {"pair": pair, "side": side})
             if r.get("ok"):
                 closed = r.get("closed") or []
                 pnl = sum(float(c.get("pnl") or 0) for c in closed)

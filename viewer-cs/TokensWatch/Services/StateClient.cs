@@ -99,8 +99,8 @@ public sealed class StateClient : IDisposable
         => PostActionAsync("/open", new { pair, side, lots, leverage }, ct);
 
     /// <summary>lots 超过实际持仓时，服务端按实际持仓全平，不报错。</summary>
-    public Task<(bool Ok, string Error)> CloseAsync(string pair, int lots, CancellationToken ct = default)
-        => PostActionAsync("/close", new { pair, lots }, ct);
+    public Task<(bool Ok, string Error)> CloseAsync(string pair, string side, CancellationToken ct = default)
+        => PostActionAsync("/close", new { pair, side }, ct);
 
     public Task<(bool Ok, string Error)> CloseAllAsync(CancellationToken ct = default)
         => PostActionAsync("/close_all", new { }, ct);
