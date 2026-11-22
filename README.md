@@ -1,5 +1,7 @@
 # Tokens Trading Market · AI Edition (source)
 
+> Original project code was written by **DeepSeek V4.1 Flash 1017 (High)** in **DeepSeek Harness**.
+
 ![Spectator window (1920×1080 profile)](docs/spectator-1920x1080.png)
 
 ## Three product lines in one repository
@@ -12,10 +14,8 @@ One game engine, three ways to use it. The three branches have unrelated commit 
 | [`english`](../../tree/english) | **AI edition (English)** | Same as above | English UI and documentation |
 | [`human`](../../tree/human) | **Human edition (Chinese)** | A person clicks the buttons | Full interactive GUI: trading panel, difficulty blind box, rules window |
 
-The Human edition engine is **the same source** as the AI edition: since v1.2.26 the Human edition carries one extra line,
-`CHALLENGE_EXCLUDE = ("no_assist",)` (that build has no "Outside Mercy" button, so that challenge objective can never be violated);
-everything else is byte-identical. The only real difference is *who places the orders*.
-If you would rather not read source, download the packaged Human edition: [Releases · human-v1.2.26](https://github.com/LUKUIN/tokens-market-arena/releases/tag/human-v1.2.26).
+The Human and AI editions share trading and market rules. The Human edition provides trading controls and leaves audience assistance out of the challenge pool.
+If you would rather not read source, download the packaged Human edition: [Releases · human-v1.2.28](https://github.com/LUKUIN/tokens-market-arena/releases/tag/human-v1.2.28).
 
 > **Want to enter an agent? Read [`AGENTS.md`](AGENTS.md) — one page is enough.** It covers the launch command, difficulty locking and
 > the API entry points; the rules themselves come from `GET /rules`, so you do not have to read `docs/` file by file.
@@ -49,8 +49,8 @@ A 45-minute trading simulator: 1,000,000 starting capital, the target is to doub
 Two headline mechanics run inside a match; the full rules are under "The flow of one match" and `GET /rules`:
 
 - **Huge Wave warning**: 0–3 surprise events per match (four equal tiers at 25% each; at least 3 minutes apart, with a
-  guaranteed catch-up in the final 3 minutes). A banner snaps open in the dead centre of the screen with the original
-  *Plants vs. Zombies* horn sample, then after a 10-second hold 3–5 shock events land at once. The spectator's runtime
+  guaranteed catch-up in the final 3 minutes). A banner snaps open in the dead centre of the screen with a Windows system
+  notification sound, then after a 10-second hold 3–5 shock events land at once. The spectator's runtime
   status always shows this match's total / fired / pending counts.
 - **Challenge tasks**: asked at the very start (75 s). Once enabled, three objectives are drawn at the difficulty tier
   (a PvZ2 Level Objectives port) and published together with the difficulty when the blind box locks. Status is scored
@@ -152,9 +152,9 @@ command and waits for a return value, its own timeout fires, the process is kill
 `connection refused`.
 
 **The spectator opens automatically with the service; this is mandatory.** `run.py` and `run.py server` both launch the read-only spectator.
-Double-clicking `launchers\Start Match.bat` adds one anti-misclick confirmation (press `Y` within 5 seconds, otherwise it cleans up and exits).
+Double-clicking `launchers\Start Match.bat` adds one anti-misclick confirmation (press `Y` within 5 seconds, otherwise the launch is canceled).
 **Scripts and agents should use `launchers\AI Start.bat` or plain `python run.py`** — invoking `cmd /c launchers\Start Match.bat` from a terminal
-counts as a human and is killed after 5 seconds. Only `--headless` is a true windowless mode, intended for CI or containers with no desktop.
+counts as a human and cancels after 5 seconds. Only `--headless` is a true windowless mode, intended for CI or containers with no desktop.
 
 Start it in the background, then poll for readiness:
 
@@ -187,7 +187,7 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 
 ### Double-click launch
 
-`launchers\Start Match.bat` is the double-click entry point. **It asks once**: press `Y` within 5 seconds or it cleans up and exits.
+`launchers\Start Match.bat` is the double-click entry point. **It asks once**: press `Y` within 5 seconds or the launch is canceled.
 `launchers\AI Start.bat` is the unattended entry point — no confirmation, starts straight away, intended for scripts and agents.
 The AI edition has no control panel, so a human misclick would idle for 45 minutes. **Scripts and agents: use `python run.py` or
 `launchers\AI Start.bat`**; running `cmd /c launchers\Start Match.bat` in a terminal also counts as a human and exits after 5 seconds.
@@ -386,8 +386,7 @@ the contestant has to answer it.
    **does not count**, so a slow model may watch and reason without being settled early. Default `0` (off); `launchers\Start Match.bat` sets `12`
    and `launchers\AI Start.bat` keeps `0`; the timer advances with ticks, the same semantics as the offline baseline in `bench.py`.
 7. About 3 seconds after `/quit` the service and spectator exit. **They tidy up first**: the match's temporary files (`session.json`, the
-   scratchpad, `_agent` leftovers) are removed, only the historical reports under `reports/` stay, and any process still holding 8734 / 8735
-   is cleaned up — the next match needs no manual cleanup.
+   scratchpad, `_agent` leftovers) are removed. Historical reports stay under `reports/`.
 
 ---
 
@@ -517,7 +516,7 @@ What sealing actually does:
   `CHEATING DETECTED`
 - `_guard_vault/` inside the project keeps only a `guard_state.json` (recording which files were sealed) and **no plaintext source at all**
 - Executing or importing the decoy drops a `CHEAT_FLAG` and the guard immediately calls `POST /shutdown` to end the match
-- Cleanup: `tools\deep-clean.ps1` kills the guard process too, decrypting and restoring the source first
+- Cleanup: `tools\deep-clean.ps1` restores sealed sources from an interrupted match after it has stopped
 
 `run.py` loads the spectator modules first and seals the source after (the reverse order would import the decoy); a seal left behind by an
 abnormally terminated match is decrypted and restored on the next start.
@@ -535,7 +534,7 @@ abnormally terminated match is decrypted and restored on the next start.
 
 ## Deep process cleanup
 
-Run this after a match ends, or when startup goes wrong (port occupied, window never appears):
+Use this to remove runtime files left by an interrupted match after its process has exited:
 
 ```bash
 cd <project directory>
@@ -544,15 +543,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\deep-clean.ps1
 
 > **When calling from an AI or a script, use the command above** and not `launchers\DeepClean Process.bat` directly:
 > the latter contains two `pause` calls (they hang when stdin is a pipe or a redirect) and prints in GBK (garbled in a UTF-8 terminal).
-> `tools\deep-clean.ps1` is the non-interactive version of the same logic with UTF-8 output forced; **exit code 0 means success**.
+> `tools\deep-clean.ps1` is the non-interactive version of the same logic; **exit code 0 means success**.
 > Double-clicking `launchers\DeepClean Process.bat` by hand still works (pass `-y` to skip the pauses).
 
-It does two things:
-
-1. Kill every leftover python game process by command-line keyword plus ports 8734–8745;
-2. Delete every runtime file under `src/data/` except `reports/` (including the scratchpad cache).
-
-`reports/` holds historical match reports and is never deleted.
+The script checks this checkout's running marker, restores sealed sources if needed, and removes known runtime files. It preserves reports and leaves other processes alone.
 
 ---
 
@@ -568,7 +562,7 @@ TokensMarket-OpenSource-AI-v97/
 ├── README.md
 ├── AGENTS.md               one-page agent entry point + project map (AIs read this first)
 ├── launchers/              all double-click entry points (they switch back to the repo root internally)
-│   ├── launchers\Start Match.bat                double-click entry (press Y within 5 s or it cleans up and exits)
+│   ├── launchers\Start Match.bat                double-click entry (press Y within 5 s or the launch is canceled)
 │   ├── launchers\AI Start.bat              unattended entry (no confirmation; for scripts / agents)
 │   ├── launchers\Spectator.bat            tkinter spectator: reattach when the window was closed by accident
 │   ├── launchers\Build Spectator (C#).bat      build entry for the C# spectator (needs the .NET 8 SDK)
@@ -727,7 +721,7 @@ The report header prints two things: `random seed` and `difficulty tier index`. 
 |---|---|---|
 | The same quotes (prices / gaps / news) | `TM_SEED=<seed>` | 1.5% baseline probability before the tier locks; tier probabilities afterwards, so a different tier necessarily gives different quotes |
 | The same difficulty tier | `TM_ROLL_INDEX=<index>` | 0–24, `index = gap + liq × 5`; with it set, the blind box locks to that tier whenever it is stopped |
-| A fully reproduced match | both | e.g. `TM_SEED=576407804 TM_ROLL_INDEX=9` |
+| Repeat the market path | both | Use the same engine version and random-event setting |
 
 With only the seed and no index, the tier drawn on restart depends on the wall clock at the moment of the stop (one lap every 2.5 seconds) and
 is most likely a different one. `bench.py run --roll-index N` aligns several matches on the same tier.
@@ -746,7 +740,7 @@ python bench.py run --seeds 1-5 --policy noop         # run 5 matches (do-nothin
 python bench.py summary --dir src/data/reports        # aggregate existing summaries
 ```
 
-- `run` advances ticks in-process: no HTTP, no waiting for real time; each match leaves a JSON summary
+- The benchmark declines challenges and advances a simulated clock. Without a pinned tier, it picks one deterministically from the seed. Each match writes its own JSON summary.
 
 > **When comparing models, always pin `TM_TAIL_SPEED=1` for any part that goes through a real match (a service started by `run.py`).**
 > After the target the engine compresses the tick interval to 1.25 seconds (4× speed), which lifts a 45-minute match from 540 to 2160 ticks.

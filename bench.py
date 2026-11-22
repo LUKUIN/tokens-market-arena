@@ -30,7 +30,6 @@ import argparse
 import json
 import os
 import random
-import shutil
 import statistics
 import sys
 import tempfile
@@ -73,25 +72,31 @@ def _policy_probe(eng, rng, tick):
 ORACLE_ACC = float(os.environ.get("TM_ORACLE_ACC") or 1.0)
 
 
-def _record_path(seed, roll_index=None, ticks=None):
-    """Replay an empty match and record per-tick prices, so oracle can "see the future".
+def _start_match(home, seed, roll_index):
+    if roll_index is None:
+        roll_index = T._roll_index_from_env()
+    if roll_index is None:
+        roll_index = random.Random(seed).randrange(T.ROLL_COMBOS)
 
-    With a fixed seed the price path does not depend on whether we hold positions
-    (verified tick-for-tick), so this empty run is exactly the path of the real one.
-    """
-    ticks = ticks or TICKS_PER_MATCH
-    home = tempfile.mkdtemp(prefix="tm_oracle_")
-    try:
-        eng = T.Engine(home)
-        eng.reset(count=False, seed=seed, roll_index=roll_index)
-        eng.roll_stop()
+    eng = T.Engine(home, simulated=True)
+    eng.reset(count=False, seed=seed, roll_index=roll_index)
+    eng.challenge_decline()
+    eng.roll_stop()
+    eng.s["unnamed"] = False
+    return eng
+
+
+def _record_path(seed, roll_index=None, ticks=None):
+    """Record the closing price of each tick for the oracle policy."""
+    limit = TICKS_PER_MATCH if ticks is None else ticks
+    with tempfile.TemporaryDirectory(prefix="tm_oracle_") as home:
+        eng = _start_match(home, seed, roll_index)
         path = []
-        for _ in range(ticks):
+        for _ in range(limit):
+            eng.note_action()
             eng.tick()
             path.append(dict(eng.s["prices"]))
         return path
-    finally:
-        shutil.rmtree(home, True)
 
 
 def _policy_oracle(eng, rng, tick):
@@ -108,16 +113,13 @@ def _policy_oracle(eng, rng, tick):
         return
     for p in list(eng.s.get("positions") or []):
         eng.close_position(p["pair"], p["lots"])
-    i = min(tick, len(path) - 1)
-    j = min(tick + 24, len(path) - 1)
-    if j <= i:
-        return
+    future = min(tick + 24, len(path)) - 1
     best = None
     for pair in sorted(T.PAIRS):
-        p0, p1 = path[i][pair], path[j][pair]
+        p0, p1 = eng.s["prices"][pair], path[future][pair]
         ret = (p1 - p0) / p0
         if best is None or abs(ret) > abs(best[1]):
-            best = (pair, ret, p1)
+            best = (pair, ret, p0)
     if not best or abs(best[1]) < 0.002:
         return
     pair, ret, price = best
@@ -147,21 +149,10 @@ def _parse_seeds(text):
 
 def run_one(seed, policy, outdir, roll_index=None):
     """Play one match and return its summary dict, or None on failure."""
-    home = os.path.join(outdir, "seed_%d" % seed)
-    os.makedirs(home, exist_ok=True)
-    eng = T.Engine(home)
-    eng.reset(count=False, seed=seed, roll_index=roll_index)
-    eng.roll_stop()                     # skip the difficulty blind box, lock by seed
+    home = tempfile.mkdtemp(prefix=f"seed_{seed}_{policy}_", dir=outdir)
+    eng = _start_match(home, seed, roll_index)
     if policy == "oracle":
-        # The recording run calls random.seed(seed) and advances 540 ticks, so the global
-        # RNG is left ahead of the start; reset again or the live path will not match.
         eng._oracle_path = _record_path(seed, roll_index)
-        eng.reset(count=False, seed=seed, roll_index=roll_index)
-        eng.roll_stop()
-    # Offline runs never pass through the launcher, so TM_TRADER is empty and the match is
-    # flagged unnamed, which would force hit_target to False. A benchmark wants engine
-    # behaviour, not match eligibility, so clear it explicitly.
-    eng.s["unnamed"] = False
     rng = random.Random((seed * 2654435761) & 0xFFFFFFFF)
     pol = POLICIES[policy]
 
@@ -175,6 +166,8 @@ def run_one(seed, policy, outdir, roll_index=None):
         eng.tick()
 
     if not eng.s.get("finished"):
+        if eng.s["tick"] != TICKS_PER_MATCH:
+            raise RuntimeError("Benchmark stopped before the expected tick")
         # Not quit_session: above the target it returns a valid-exit report, but what a
         # benchmark wants is the result of a full 540-tick match. Go straight to settlement.
         eng._end_session("benchmark complete")
@@ -212,7 +205,7 @@ def cmd_run(args):
         row = run_one(seed, args.policy, outdir, roll_index)
         if row is None:
             print("  [%d/%d] seed %-6d produced no summary" % (i, len(seeds), seed))
-            continue
+            return 1
         rows.append(row)
         print("  [%d/%d] seed %-6d equity %12.2f  pnl %8.2f%%  mdd %6.2f%%  %s" % (
             i, len(seeds), seed, row.get("final_equity", 0.0), row.get("pnl_pct", 0.0),
@@ -300,7 +293,7 @@ def main(argv=None):
     p_run.add_argument("--idle-abort", type=int, default=0,
                        help="idle-abort minutes; default 0 (off) so evaluation stays comparable")
     p_run.add_argument("--roll-index", type=int, default=None,
-                       help="pin the difficulty slot, 0-24 (= gap + liq*5); unset means every match draws its own")
+                       help="pin the difficulty slot, 0-24 (= gap + liq*5); defaults to TM_ROLL_INDEX or a seed-based draw")
     p_run.add_argument("--policy", default="noop", choices=sorted(POLICIES),
                        help="headless baseline policy (default noop)")
     p_run.add_argument("--out", default="", help="output directory (default: temp dir)")

@@ -133,14 +133,10 @@ public partial class MainWindow : Window
     // The two exit-animation durations in milliseconds; change them only here.
     // Reference: the PvZ original scales its text in 200 ms (12 frames at 60 fps), but that is an 800x600 screen;
     // on a 1920-wide spectator it reads as rushed, so feedback moved it to 620/260.
-    // Note hugewave.ogg itself runs 6.5709 s: that is "sound + hold", not the scale duration,
-    // and the banner hold is driven by the 10-second timer below, which already covers it.
     private const int HugeWaveScaleMs = 620;
     private const int HugeWaveFadeMs = 260;
 
     private DispatcherTimer? _hugeWaveTimer;
-    private readonly SoundPlayer _hugeWavePlayer = new();
-    private bool _hugeWaveAudioReady;
 
 
     public MainWindow()
@@ -831,7 +827,6 @@ public partial class MainWindow : Window
 
         // The original clears the banner at mHugeWaveCountDown == 0. Mapped to this engine
         // that is exactly one hold: HUGE_WAVE_WARN_TICKS = 2 ticks = 10 s, which covers
-        // hugewave.wav (6.57 s) in full and leaves about 3.4 s of tail.
         _hugeWaveTimer?.Stop();
         _hugeWaveTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
         _hugeWaveTimer.Tick += (_, _) =>
@@ -861,31 +856,15 @@ public partial class MainWindow : Window
         HugeWaveBanner.BeginAnimation(UIElement.OpacityProperty, fade);
     }
 
-    private void PlayHugeWaveSound()
+    private static void PlayHugeWaveSound()
     {
-        if (_hugeWaveAudioReady)
-        {
-            _hugeWavePlayer.Play();
-            return;
-        }
         try
         {
-            // The clip is the original hugewave.ogg from PvZ's main.pak (sounds\hugewave.ogg,
-            // 111,507 B, 44.1 kHz stereo, 6.57 s), transcoded to PCM WAV: SoundPlayer only
-            // reads WAV, and MediaPlayer with an Ogg codec dependency goes silent on a clean
-            // machine. 1.1 MB buys "it always makes a sound".
-            string path = System.IO.Path.Combine(
-                AppDomain.CurrentDomain.BaseDirectory, "Assets", "hugewave.wav");
-            if (!System.IO.File.Exists(path)) return;   // missing asset: show the banner anyway
-            _hugeWavePlayer.SoundLocation = path;
-            _hugeWavePlayer.LoadAsync();     // 1.1 MB; Play() waits for the load itself
-            _hugeWaveAudioReady = true;
-            _hugeWavePlayer.Play();
+            SystemSounds.Exclamation.Play();
         }
         catch
         {
-            // Exclusive-mode audio, or the audio service not running, must never take the
-            // viewer down -- the banner is the substance, the sound is the garnish.
+            // The banner is still visible when Windows audio is unavailable.
         }
     }
 

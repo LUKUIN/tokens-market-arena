@@ -74,7 +74,6 @@ NEWS_COOLDOWN = 3          # minimum gap between events (ticks)
 #      and `return` short-circuits the spawn so the field goes quiet)
 #   3) hold expires, a whole batch of zombies enters at once (NextWaveComing)
 # This port keeps the same three stages on the tick clock: 5 s per tick, so a 2-tick
-# hold is 10 s -- enough to play hugewave.wav (6.57 s) in full and leave a tail.
 HUGE_WAVE_TEXT = "A HUGE WAVE OF VOLATILITY IS APPROACHING!"
 HUGE_WAVE_MAX = 3              # CEILING, not a default.
                                # Actual count is rolled once at start: 0 / 1 / 2 / 3, 25% each
@@ -174,11 +173,6 @@ _SPECIAL_CACHE = {}
 _SEED_ENV = (os.environ.get("TM_SEED") or "").strip()
 # Evaluation/replay only: pin the difficulty slot (0-24). Humans never set this.
 _ROLL_INDEX_ENV = (os.environ.get("TM_ROLL_INDEX") or "").strip()
-if _SEED_ENV:
-    try:
-        random.seed(int(_SEED_ENV))
-    except Exception:
-        pass
 
 
 def _roll_index_from_env():
@@ -202,7 +196,7 @@ def _new_seed():
             return int(_SEED_ENV)
         except Exception:
             pass
-    return random.getrandbits(32)
+    return int.from_bytes(os.urandom(4), "big")
 
 
 def _env_flag(name, default=True):
@@ -227,9 +221,9 @@ def _sanitize_trader(name):
     return s.strip()
 
 
-def _pick_news_rate():
+def _pick_news_rate(rng):
     """News intensity is drawn at the start of every run, so density varies wildly between runs."""
-    r = random.random()
+    r = rng.random()
     acc = 0.0
     for rate, p in NEWS_REGIMES:
         acc += p
@@ -238,13 +232,13 @@ def _pick_news_rate():
     return NEWS_REGIMES[1][0]
 
 
-def _pick_huge_wave_count():
+def _pick_huge_wave_count(rng):
     """How many huge waves this session gets: 0 / 1 / 2 / 3, 25% each.
 
     Equal tiers mean a quarter of sessions get none, and a quarter get all three;
     the ceiling is still clamped by HUGE_WAVE_MAX.
     """
-    return min(HUGE_WAVE_MAX, random.choices([0, 1, 2, 3], weights=HUGE_WAVE_COUNT_W)[0])
+    return min(HUGE_WAVE_MAX, rng.choices([0, 1, 2, 3], weights=HUGE_WAVE_COUNT_W)[0])
 SAFE_HAVEN = ("FROST/CORE", "AMBER/CORE")
 
 # Design principles:
@@ -411,7 +405,7 @@ def _idle_rule_text():
             "activity'. Read-only calls (/state, /prices, /rules) do not count, so "
             "slow thinking is never cut short. TM_IDLE_ABORT tunes it, 0 disables"
             % ("/".join(IDLE_ACTION_LABELS), IDLE_ABORT_MINUTES))
-ENGINE_VERSION = "1.2.27"  # release version: report footer and docs both quote this
+ENGINE_VERSION = "1.2.28"  # release version: report footer and docs both quote this
 PROTOCOL_VERSION = 1        # Agent-facing protocol version. Any field add/remove or semantic change must bump it,
                             # and docs/ai-protocol.md plus the /health "protocol" field must be updated in step.
 
@@ -524,21 +518,13 @@ def purge_agent_dir(home):
     return removed
 
 
-def _new_session(seed=None, apply_rng=True, roll_index=None):
-    """Build a new run.
-
-    Seed priority: explicit argument > TM_SEED > generated.
-    Whatever the source, the global random stream is reseeded here - the
-    report's "reproduce with TM_SEED=..." line is only truthful when this
-    seed actually drives the stream that produced the run.
-    """
+def _new_session(seed=None, roll_index=None):
+    """Create a fresh session and initialize its independent random streams."""
     trader, unnamed = _env_trader()
     events_on = _env_events()
     seed = _new_seed() if seed is None else int(seed)
-    if apply_rng:
-        random.seed(seed)
-    # An explicit slot wins over the environment variable. This block must not
-    # draw from `random`: any extra draw shifts every historical seed's prices.
+    market_rng = random.Random(seed)
+    player_rng = random.Random(seed ^ 0x54_4D_50_4C)
     if roll_index is None:
         roll_index = _roll_index_from_env()
     return {
@@ -572,12 +558,12 @@ def _new_session(seed=None, apply_rng=True, roll_index=None):
         "mods": {},
         "last_news_tick": -999,
         "events_on": events_on,
-        "news_rate": _pick_news_rate() if events_on else 0.0,
+        "news_rate": _pick_news_rate(market_rng) if events_on else 0.0,
         "last_news_name": None,
         # ---- huge wave: remaining budget + hold deadline + number fired ----
         # The budget is rolled once at session start and only ever decreases, so
         # "at most twice per session" is a hard guarantee, not a probability.
-        "huge_wave_left": _pick_huge_wave_count() if events_on else 0,
+        "huge_wave_left": _pick_huge_wave_count(market_rng) if events_on else 0,
         "huge_wave_warn_until": 0,   # non-zero means the hold runs; burst fires at this tick
         "huge_wave_show_tick": -1,   # the tick that raised the banner; viewer keys on this
         "huge_wave_fired": 0,        # occurrences so far, for report and /state cross-check
@@ -605,7 +591,7 @@ def _new_session(seed=None, apply_rng=True, roll_index=None):
         "roll_started_at": 0.0,      # draw start time (time.time())
         "roll_index": (int(roll_index) % ROLL_COMBOS
                        if roll_index is not None else None),  # pinned slot, see TM_ROLL_INDEX
-        "roll_phase": random.uniform(0, ROLL_COMBOS),   # scatter phase for modulo (see _roll_index)
+        "roll_phase": market_rng.uniform(0, ROLL_COMBOS),   # scatter phase for modulo (see _roll_index)
         "loan": {"balance": 0.0, "borrowed": 0.0, "repaid": 0.0, "interest": 0.0,
                  "loans": 0, "goal_bumps": []},
         # ---------------- Outside Mercy (spectators <-> contestant) ----------------
@@ -638,6 +624,8 @@ def _new_session(seed=None, apply_rng=True, roll_index=None):
         "paused_at": 0.0,
         "begun": False,
         "last_notice_mark": 0,
+        "market_rng_state": market_rng.getstate(),
+        "player_rng_state": player_rng.getstate(),
     }
 
 
@@ -720,6 +708,8 @@ class Engine:
         # Difficulty not locked in = round not started; all timers read 0
         if not self.s.get("difficulty"):
             return 0.0
+        if self._simulated:
+            return self.s["tick"] * TICK_SECONDS
         if self.s.get("paused") and self.s.get("paused_at"):
             # While paused (before rules confirmation) timers freeze and do not follow wall clock
             raw = float(self.s["paused_at"]) - self.s["created_at"]
@@ -735,7 +725,8 @@ class Engine:
         self._elapsed_watch = max(last, raw)
         return raw
 
-    def __init__(self, home, readonly=False):
+    def __init__(self, home, readonly=False, *, simulated=False):
+        self._simulated = simulated
         self.home = home
         self._elapsed_watch = 0.0
         os.makedirs(home, exist_ok=True)
@@ -746,7 +737,7 @@ class Engine:
         # Whether the previous process left an "unfinished shutdown" marker
         leftover = os.path.exists(self.running_path)
         with LOCK:
-            self.s = self._load()
+            self._use_session(self._load())
             if self.s.get("finished") and not readonly:
                 # Previous round already settled (ended is ended; no auto reset after settling).
                 # This launch is itself a new round: keep the player name and restart count.
@@ -755,7 +746,7 @@ class Engine:
                     fresh["trader"] = self.s.get("trader", fresh["trader"])
                     fresh["unnamed"] = self.s.get("unnamed", True)
                 fresh["resets"] = self.s.get("resets", 0)
-                self.s = fresh
+                self._use_session(fresh)
                 self._save()
             self._elapsed_watch = float(self.s.get("elapsed_seen", 0.0))
             if leftover and not readonly:
@@ -767,6 +758,15 @@ class Engine:
                 self._save()
             if not readonly:
                 self._mark_running()
+
+    def _use_session(self, state):
+        self.s = state
+        self._market_rng = random.Random()
+        self._player_rng = random.Random()
+        for rng, key in ((self._market_rng, "market_rng_state"),
+                         (self._player_rng, "player_rng_state")):
+            version, sequence, gaussian = state[key]
+            rng.setstate((version, tuple(sequence), gaussian))
 
     def _load(self):
         if os.path.exists(self.path):
@@ -785,12 +785,13 @@ class Engine:
                     fresh = _new_session()
                     fresh["tampered"] = True
                     return fresh
-                base = _new_session(apply_rng=False)
+                has_rng_state = "market_rng_state" in s and "player_rng_state" in s
+                base = _new_session(seed=s.get("seed"))
                 for k, v in base.items():
                     s.setdefault(k, v)
                 s["session_id"] = s.get("session_id") or os.urandom(8).hex()
-                # A restarted process cannot rewind the RNG to the save point, so a report must state its replay boundary honestly
-                if not s.get("finished"):
+                # Older saves lack the RNG states required for exact continuation.
+                if not has_rng_state and not s.get("finished"):
                     s["rng_resumed"] = True
                 return s
             except Exception:
@@ -1244,6 +1245,8 @@ class Engine:
             return {"ok": True, "challenge": self._challenge_view()}
 
     def _save(self):
+        self.s["market_rng_state"] = self._market_rng.getstate()
+        self.s["player_rng_state"] = self._player_rng.getstate()
         self.s.pop("_sig", None)
         self.s["_sig"] = _sign(self.s)
         tmp = self.path + ".tmp"
@@ -1359,13 +1362,13 @@ class Engine:
                 continue  # leave it alone during a drought
             if st["L"] < self._liq_base() * 0.20:
                 # Just survived scarcity: refill fast to the normal band instead of crawling back from 8%
-                st["L"] = self._liq_base() * random.uniform(0.70, 1.30)
+                st["L"] = self._liq_base() * self._market_rng.uniform(0.70, 1.30)
                 continue
-            L = st["L"] * math.exp(random.gauss(0.0, LIQ_SIGMA))
+            L = st["L"] * math.exp(self._market_rng.gauss(0.0, LIQ_SIGMA))
             L = min(self._liq_base() * LIQ_MAX_MULT, max(self._liq_base() * LIQ_MIN_MULT, L))
             st["L"] = L
-            if random.random() < LIQ_SHOCK_P:
-                st["shock_until"] = tick + random.randint(*LIQ_SHOCK_TICKS)
+            if self._market_rng.random() < LIQ_SHOCK_P:
+                st["shock_until"] = tick + self._market_rng.randint(*LIQ_SHOCK_TICKS)
                 st["L"] = self._liq_base() * LIQ_SHOCK_MULT
                 self._event("[Liquidity drained] %s (%s) order book thinned instantly; slippage on any order is extreme now"
                             % (sym, PAIR_NAMES[sym]), "gap")
@@ -1509,7 +1512,7 @@ class Engine:
 
             1) warning  DisplayAdviceAgain + SOUND_HUGE_WAVE
                         -> here: _event(HUGE_WAVE_TEXT, "huge_wave"); the viewer raises
-                           the banner and plays hugewave.wav off this one event
+                           the banner and plays notification sound off this one event
             2) hold     mHugeWaveCountDown = 750 and `return` short-circuits spawning
                         -> here: huge_wave_warn_until = tick + 2; ordinary news is
                            suppressed for the whole hold so the warning is not drowned
@@ -1533,11 +1536,11 @@ class Engine:
                     if r[2] in HUGE_WAVE_BURST_KINDS and r[0] not in HUGE_WAVE_EXCLUDE_NAMES]
             if not pool:
                 return False
-            n = random.randint(*HUGE_WAVE_BURST)
+            n = self._market_rng.randint(*HUGE_WAVE_BURST)
             self._event("[BURST] The shock lands -- %d risk events take effect at once" % n,
                         "huge_wave")
             for _ in range(n):
-                name, _w, kind, params = random.choices(pool, weights=[r[1] for r in pool])[0]
+                name, _w, kind, params = self._market_rng.choices(pool, weights=[r[1] for r in pool])[0]
                 self._apply_news(name, kind, params)
                 self.s["last_news_name"] = name
             return True
@@ -1564,7 +1567,7 @@ class Engine:
             _gap = HUGE_WAVE_GAP_TICKS
         if t - int(self.s.get("huge_wave_last_tick") or -10 ** 6) < _gap:
             return False
-        if not _rush and random.random() >= HUGE_WAVE_RATE:
+        if not _rush and self._market_rng.random() >= HUGE_WAVE_RATE:
             return False
 
         self.s["huge_wave_left"] = int(self.s["huge_wave_left"]) - 1
@@ -1583,34 +1586,34 @@ class Engine:
             return
         if self.s["tick"] - self.s.get("last_news_tick", -999) < NEWS_COOLDOWN:
             return
-        if random.random() >= rate:
+        if self._market_rng.random() >= rate:
             return
         self.s["last_news_tick"] = self.s["tick"]
         # The same event never appears twice in a row
         last = self.s.get("last_news_name")
         pool = [row for row in NEWS_TABLE if row[0] != last] or NEWS_TABLE
-        name, _w, kind, params = random.choices(pool, weights=[row[1] for row in pool])[0]
+        name, _w, kind, params = self._market_rng.choices(pool, weights=[row[1] for row in pool])[0]
         self.s["last_news_name"] = name
         self._apply_news(name, kind, params)
 
     def _apply_news(self, name, kind, params):
         if kind == "pair_rand":
-            sym = random.choice(list(PAIRS))
-            mag = random.uniform(*params) * random.choice([-1, 1])
+            sym = self._market_rng.choice(list(PAIRS))
+            mag = self._market_rng.uniform(*params) * self._market_rng.choice([-1, 1])
             self._shock(sym, mag)
             self._event("[Surprise] %s -> %s (%s)%+.1f%%" % (name, sym, PAIR_NAMES[sym], mag * 100), "news")
         elif kind == "all_rand":
-            mag = random.uniform(*params) * random.choice([-1, 1])
+            mag = self._market_rng.uniform(*params) * self._market_rng.choice([-1, 1])
             for sym in PAIRS:
-                self._shock(sym, mag * random.uniform(0.6, 1.0))
+                self._shock(sym, mag * self._market_rng.uniform(0.6, 1.0))
             self._event("[Surprise] %s -> all pairs %+.1f%%" % (name, mag * 100), "news")
         elif kind == "haven":
-            mag = random.uniform(*params)
+            mag = self._market_rng.uniform(*params)
             for sym in PAIRS:
                 if sym in SAFE_HAVEN:
                     self._shock(sym, mag)
                 else:
-                    self._shock(sym, -mag * random.uniform(0.2, 0.5))
+                    self._shock(sym, -mag * self._market_rng.uniform(0.2, 0.5))
             self._event("[Surprise] %s -> safe-haven currencies surge" % name, "news")
         elif kind == "mod":
             key, val, ticks = params
@@ -1634,7 +1637,7 @@ class Engine:
             if not hasattr(self, "_gap_pairs"):
                 self._gap_pairs = set()   # also needed when _apply_news is called directly
             for sym in PAIRS:
-                g = random.choice([-1, 1]) * random.uniform(lo, hi)
+                g = self._market_rng.choice([-1, 1]) * self._market_rng.uniform(lo, hi)
                 self._shock(sym, g)
                 self._gap_pairs.add(sym)
             self._event("[Disaster] %s -> all pairs gap %.0f%%~%.0f%% at once" % (name, lo * 100, hi * 100), "gap")
@@ -1657,7 +1660,7 @@ class Engine:
                 "[Platform] %s -> Slot Machine betting paused for the next %d ticks (%.0f minutes)" % (
                     name, n, n * TICK_SECONDS / 60.0), "warn")
         elif kind == "flavor":
-            self._event("[%s] %s" % (name, random.choice(FLAVOR_LINES[name])), "info")
+            self._event("[%s] %s" % (name, self._market_rng.choice(FLAVOR_LINES[name])), "info")
 
     def _advance_prices(self):
         self._expire_mods()
@@ -1669,9 +1672,9 @@ class Engine:
             self._roll_news()       # marks recorded by gap_burst this tick must survive
         for sym, cfg in PAIRS.items():
             p = self.s["prices"][sym]
-            r = random.gauss(0, cfg["vol"] * self._mod("vol_mult"))
-            if random.random() < self._gap_chance() * self._mod("gap_mult"):
-                g = random.choice([-1, 1]) * random.uniform(GAP_MIN, GAP_MAX)
+            r = self._market_rng.gauss(0, cfg["vol"] * self._mod("vol_mult"))
+            if self._market_rng.random() < self._gap_chance() * self._mod("gap_mult"):
+                g = self._market_rng.choice([-1, 1]) * self._market_rng.uniform(GAP_MIN, GAP_MAX)
                 self._gap_pairs.add(sym)
                 self._event("[Black Swan] %s (%s) gapped %+.1f%%" % (sym, PAIR_NAMES[sym], g * 100), "gap")
                 r += g
@@ -2466,7 +2469,7 @@ class Engine:
             self.s["balance"] -= stake
             sp["slot_paid"] = float(sp.get("slot_paid", 0.0)) + stake
             sp["slot_plays"] = played + 1
-            r = random.random()
+            r = self._player_rng.random()
             if r < SLOT_P_LOSE:
                 mult, payout = 0, 0.0
             elif r < SLOT_P_LOSE + SLOT_P_X5:
@@ -2479,9 +2482,9 @@ class Engine:
                 self.s["balance"] += payout
                 sp["slot_win"] = float(sp.get("slot_win", 0.0)) + payout
                 if self._challenge_rule("double_goal"):
-                    bump_pct = random.uniform(0.50, 1.00)
+                    bump_pct = self._player_rng.uniform(0.50, 1.00)
                 else:
-                    bump_pct = random.uniform(SLOT_WIN_LO, SLOT_WIN_HI)
+                    bump_pct = self._player_rng.uniform(SLOT_WIN_LO, SLOT_WIN_HI)
                 bump = payout * bump_pct
                 self.s["target"] = self.s.get("target", TARGET_EQUITY) + bump
                 self.s["target_bonus"] = self.s.get("target_bonus", 0.0) + bump
@@ -2539,9 +2542,9 @@ class Engine:
             _ratio = (_r0 + _r1) / 2.0
             _base = _lo + (1.0 - _lo) * _ratio
             if self._challenge_rule("double_goal"):
-                pct = random.uniform(0.50, 1.00)
+                pct = self._player_rng.uniform(0.50, 1.00)
             else:
-                pct = min(1.0, max(_lo, _base * random.uniform(0.7, 1.3)))
+                pct = min(1.0, max(_lo, _base * self._player_rng.uniform(0.7, 1.3)))
             bump = amount * pct
             _relief = pct < 0
             self.s["target"] = self.s.get("target", TARGET_EQUITY) + bump
@@ -3299,7 +3302,7 @@ class Engine:
                         self.s.get("seed") or "—", _r[0], _r[1], _r[2],
                         self.s.get("seed") or "—", _r[0],
                         " (note: this run resumed after a restart, so the seed only "
-                        "reproduces the part before the restart)"
+                        " (continued from an older save without RNG states; the full price path cannot be replayed)"
                         if self.s.get("rng_resumed") else "")))(self._roll_index_text()),
                 "pftxt": ("—" if not m["trades_n"]
                           else ("∞" if m["profit_factor"] is None
@@ -3592,7 +3595,7 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
                             "state": self._state_light()}
             trader = self.s.get("trader", "Guest")
             n = self.s.get("resets", 0) + (1 if count else 0)
-            self.s = _new_session(seed=seed, roll_index=roll_index)
+            self._use_session(_new_session(seed=seed, roll_index=roll_index))
             self.s["trader"] = trader
             self.s["resets"] = n
             self.s["last_reset_at"] = now
@@ -3754,7 +3757,7 @@ color:#4A5A6A;font-size:12px;margin-right:6px;min-width:0}}
                 "unnamed": bool(self.s.get("unnamed")),
                 "events_on": bool(self.s.get("events_on", True)),
                 # Huge wave warning: the viewer reads this to decide whether to raise
-                # the banner and play hugewave.wav. `show` is true for the warning tick
+                # the banner and play notification sound. `show` is true for the warning tick
                 # alone, so a slow poll cannot miss it and a second poll cannot replay it.
                 "huge_wave": {
                     "show": int(self.s["tick"]) == int(self.s.get("huge_wave_show_tick", -1)),

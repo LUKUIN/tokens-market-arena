@@ -13,12 +13,14 @@ was a false promise for any match stopped by hand. This file pins three behaviou
 One regression worth stating: new fields must not consume randomness, otherwise the
 price path of every historical seed shifts.
 """
+import json
 import os
 import shutil
 import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 
@@ -141,25 +143,60 @@ class ReportIndexTest(_Base):
 
 
 class RandomStreamRegressionTest(_Base):
-    """The pinned slot reads an env var; it must not insert a random draw."""
+    def start_match(self, home):
+        engine = T.Engine(home)
+        engine.reset(count=False, seed=576407804, roll_index=12)
+        engine.challenge_decline()
+        engine.roll_stop()
+        return engine
 
-    def test_new_fields_do_not_shift_price_stream(self):
-        T._ROLL_INDEX_ENV = ""
-        seq = []
-        for _ in range(2):
-            home = tempfile.mkdtemp(prefix="tm_repro2_")
-            self.addCleanup(shutil.rmtree, home, True)
-            e = T.Engine(home)
-            e.s["events_on"] = False   # whether the wave fires consumes RNG draws; rule it out when testing the price stream
-            e.s["news_rate"] = 0.0     # news is drawn at construction time; without pinning it two runs' streams diverge
-            e.s["roll_phase"] = 0.0
-            T.random.seed(576407804)
-            e.s["begun"] = True
-            e.s["paused"] = False
-            for _tick in range(10):
-                e._advance_prices()
-            seq.append(tuple(round(e.s["prices"][k], 8) for k in sorted(e.s["prices"])))
-        self.assertEqual(seq[0], seq[1])
+    def test_player_actions_do_not_move_the_market(self):
+        with tempfile.TemporaryDirectory() as other_home:
+            regular = self.start_match(self.home)
+            with patch.dict(T._SPECIAL_CACHE, {"TM_SLOT": True, "TM_FR": True}):
+                playing = self.start_match(other_home)
+                self.assertTrue(playing.slot(1)["ok"])
+                self.assertTrue(playing.borrow(1000)["ok"])
+            for _ in range(5):
+                regular.tick()
+                playing.tick()
+                self.assertEqual(regular.s["prices"], playing.s["prices"])
+                self.assertEqual(regular.s["liquidity"], playing.s["liquidity"])
+
+    def test_restart_restores_both_random_streams(self):
+        with patch.dict(T._SPECIAL_CACHE, {"TM_SLOT": True}):
+            engine = self.start_match(self.home)
+            self.assertTrue(engine.slot(1)["ok"])
+            engine.tick()
+
+        with tempfile.TemporaryDirectory() as restart_home:
+            shutil.copy(engine.path, restart_home)
+            resumed = T.Engine(restart_home)
+            self.assertFalse(resumed.s.get("rng_resumed"))
+            for _ in range(5):
+                engine.tick()
+                resumed.tick()
+                self.assertEqual(engine.s["prices"], resumed.s["prices"])
+            self.assertTrue(engine.slot(1)["ok"])
+            self.assertTrue(resumed.slot(1)["ok"])
+            self.assertEqual(engine.s["special"]["slot_history"], resumed.s["special"]["slot_history"])
+
+    def test_old_save_can_resume_with_an_explicit_replay_limit(self):
+        engine = self.start_match(self.home)
+        engine.tick()
+        state = dict(engine.s)
+        for key in ("market_rng_state", "player_rng_state", "_sig"):
+            state.pop(key)
+        state["_sig"] = T._sign(state)
+        with open(engine.path, "w", encoding="utf-8") as save:
+            json.dump(state, save)
+
+        resumed = self.make()
+        self.assertTrue(resumed.s["rng_resumed"])
+        self.assertEqual(resumed.s["prices"], engine.s["prices"])
+        self.assertEqual(resumed.s["tick"], 1)
+        resumed.tick()
+        self.assertEqual(resumed.s["tick"], 2)
 
 
 if __name__ == "__main__":

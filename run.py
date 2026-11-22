@@ -402,73 +402,9 @@ def _local_open(url, timeout=3, data=None, headers=None):
     return _LOCAL_OPENER.open(req, timeout=timeout)
 
 
-def _decode_bytes(raw):
-    """Decode a console command's raw bytes: locale-independent, GBK/UTF-8/codepage all land."""
-    if not raw:
-        return ""
-    for enc in ("utf-8", "gb18030", "mbcs"):
-        try:
-            return raw.decode(enc)
-        except (UnicodeDecodeError, LookupError):
-            continue
-    return raw.decode("utf-8", "replace")
-
-
-def _run_text(cmd, timeout=8):
-    """Run a console command and decode stdout ourselves.
-
-    Do not rely on text=True: on a Chinese Windows netstat prints GBK, while
-    PYTHONUTF8=1 / -X utf8 makes subprocess decode as UTF-8, the reader thread raises
-    UnicodeDecodeError, stdout becomes None and splitlines() dies with
-    'NoneType' object has no attribute 'splitlines' (the v1.2.21 crash in run.err.log).
-    """
-    try:
-        raw = subprocess.run(cmd, capture_output=True, timeout=timeout).stdout or b""
-    except Exception:
-        return ""
-    return _decode_bytes(raw)
-
-
-def _listening_pids(port):
-    """PIDs listening on this port (netstat -ano on Windows; best effort elsewhere)."""
-    pids = []
-    out = _run_text(["netstat", "-ano"])
-    if not out:
-        return pids
-    for line in out.splitlines():
-        if "LISTENING" not in line.upper():
-            continue
-        parts = line.split()
-        if len(parts) < 5:
-            continue
-        if parts[1].endswith(":%d" % port):
-            try:
-                pids.append(int(parts[-1]))
-            except ValueError:
-                pass
-    return pids
-
-
-def _is_our_process(pid):
-    """Is this PID our own python run.py?
-
-    The command line must contain both python and run.py; when it cannot be read the
-    process is treated as foreign and is never killed.
-    """
-    cmd = [
-        "powershell", "-NoProfile", "-Command",
-        "(Get-CimInstance Win32_Process -Filter \"ProcessId=%d\").CommandLine" % pid,
-    ]
-    try:
-        out = _run_text(cmd)
-    except Exception:
-        return False
-    low = out.lower()
-    return ("python" in low) and ("run.py" in low)
-
 
 def _autoclean(home):
-    """Post-match tidy-up: drop this match's temp files (keep reports/), then reap leftovers."""
+    """Remove this match's runtime files while preserving its reports."""
     if os.path.isdir(home):
         for name in os.listdir(home):
             if name == "reports":
@@ -479,19 +415,6 @@ def _autoclean(home):
                     shutil.rmtree(p, ignore_errors=True)
                 else:
                     os.remove(p)
-            except Exception:
-                pass
-    me = os.getpid()
-    for port in (8734, 8735):
-        for pid in _listening_pids(port):
-            if pid == me:
-                continue
-            # Only reap our own leftovers: the port may belong to an unrelated program.
-            if not _is_our_process(pid):
-                continue
-            try:
-                subprocess.run(["taskkill", "/F", "/PID", str(pid)],
-                               capture_output=True, timeout=8)
             except Exception:
                 pass
 

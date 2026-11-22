@@ -69,7 +69,7 @@ echo   Endpoint        http://127.0.0.1:%TM_PORT%
 echo   Player          %TM_TRADER%
 echo   Random events   %TM_EVENTS%
 echo   Preferred Financing %TM_FR%  Slot Machine %TM_SLOT%  Outside Mercy %TM_ASSIST%
-echo   Press Y within 5 seconds to start; otherwise it cleans up and exits.
+echo   Press Y within 5 seconds to start; otherwise the start is canceled.
 echo   To have an AI contest: run python run.py in the repo root (this window already cds there)
 echo.
 echo   !! AI contestant edition: the GUI is read-only, no order / close / fast-forward buttons.
@@ -79,7 +79,7 @@ echo   !! (TM_IDLE_ABORT).
 
 rem ==================================================================
 rem v1.2.12 adds a mis-click guard while keeping the real launcher path.
-rem   - human double-click (console stdin): waits 5 s, then cleans up and exits
+rem   - human double-click (console stdin): waits 5 s, then cancels the launch
 rem   - script / agent call (no console stdin): choice returns 255, starts normally
 rem So an accidental click cannot burn 45 idle minutes, and a real agent is not killed.
 rem ==================================================================
@@ -89,7 +89,7 @@ rem this prompt. The launcher logic exists in exactly one place now.
 if defined TM_NO_CONFIRM goto :direct_start
 
 echo   Press Y within 5 seconds to start (only if an agent will connect).
-echo   Otherwise it cleans up and exits.
+echo   Otherwise the start is canceled.
 choice /c YN /t 5 /d N /n /m " " 2>nul
 if errorlevel 255 goto :direct_start
 if errorlevel 2 goto :abort_start
@@ -105,12 +105,5 @@ goto :eof
 
 :abort_start
 echo.
-echo   Cancelled. Stopping leftover processes and temporary files...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\tools\deep-clean.ps1"
-echo.
-echo   [CLEANED]
-echo   - AI contest: run  python run.py  in the repo root
-echo   - Humans: use TokensMarket-OpenSource-Human
-echo.
-pause
-goto :eof
+echo   Start canceled.
+exit /b 0

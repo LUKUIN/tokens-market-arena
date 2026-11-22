@@ -72,31 +72,13 @@ the spectator's GUI widgets and the `.pyc` files are built for 3.14, and any oth
 
 ## 1. Check for leftovers (clean only if needed)
 
-**After a normal match this step does nothing**: once settlement finishes, `run.py` deletes the
-temporary files and shuts the related processes down by itself, leaving only `reports/` under
-`src/data/`. You only need to act after a manual interrupt, a crash, or a window that never closed.
+A normal match preserves its reports and cleans up its runtime files. After an interruption, close the match from this checkout first. If stale files remain, run the Windows cleanup script from the project root:
 
-Check first — one command tells you which case you are in:
-
-```bash
-cd <project directory>
-ls -A src/data/ | grep -v '^reports$' | grep -q . && echo "leftovers found - clean" || echo "clean - go to step 2"
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\deep-clean.ps1
 ```
 
-**If it says "clean", skip this section and start.** Only when it reports leftovers:
-
-```bash
-# The previous service may still hold the port: reset, then shut down
-curl -s -X POST http://127.0.0.1:8734/reset    >/dev/null 2>&1 || true
-curl -s -X POST http://127.0.0.1:8734/shutdown >/dev/null 2>&1 || true
-
-# Service not running: delete the save directly
-rm -f src/data/session.json src/data/.scratchpad.jsonl
-rm -rf src/data/_agent
-```
-
-**Never delete `src/data/reports/`** — that is the match archive; every settlement writes a new
-file there.
+Historical reports stay under `src/data/reports/`.
 
 ## 2. Start (one command; the spectator opens itself)
 
@@ -127,7 +109,7 @@ Three entry points:
 |---|---|
 | `python run.py` | Standard; the agent default |
 | `launchers\AI Start.bat` | Unattended: sets `TM_NO_CONFIRM=1` and `TM_IDLE_ABORT=0`, then `call`s `launchers\Start Match.bat`, so the launch path has one source of truth — **scripts / agents use this** |
-| `launchers\Start Match.bat` | Human double-click entry. Cleans up and exits unless `Y` is pressed within 5 seconds; **invoking it from a terminal with `cmd /c` also counts as human**, so it dies after 5 seconds |
+| `launchers\Start Match.bat` | Human double-click entry. Cancels the launch unless `Y` is pressed within 5 seconds; **invoking it from a terminal with `cmd /c` also counts as human**, so it cancels after 5 seconds |
 
 - Do not start `run.py spectator` yourself to "add" a window — a normal start already has one
 - Only `--headless` suppresses the window, and only for environments with no desktop (CI, containers)
@@ -145,7 +127,7 @@ Three entry points:
 
 ## 3. Lock the difficulty
 
-Difficulty is rolled at the start. **Before it is locked, `/open`, `/loan`, `/slot` and
+Answer the challenge prompt with `POST /challenge/accept` or `POST /challenge/decline` before locking difficulty. **Before it is locked, `/open`, `/loan`, `/slot` and
 `/fastforward` are all refused** with "Difficulty is not locked in yet; POST /roll/stop or wait
 for the draw to finish"; everything unlocks the second the draw ends, no extra call needed.
 

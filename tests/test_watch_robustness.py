@@ -1,17 +1,11 @@
 # -*- coding: utf-8 -*-
-"""v1.2.22 regression: encoding and proxy robustness of the local polling path.
-
-Evidence from the field (17:29 run):
-    run.err.log: UnicodeDecodeError: 'utf-8' codec can't decode byte 0xbb in position 2
-    run.log:     Failed to clean up: 'NoneType' object has no attribute 'splitlines'
-Same chain: subprocess(text=True) decodes GBK netstat output as UTF-8 under PYTHONUTF8=1,
-the reader thread dies, stdout becomes None, splitlines() dies.
-
-These cases assert structure and decoding behaviour only - no wall-clock concurrency
-assertions (the v1.2.21 lesson: timing assertions fail falsely on CI Windows runners).
-"""
+"""Regression tests for local polling and match cleanup."""
 import os
+from pathlib import Path
+import shutil
+import subprocess
 import sys
+import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -26,26 +20,36 @@ def _read(rel):
         return f.read()
 
 
-@unittest.skipUnless(IS_RUNNABLE, "run.py's version guard only lets Python 3.14 import it; other versions exit 2 on import")
-class TestConsoleDecode(unittest.TestCase):
-    def setUp(self):
-        import run
-        self.run_mod = run
+@unittest.skipUnless(os.name == "nt", "Windows PowerShell required")
+class TestCleanup(unittest.TestCase):
+    def test_preserves_live_match_and_reports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            checkout = Path(tmp)
+            tools = checkout / "tools"
+            tools.mkdir()
+            script = tools / "deep-clean.ps1"
+            shutil.copyfile(Path(ROOT) / "tools" / script.name, script)
+            (checkout / "run.py").touch()
+            data = checkout / "src" / "data"
+            reports = data / "reports"
+            reports.mkdir(parents=True)
+            (reports / "history.html").touch()
+            save = data / "session.json"
+            save.touch()
+            marker = data / ".running"
+            marker.write_text(f"session-id\t{os.getpid()}\n")
+            command = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                       "-File", str(script)]
 
-    def test_gbk_bytes(self):
-        raw = "\u6d3b\u52a8\u8fde\u63a5".encode("gbk")
-        self.assertEqual(self.run_mod._decode_bytes(raw), "\u6d3b\u52a8\u8fde\u63a5")
+            result = subprocess.run(command, capture_output=True, timeout=20)
+            self.assertNotEqual(result.returncode, 0, result.stdout)
+            self.assertTrue(save.is_file())
+            marker.unlink()
 
-    def test_utf8_bytes(self):
-        raw = "\u6d3b\u52a8\u8fde\u63a5".encode("utf-8")
-        self.assertEqual(self.run_mod._decode_bytes(raw), "\u6d3b\u52a8\u8fde\u63a5")
-
-    def test_empty_and_none_safe(self):
-        self.assertEqual(self.run_mod._decode_bytes(b""), "")
-        self.assertEqual(self.run_mod._decode_bytes(None), "")
-
-    def test_listening_pids_never_raises(self):
-        self.assertIsInstance(self.run_mod._listening_pids(65533), list)
+            result = subprocess.run(command, capture_output=True, timeout=20)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse(save.exists())
+            self.assertTrue((reports / "history.html").is_file())
 
 
 @unittest.skipUnless(IS_RUNNABLE, "run.py's version guard only lets Python 3.14 import it; other versions exit 2 on import")

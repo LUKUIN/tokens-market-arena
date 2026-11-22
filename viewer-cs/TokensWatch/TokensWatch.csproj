@@ -20,14 +20,4 @@
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
 
-  <ItemGroup>
-    <!-- Huge Wave clip: the original hugewave.ogg lifted from PvZ's main.pak
-         (sounds\hugewave.ogg, 111,507 B, 44.1 kHz stereo, 6.57 s), transcoded to PCM WAV
-         so WPF can play it without an Ogg codec. Content + CopyToOutputDirectory keeps it
-         out of the assembly resource stream on purpose. -->
-    <Content Include="Assets\hugewave.wav">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
-
 </Project>
