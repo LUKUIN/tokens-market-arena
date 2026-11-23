@@ -807,11 +807,12 @@ public partial class MainWindow : Window
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 1, 0, 0),
         });
-        if (!string.IsNullOrEmpty(t.Note) && t.Status != "pending")
+        var detail = t.Status == "pending" ? t.Progress : t.Note;
+        if (!string.IsNullOrEmpty(detail))
         {
             box.Children.Add(new TextBlock
             {
-                Text = t.Note,
+                Text = detail,
                 FontFamily = new FontFamily(Theme.UiFont),
                 FontSize = 12,
                 Foreground = BrushOf(hex),

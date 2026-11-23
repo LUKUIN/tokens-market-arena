@@ -1,7 +1,7 @@
 # Tokens 交易市场 · 人类版（源码版）
 
 > 项目原始代码由 **DeepSeek Harness** 中的 **DeepSeek V4.1 Flash 1017（High）** 编写。
-> 对应 GitHub 发行版 **human-v1.2.27**，引擎 **v1.2.27**。玩家亲手操作，GUI 交互版。
+> 对应 GitHub 发行版 **human-v1.2.29**，引擎 **v1.2.29**。玩家亲手操作，GUI 交互版。随机事件池有 40 条，挑战池有 20 条。
 > **与 AI 版（`TokensMarket-OpenSource-AI`）不通用、不可混用**：本版有投资界面，
 > AI 版只有只读观众席。两套源码各自独立，不要互相复制界面文件。
 >

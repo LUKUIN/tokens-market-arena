@@ -724,7 +724,7 @@ class Watch:
         stage = ch.get("stage") or "none"
         tasks = ch.get("tasks") or []
         sig = (stage, int(float(ch.get("ask_left") or 0) // 10),
-               tuple((t.get("name"), t.get("status"), t.get("desc"), t.get("note"))
+               tuple((t.get("name"), t.get("status"), t.get("desc"), t.get("note"), t.get("progress"))
                      for t in tasks))
         if sig == self._challenge_sig:
             return
@@ -755,8 +755,9 @@ class Watch:
             tk.Label(cell, text=t.get("desc") or "", font=FONT_TINY, bg=CARD,
                      fg=MUTED, anchor="w", justify="left",
                      wraplength=300).pack(fill="x", padx=(18, 0))
-            if t.get("note") and t.get("status") != "pending":
-                tk.Label(cell, text=t.get("note"), font=FONT_TINY, bg=CARD,
+            detail = t.get("progress") if t.get("status") == "pending" else t.get("note")
+            if detail:
+                tk.Label(cell, text=detail, font=FONT_TINY, bg=CARD,
                          fg=color, anchor="w", justify="left",
                          wraplength=300).pack(fill="x", padx=(18, 0))
         for _c in range(len(tasks)):
@@ -1555,10 +1556,13 @@ class Watch:
             "【两种模式（标题栏括号里写的就是当前模式）】",
             "· 理想情况：关闭全部随机事件，只剩黑天鹅跳空。行情更“干净”，"
             "不会突然冒出额外惩罚，适合新手先熟悉开仓、平仓、加杠杆的手感。",
-            "· 已开启随机事件：除黑天鹅外，还会随机触发二十多种临时事件——"
-            "流动性枯竭、手续费上调、保证金加倍、点差放大、杠杆上限下调、行情异常拒单等，"
-            "每种持续若干 tick 后自动恢复。难度明显更高，也会让原本算好的成本变脸。",
+            "· 已开启随机事件：行情会抽取临时事件（%d 条），改变价格、成本或可用操作。"
+            % len(r.get("随机事件池") or {}),
+            g("一大波预警"),
             "· 当前模式：%s" % (mode or "未知"),
+            "",
+            "【挑战任务】",
+            g("挑战任务"),
             "",
             "【节奏】",
             "· 会话时长 %s，每 %s 一个 tick，行情自动推进" % (g("会话时长"), g("tick 间隔")),

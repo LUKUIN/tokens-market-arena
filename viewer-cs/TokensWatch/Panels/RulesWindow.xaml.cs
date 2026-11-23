@@ -203,10 +203,15 @@ public partial class RulesWindow : Window
         L("【两种模式（标题栏括号里写的就是当前模式）】");
         L("· 理想情况：关闭全部随机事件，只剩黑天鹅跳空。行情更“干净”，"
           + "不会突然冒出额外惩罚，适合新手先熟悉开仓、平仓、加杠杆的手感。");
-        L("· 已开启随机事件：除黑天鹅外，还会随机触发二十多种临时事件——"
-          + "流动性枯竭、手续费上调、保证金加倍、点差放大、杠杆上限下调、行情异常拒单等，"
-          + "每种持续若干 tick 后自动恢复。难度明显更高，也会让原本算好的成本变脸。");
+        var eventCount = r.TryGetProperty("随机事件池", out var pool) && pool.ValueKind == JsonValueKind.Object
+            ? $"（{pool.EnumerateObject().Count()} 条）" : "";
+        L($"· 已开启随机事件：行情会抽取临时事件{eventCount}，改变价格、成本或可用操作。");
+        L(G(r, "一大波预警"));
         L($"· 当前模式：{(_mode.Length > 0 ? _mode : "未知")}");
+        L();
+
+        L("【挑战任务】");
+        L(G(r, "挑战任务"));
         L();
 
         L("【节奏】");

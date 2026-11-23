@@ -224,6 +224,7 @@ public sealed class ChallengeTask
     /// <summary>pending 进行中 / done 已达成 / failed 已破功（不可逆）。</summary>
     [JsonPropertyName("status")] public string Status { get; set; } = "pending";
     [JsonPropertyName("note")] public string Note { get; set; } = "";
+    [JsonPropertyName("progress")] public string Progress { get; set; } = "";
 }
 
 public sealed class ChallengeInfo
