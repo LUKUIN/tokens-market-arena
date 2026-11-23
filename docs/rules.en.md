@@ -99,12 +99,9 @@ At or above target, close all positions and check the resulting equity first. v1
 
 ## Challenge tasks (a port of PvZ2 Level Objectives)
 
-Once the difficulty roll is fixed the engine does not start trading right away: it first asks
-**does this round run with challenge tasks?** Answer with `POST /challenge/accept` or
-`POST /challenge/decline` within 75 seconds; no answer means "off".
+A fresh match starts with a prompt to enable challenges. Answer with `POST /challenge/accept` or `POST /challenge/decline`. After 75 seconds without an answer, the engine declines and starts the difficulty draw.
 
-Enabling draws **3 objectives** that stay fixed for the whole round. Judging runs live:
-breaking an objective marks it × permanently, meeting one marks it √ immediately.
+If enabled, the engine draws **one result objective and two process objectives** from 20 candidates when difficulty locks. Process violations are recorded immediately. Trading milestones can clear during play, and equity targets are judged at settlement.
 
 ### Objective pool
 
@@ -118,16 +115,23 @@ breaking an objective marks it × permanently, meeting one marks it √ immediat
 | Drawdown Guard | Max equity drawdown stays under X | 18% / 12% / 8% |
 | Light Footprint | At most X position rows, counting long and short separately | 4 / 3 / 2 |
 | Margin Cushion | Margin level never drops below X while holding | 150% / 180% / 220% |
-| Patience Pays | Close at least X position(s) held for 5 ticks | 1 / 2 / 3 |
-| Beat the Target | Equity reaches X of the target | 120% / 150% / 200% |
-| Double or Nothing | Equity reaches the current target (doubled when drawn) | Target x2; slot and loan target bumps fixed at 50%-100% |
+| Clear of Margin Calls | Avoid margin calls and margin liquidation | — |
+| Low Leverage | Stay within the leverage limit for every open or add | 30x / 20x / 10x |
+| Size Discipline | Gross exposure stays within a multiple of starting capital | 3x / 2.5x / 2x |
+| Carry Budget | Cumulative holding costs stay within the cap | 2% / 1.4% / 0.9% of starting capital |
+| No Slot Bets | Skip all slot bets | — |
+| Patience Pays | Voluntarily close each position in full at least 5 ticks after the last open or add | 1 / 2 / 3 positions |
+| Beat the Target | Final equity reaches a percentage of the current target | 110% / 120% / 130% |
+| Double or Nothing | Final equity meets the live target, which starts doubled at 4 million | Slot payouts and loans raise the target by 50–100% of the amount |
+| Small Gains | Close at least one trade voluntarily and finish above starting capital | +3% / +5% / +8% |
+| Profit in Hand | Reach a net profit threshold on one voluntary close | 1% / 1.5% / 2% of starting capital |
+| Multiple Winners | Reach a cumulative net profit threshold on each of several pairs | 2 at 0.2% / 2 at 0.3% / 3 at 0.5% of starting capital |
+| Both Directions | Reach a cumulative net profit threshold on long and short trades separately | 0.3% / 0.5% / 0.8% of starting capital per side |
 
 Drawing rules:
 
-- **At least one result-type objective** (Patience Pays / Beat the Target / Double or Nothing) is always included:
-  three "do not do X" titles would reduce the round to doing nothing
-- The three are distinct; Double or Nothing and Beat the Target are mutually exclusive
-  (the target is already doubled, stacking 200% would make it 4x and the round a certain loss)
+- Double or Nothing has a 1 in 19 chance. Each of the other six result objectives has a 3 in 19 chance.
+- The two process objectives come from different categories. Tasks about assistance and slot bets require the corresponding feature to be enabled at the draw.
 - Thresholds follow the difficulty tier: `tier = max(black-swan tier, liquidity tier)`,
   0–1 use the loose column, 2 the medium one, and 3–4 the strict one
 
@@ -135,11 +139,11 @@ Drawing rules:
 
 | Mark | Meaning |
 |---|---|
-| √ | cleared (result-type objectives can clear early and then stop changing) |
+| √ | cleared (trading milestones lock immediately, and equity targets are checked at settlement) |
 | × | broken (a process objective is failed permanently once violated) |
 | · | in progress |
 
-At settlement the engine resolves pending objectives. A result objective confirmed earlier remains cleared even if equity later falls.
+The engine checks objectives after market steps and relevant successful actions. Net profit for Profit in Hand, Multiple Winners and Both Directions uses executed prices and deducts entry and exit fees. Holding costs and loan interest are accounted for separately. Settlement fees count toward Fee Discipline, and the final equity change counts toward Drawdown Guard.
 
 The spectator window's "Challenge Tasks" card shows each objective's name, exact rule,
 current state and the reason it broke; the event feed records entries prefixed
@@ -148,15 +152,17 @@ current state and the reason it broke; the event feed records entries prefixed
 
 Three boundaries:
 
-- **The answering window does not eat the 45 minutes**: the clock is rebased when you answer (or time out)
+- **The challenge prompt and difficulty draw are outside the 45 minutes.** The trading clock starts when the difficulty locks.
 - **A broken objective never recovers**: once ×, it stays ×
 - Double or Nothing changes the target and later loan and payout uplifts.
 
-## Huge Wave warning (a special event)
+## Random events and Huge Wave warnings
+
+The pool has 40 random events. `GET /rules` lists their scopes, effects and durations. Market Maker Withdrawals and Depth Recovery apply 0.75x and 1.5x effective depth, respectively, for 10 steps. Depth affects slippage and is reflected in `active_mods` and each pair's `liquidity`.
 
 When random events are enabled, the match draws 0–3 warnings with equal 25% chances. The first warning is eligible from market step 30. In the regular phase, warning starts are spaced by at least 36 steps and each eligible step has a 1% trigger probability. The final three minutes can shorten the spacing and remove the probability gate. An early exit can leave warnings unused.
 
-The warning banner is displayed on step `t`, with a Windows system sound in WPF. Ordinary news is suppressed while the warning is pending; normal price movement and Black Swan gaps can still occur. The burst on step `t+2` applies 3–5 weighted risk events in that step. Two market steps normally take 10 seconds. Fast-forward or a faster market cadence can shorten the real-time warning window.
+The warning banner is displayed on step `t`, with a Windows system sound in WPF. Ordinary news pauses while normal price movements and Black Swan gaps continue. The burst on step `t+2` draws 3–5 weighted risk events with distinct mechanisms, including at least one price shock. Each burst can apply at most one market-wide price shock and one change per modifier. Two market steps normally take 10 seconds. Fast-forward or a faster cadence can shorten the real-time warning window.
 
 `huge_wave.total` is the number drawn, `fired` is the number whose warnings started, and `left` is the number yet to start. The warning announces timing without revealing direction or magnitude.
 

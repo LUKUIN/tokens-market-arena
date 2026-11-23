@@ -28,7 +28,7 @@ curl http://127.0.0.1:8734/state
 | `/health` | `ok`、`tick`、`equity`、`finished`、`protocol` 和 `engine_version`。 |
 | `/state` | 局面对象。`?history=0` 会把 `price_history` 置为 `{}`，仍返回权益曲线和近期事件。 |
 | `/prices` | 品种到 `{price, name, spread_pct}` 的映射。历史价格在 `/state` 中。 |
-| `/rules` | 游戏内规则摘要。v1.2.28 仍有旧挑战顺序、付费援助和旧「一大波」次数等说明，以本页与规则文档所述的实际行为为准。 |
+| `/rules` | 游戏内规则摘要。「随机事件池」列出 40 条事件的效果，「挑战任务池」列出 20 条目标的三档判定口径。援助、暂停和报价历史的细节以本页为准。 |
 | `/roll/state` | `{ok, roll_left, rolled}`。等待挑战答复时，盲盒不会倒数。 |
 | `/special` | 全局开关和次数。`fr_left` 恒为 `null`，老虎机关闭时 `slot_left` 为 `null`。 |
 | `/scratchpad` | `{ok, items}`，或用 `?count=1` 取 `{ok, count}`。 |
@@ -67,7 +67,7 @@ curl http://127.0.0.1:8734/state
 |---|---|
 | `session_id`、`tick`、`elapsed_seconds` | 对局标识、实际行情步数、已用对局秒数。默认行情每 5 秒一步，快进和达标后加速会改变两者的关系。 |
 | `equity`、`balance`、`genesis`、`target` | 净值等于现金加浮动盈亏减欠款。现金是投注上限，`genesis` 是盈亏基准。当前目标看 `target`。 |
-| `rolled`、`difficulty`、`challenge` | 难度 `gap`、`liq` 各为 0–4，未定档时 `difficulty` 为 `null`。开启挑战且定档后才有目标。`challenge.tasks` 中的 `key: double_goal` 表示「孤注一掷」。 |
+| `rolled`、`difficulty`、`challenge` | 难度 `gap`、`liq` 各为 0–4，未定档时 `difficulty` 为 `null`。开启挑战且定档后才有目标。`challenge.tasks` 中的 `key: double_goal` 表示「孤注一掷」，结果任务的 `progress` 显示当前进度。 |
 | `prices`、`liquidity`、`active_mods` | 中间价与基础点差、各品种深度相对档位基础值的比例、当前修正。`liquidity` 是倍数，单位不是 Tokens。 |
 | `positions`、`margin_used`、`maint_margin`、`maint_rate`、`margin_level` | 持仓、已占用保证金、维持保证金金额与基础比例，以及当前保证金覆盖水平。`margin_level` 为百分比，空仓时为 `null`。 |
 | `loan`、`loan_bump_range`、`special` | 当前欠款、额度、利息和目标上浮记录。`loan_bump_range` 显示常规融资口径。「孤注一掷」实际按 50%–100% 计借款和中奖返还的目标上浮，投注区间见 `special.slot_win_range`。 |

@@ -83,19 +83,19 @@ HUGE_WAVE_GAP_TICKS = 36      # 两次「一大波」之间的最小间隔（36 
                                # 预警的意义是给已经建好仓位的人一次逃生机会，不是开局吓唬人。
 HUGE_WAVE_WARN_TICKS = 2       # 演出期长度（tick）：2 × 5 秒 = 10 秒
 HUGE_WAVE_BURST = (3, 5)       # 演出结束后一次性涌出的事件条数（含首尾）
-# 爆发池只收冲击与成本类，不掺顺风事件——「一大波」必须是威胁，不能抽到「流动性充裕」
-HUGE_WAVE_BURST_KINDS = ("pair_rand", "all_rand", "haven", "gap_burst", "mod")
-# mod 类里这些是顺风项，爆发时剔除
+# 爆发至少有一条价格冲击，其余位置可抽成本类修正。
+PRICE_NEWS_KINDS = ("pair_rand", "all_rand", "haven", "gap_burst")
+HUGE_WAVE_BURST_KINDS = (*PRICE_NEWS_KINDS, "mod")
+# 顺风事件与轻微传言留给普通新闻。
 HUGE_WAVE_EXCLUDE_NAMES = ("流动性充裕", "做市商回归", "黑天鹅静默", "流动性盛宴",
                            "平台下调保证金", "保证金减免", "限时免息",
-                           "限时降费", "央行放水")
+                           "限时降费", "央行放水", "深度回补", "论坛传言")
 
 
 
 # ==================== 挑战任务（PvZ2 Level Objectives 的移植） ====================
 # 设计对齐 PvZ2 的关卡目标：① 最多 3 条，一眼看完；② 每条只约束一件事，互相不打架；
-# ③ 阈值随难度抬高（难度越大越宽），保证「难但不是不可能」；
-# ④ 达成状态必须能实时看见，不能等赛后才知道。
+# ③ 阈值按难度调整；④ 交易里程碑可提前完成，净值目标按最终清算判定。
 CHALLENGE_MAX = 3
 CHALLENGE_ASK_SECONDS = 75      # 询问 AI 的等待上限；超时按「不开启」处理，不拖住整局
 CHALLENGE_HOLD_TICKS = 5        # 「按兵不动」认可的持仓时长门槛（tick）
@@ -110,19 +110,46 @@ CHALLENGE_POOL = [
     ("dd_cap",         "稳如磐石", "hold"),
     ("pos_cap",        "轻装上阵", "hold"),
     ("margin_floor",   "留有余地", "hold"),
+    ("no_margin_call", "远离红线", "hold"),
+    ("leverage_cap",   "低倍操盘", "hold"),
+    ("notional_cap",   "量力而行", "hold"),
+    ("swap_cap",       "持仓有度", "hold"),
+    ("no_slot",        "远离赌桌", "hold"),
     ("hold_long",      "按兵不动", "final"),
     ("beat_target",    "更上层楼", "final"),
     ("double_goal",    "孤注一掷", "final"),
+    ("profit_floor",   "积小成多", "final"),
+    ("bank_profit",    "见好就收", "final"),
+    ("profitable_pairs", "多点开花", "final"),
+    ("two_sided",      "多空皆宜", "final"),
 ]
 
-# 三档阈值（0 宽松 / 1 中度 / 2 严苛），难度越高越紧
+# 两条过程任务分属不同约束，避免同一行为被重复计分。
+CHALLENGE_GROUPS = (
+    {"no_loan", "no_assist", "no_slot"},
+    {"no_blowup", "no_margin_call", "margin_floor", "notional_cap", "dd_cap"},
+    {"fee_cap", "swap_cap"},
+    {"no_dual", "pos_cap"},
+    {"leverage_cap"},
+)
+CHALLENGE_GROUP = {key: group for group, keys in enumerate(CHALLENGE_GROUPS) for key in keys}
+
+# 三档阈值（0 宽松 / 1 中度 / 2 严苛）
 CHALLENGE_TIERS = {
     "fee_cap":      (0.015, 0.010, 0.007),
     "dd_cap":       (18.0, 12.0, 8.0),
     "pos_cap":      (4, 3, 2),
     "margin_floor": (150.0, 180.0, 220.0),
     "hold_long":    (1, 2, 3),
-    "beat_target":  (120.0, 150.0, 200.0),
+    "beat_target":  (110.0, 120.0, 130.0),
+    "leverage_cap": (30, 20, 10),
+    "notional_cap": (3.0, 2.5, 2.0),
+    "swap_cap":     (2.0, 1.4, 0.9),
+    "profit_floor": (3.0, 5.0, 8.0),
+    "bank_profit":  (1.0, 1.5, 2.0),
+    "profitable_pairs": (2, 2, 3),
+    "pair_profit":  (0.2, 0.3, 0.5),
+    "two_sided":    (0.3, 0.5, 0.8),
 }
 
 
@@ -132,20 +159,36 @@ def _challenge_desc(key, tier):
     if key == "dd_cap":
         return "净值最大回撤不超过 %.0f%%" % CHALLENGE_TIERS[key][tier]
     if key == "pos_cap":
-        return "同时持仓不超过 %d 个货币对" % CHALLENGE_TIERS[key][tier]
+        return "同时持仓不超过 %d 条，同品种多空分开计" % CHALLENGE_TIERS[key][tier]
     if key == "margin_floor":
         return "有持仓时保证金水平从不低于 %.0f%%" % CHALLENGE_TIERS[key][tier]
     if key == "hold_long":
-        return "至少 %d 笔平仓持仓满 %d tick" % (CHALLENGE_TIERS[key][tier], CHALLENGE_HOLD_TICKS)
+        return "至少 %d 条仓位在最后一次开仓或加仓后持满 %d tick，并主动全部平掉" % (
+            CHALLENGE_TIERS[key][tier], CHALLENGE_HOLD_TICKS)
     if key == "beat_target":
         return "最终净值达到目标的 %.0f%%" % CHALLENGE_TIERS[key][tier]
     if key == "double_goal":
-        # 这一支不做 % 格式化，百分号是字面量；照上面几支写成 %% 会原样漏到
-        # /state 和报告里，界面上就变成「200%%」这种双百分号（2026-11-18 截图）。
-        return ("最终净值达到当前目标的 200%（目标直接翻倍）；本局老虎机与借款的"
-                "目标上浮比例固定落在 50%~100%")
+        return ("开局目标翻倍至 400 万，结算净值须达到届时的目标；"
+                "借款和老虎机返还按 50%～100% 上浮目标")
+    if key == "leverage_cap":
+        return "每笔开仓或加仓使用的杠杆不超过 %d 倍" % CHALLENGE_TIERS[key][tier]
+    if key == "notional_cap":
+        return "总名义敞口不超过初始本金的 %.1f 倍，多空均计入" % CHALLENGE_TIERS[key][tier]
+    if key == "swap_cap":
+        return "累计持仓费不超过初始本金的 %.1f%%" % CHALLENGE_TIERS[key][tier]
+    if key == "profit_floor":
+        return "至少主动平仓一次，结算净值较初始本金提高 %.0f%%" % CHALLENGE_TIERS[key][tier]
+    if key == "bank_profit":
+        return "单笔主动平仓净收益达到初始本金的 %.1f%%" % CHALLENGE_TIERS[key][tier]
+    if key == "profitable_pairs":
+        return "至少 %d 个品种的累计主动平仓净收益各达到初始本金的 %.1f%%" % (
+            CHALLENGE_TIERS[key][tier], CHALLENGE_TIERS["pair_profit"][tier])
+    if key == "two_sided":
+        return "多单、空单的累计主动平仓净收益各达到初始本金的 %.1f%%" % CHALLENGE_TIERS[key][tier]
     return {"no_loan": "全程不向贷款池借入资金",
             "no_blowup": "全程不触发强制平仓",
+            "no_margin_call": "全程不触发保证金追缴或强平",
+            "no_slot": "全程不投注老虎机",
             "no_assist": "不使用「外部的怜悯」求助",
             "no_dual": "同一货币对不得同时持有多空"}.get(key, key)
 
@@ -234,7 +277,7 @@ SAFE_HAVEN = ("FROST/CORE", "AMBER/CORE")
 # 设计原则：
 # 1) 行情冲击类方向一律随机 —— 做多做空机会均等，不引入系统性偏差
 # 2) 成本类成对出现（枯竭/充裕、提高/下调、涨费/降费），长期期望抵消
-# 3) 氛围类无数值影响，只负责沉浸感
+# 3) 每条事件都要改变行情、成本或一项可执行操作
 # (名称, 权重, 类型, 参数)
 NEWS_TABLE = [
     # --- 行情冲击（方向随机）---
@@ -242,7 +285,7 @@ NEWS_TABLE = [
     ("大单扫盘",       6, "pair_rand", (0.025, 0.060)),
     ("数据意外",       5, "pair_rand", (0.012, 0.028)),
     ("市场整体异动",   4, "all_rand",  (0.008, 0.020)),
-    ("闪崩",           2, "all_rand",  (0.040, 0.080)),
+    ("全市急变",       2, "all_rand",  (0.040, 0.080)),
     ("瑞郎时刻",       1, "pair_rand", (0.150, 0.250)),
     # --- 避险（有方向，但多空各有解读）---
     ("避险情绪爆发",   3, "haven",     (0.015, 0.030)),
@@ -262,14 +305,14 @@ NEWS_TABLE = [
     # --- v88 新增 8 条 ---
     ("信贷紧缩",       3, "mod", ("loan_pool_mult", 0.70, 20)),
     ("央行放水",       3, "mod", ("loan_pool_mult", 1.25, 20)),
-    ("爆仓清算潮",     3, "all_rand", (0.010, 0.025)),
-    ("流动性抽离",     3, "mod", ("spread_mult", 3.0, 5)),
-    ("节假日休市",     2, "mod", ("leverage_cap", 50, 10)),
+    ("集中平仓",       3, "all_rand", (0.010, 0.025)),
+    ("流动性抽离",     3, "mod", ("spread_mult", 2.0, 5)),
+    ("节假日降杠杆",   2, "mod", ("leverage_cap", 50, 10)),
     ("算法共振",       3, "mod", ("vol_mult", 1.8, 12)),
     ("保证金减免",     3, "mod", ("margin_mult", 0.6, 15)),
     ("黑天鹅预警",     2, "mod", ("gap_mult", 3.0, 10)),
     # --- v89 天灾（严重，但可躲）---
-    ("熔断停市",       2, "halt_ticks", 3),
+    ("熔断限开",       2, "halt_ticks", 3),
     ("连环跳空",       2, "gap_burst", (0.030, 0.080)),
     # --- v89 顺风（明显对持仓者有利）---
     ("做市商回归",     3, "mod", ("spread_mult", 0.30, 12)),
@@ -279,34 +322,26 @@ NEWS_TABLE = [
     ("风控审查",       3, "halt_loan",  60),   # 5 分钟禁借（负现金自救窗口例外）
     ("交易所维护",     1, "halt_close", 1),    # 1 tick 禁平仓（强平不受影响）
     ("老虎机维护",     2, "halt_slot",  96),   # 8 分钟禁投注
-    # --- 原「氛围」三条已改造为有数值影响 ---
+    # --- 小幅价格冲击与短期成本变化 ---
     ("论坛传言",       6, "pair_rand", (0.003, 0.008)),
     ("有人爆仓",       5, "mod", ("spread_mult", 2.5, 5)),
-    ("平台公告",       5, "mod", ("fee_mult", 1.5, 10)),
+    ("交易附加费",     5, "mod", ("fee_mult", 1.5, 10)),
+    # 同一基础深度下，对称调整滑点成本。
+    ("做市商撤单",     3, "mod", ("depth_mult", 0.75, 10)),
+    ("深度回补",       3, "mod", ("depth_mult", 1.5, 10)),
     # --- 稀有：借贷政策类 ---
     # 注意：【优惠融资】已升级为开局全局开关（见 special 段），不再进入随机事件池。
 ]
 
-FLAVOR_LINES = {
-    "论坛传言": [
-        "有人在群里说今晚有大事，配图是一张截图。",
-        "「这次真的不一样」——发在凌晨三点的论坛帖。",
-        "一个自称内幕的人说，下周会有一次大动作。",
-        "讨论区在传某个品种要出问题，没人能证实。",
-    ],
-    "有人爆仓": [
-        "群里安静了几分钟，然后有人说「我不玩了」。",
-        "有人晒出强平截图，两小时前他还在教别人怎么加仓。",
-        "一个熟悉的昵称从成员列表里消失了。",
-        "凌晨四点，有人发了一句「借我点钱」，之后再没说话。",
-    ],
-    "平台公告": [
-        "平台公告：系统将于今晚进行例行维护。",
-        "平台公告：近期市场波动加大，请合理控制仓位。",
-        "平台公告：部分品种的保证金要求将根据市场情况调整。",
-        "平台公告：结算时间调整为每日 05:00。",
-    ],
-}
+
+def _wave_group(row):
+    _, _, kind, params = row
+    if kind == "mod":
+        return kind, params[0]
+    if kind in ("all_rand", "haven", "gap_burst"):
+        return "market_shock"
+    return kind
+
 
 MOD_DEFAULT = {
     "spread_mult": 1.0, "vol_mult": 1.0, "margin_mult": 1.0,
@@ -314,6 +349,7 @@ MOD_DEFAULT = {
     "leverage_cap": 1000,   # 与 MAX_LEVERAGE 保持一致（此处先于常量定义）
     "loan_pool_mult": 1.0,  # 信贷紧缩/放水：贷款池容量的临时倍率
     "gap_mult": 1.0,        # 黑天鹅预警：跳空概率的临时倍率
+    "depth_mult": 1.0,
     "loan_bump_lo": 0.01,   # 【优惠融资】借款上浮下限（默认 +1%，开启期间为 0%）
 }
 
@@ -392,7 +428,7 @@ def _idle_rule_text():
             % (IDLE_ABORT_MINUTES, "、".join(IDLE_ACTION_LABELS)))
 
 
-ENGINE_VERSION = "1.2.28"  # 发布版本号：报告页脚与文档口径以此为准
+ENGINE_VERSION = "1.2.29"  # 事件池与挑战抽签更新后，行情复现与旧版分开。
 PROTOCOL_VERSION = 1        # Agent 接口协议版本。字段增删/语义变更必须 +1，
                             # 并同步 docs/ai-protocol.md 与 /health 的 protocol 字段。
 
@@ -557,7 +593,7 @@ def _new_session(seed=None, roll_index=None):
         "halt_loan_until": 0,    # 风控审查：到该 tick 之前禁止借款（负现金自救窗口例外）
         "halt_close_until": 0,   # 交易所维护：到该 tick 之前禁止平仓（爆仓强平不受影响）
         "halt_slot_until": 0,    # 老虎机维护：到该 tick 之前禁止投注
-        "halt_until": 0,        # 熔断停市：到该 tick 之前都不能下单
+        "halt_until": 0,        # 熔断限开：到该 tick 之前暂停开仓
         "clock_cheat": False,
         "elapsed_seen": 0.0,
         "ff_used": 0.0,          # 本局已用快进额度（秒）
@@ -623,8 +659,24 @@ def _mod_label(key, val):
     tpl = {"spread_mult": "点差×%.1f", "vol_mult": "波动×%.1f",
            "margin_mult": "保证金×%.1f", "fee_mult": "手续费×%.1f",
            "swap_mult": "利息×%.1f", "loan_pool_mult": "贷款池×%.2f",
-           "gap_mult": "跳空×%.1f"}.get(key)
+           "gap_mult": "跳空概率×%.1f", "depth_mult": "市场深度×%.3g"}.get(key)
     return (tpl % val) if tpl else key
+
+
+def _news_summary(kind, params):
+    if kind == "mod":
+        key, value, ticks = params
+        return "%s，持续 %d tick" % (_mod_label(key, value), ticks)
+    if kind in ("pair_rand", "all_rand", "haven", "gap_burst"):
+        scope = {"pair_rand": "单品种随机方向冲击", "all_rand": "全市场同向冲击（各品种乘 0.6～1.0）",
+                 "haven": "避险品种上涨（其余下跌涨幅的 0.2～0.5 倍）",
+                 "gap_burst": "全品种独立方向跳空"}[kind]
+        return "%s，基准幅度 %.1f%%～%.1f%%" % (scope, params[0] * 100, params[1] * 100)
+    if kind == "halt":
+        return "本 tick 暂停开仓"
+    action = {"halt_ticks": "暂停开仓", "halt_loan": "暂停借款（现金为负的自救窗口除外）",
+              "halt_close": "暂停主动平仓", "halt_slot": "暂停老虎机投注"}[kind]
+    return "%s，持续 %d tick" % (action, params)
 
 
 def _writing(fn):
@@ -928,6 +980,7 @@ class Engine:
                 self.s["challenge"]["hold_hits"] = 0
                 self.s["challenge"]["peak_eq"] = self.equity()
                 self.s["challenge"]["mdd_pct"] = 0.0
+                self._challenge_update()
                 self._event("【挑战任务】已公布三条目标：" + "；".join(
                     "%s（%s）" % (t["name"], t["desc"]) for t in self.s["challenge"]["tasks"]),
                     "info")
@@ -954,24 +1007,22 @@ class Engine:
         return 0 if m <= 1 else (1 if m == 2 else 2)
 
     def _challenge_make(self):
-        """按难度抽 3 条互不重复的目标。
-
-        必含至少一条结果型（按兵不动 / 更上层楼）：三条全是「不许做某事」会把
-        玩法压成什么都不做，结果型保证这局仍然要有进攻动作。
-        """
+        """抽一条结果目标和两条侧重点不同的过程目标。"""
         tier = self._challenge_tier()
         rng = random.Random((int(self.s.get("seed") or 0) ^ 0x5C3A) + tier * 7919)
-        pool = list(CHALLENGE_POOL)
-        finals = [p for p in pool if p[2] == "final"]
-        first = rng.choice(finals)
-        rest = [p for p in pool if p[0] != first[0]]
-        picks = [first] + rng.sample(rest, CHALLENGE_MAX - 1)
-        # 「孤注一掷」与「更上层楼」互斥：目标翻倍后再叠 200% 就是 4 倍，同局出现等于必败。
-        # 抽中两条时把「更上层楼」换成池里未入选的过程型目标。
-        _picked = {p[0] for p in picks}
-        if "double_goal" in _picked and "beat_target" in _picked:
-            _spare = [p for p in pool if p[0] not in _picked and p[2] != "final"]
-            picks = [rng.choice(_spare) if p[0] == "beat_target" else p for p in picks]
+        finals = [p for p in CHALLENGE_POOL if p[2] == "final"]
+        first = rng.choices(finals, weights=[1 if p[0] == "double_goal" else 3 for p in finals])[0]
+        unavailable = set()
+        if not self.s.get("assist_on"):
+            unavailable.add("no_assist")
+        if not self.s["special"].get("slot"):
+            unavailable.add("no_slot")
+        holds = [p for p in CHALLENGE_POOL if p[2] == "hold" and p[0] not in unavailable]
+        picks = [first]
+        for _ in range(CHALLENGE_MAX - 1):
+            picked = rng.choice(holds)
+            picks.append(picked)
+            holds = [p for p in holds if CHALLENGE_GROUP[p[0]] != CHALLENGE_GROUP[picked[0]]]
         tasks = [{"key": k, "name": n, "kind": kind, "tier": tier,
                   "desc": _challenge_desc(k, tier), "status": "pending", "note": ""}
                  for k, n, kind in picks]
@@ -979,7 +1030,6 @@ class Engine:
             if t["key"] == "double_goal":
                 # 抽到即生效：目标翻倍，本局老虎机 / 借款的目标上浮区间统一收紧到 50%~100%
                 self.s["target"] = float(self.s.get("target") or TARGET_EQUITY) * 2.0
-                t["goal"] = float(self.s["target"])
                 self.s.setdefault("challenge", {}).setdefault("rules", {})["double_goal"] = True
                 self._event("【挑战任务】孤注一掷生效：目标翻倍到 %.0f，老虎机 / 借款上浮固定 50%%~100%%" % self.s["target"], "warn")
         return tasks
@@ -1001,7 +1051,8 @@ class Engine:
             "stage": stage,
             "ask_left": round(left, 1),
             "tasks": [{"key": t["key"], "name": t["name"], "desc": t["desc"],
-                       "status": t["status"], "note": t.get("note", "")} for t in tasks],
+                       "status": t["status"], "note": t.get("note", ""),
+                       "progress": t.get("progress", "")} for t in tasks],
             "cleared": sum(1 for t in tasks if t["status"] == "done"),
             "failed": sum(1 for t in tasks if t["status"] == "failed"),
             "total": len(tasks),
@@ -1058,13 +1109,53 @@ class Engine:
         t["note"] = why
         self._event("【挑战任务】√ %s%s" % (t["name"], (" —— " + why) if why else ""), "ok")
 
-    def _challenge_hold_hit(self):
+    def _challenge_record_close(self, pos, qty, rec):
         c = self.s.get("challenge") or {}
-        if c.get("stage") == "on":
+        if c.get("stage") != "on":
+            return
+        opened = pos.get("added_tick", pos.get("opened_tick", self.s["tick"]))
+        if qty >= pos["lots"] and self.s["tick"] - opened >= CHALLENGE_HOLD_TICKS:
             c["hold_hits"] = int(c.get("hold_hits") or 0) + 1
+        # 平仓价已包括点差和滑点；按实际平掉的比例分摊开仓手续费。
+        open_fee = float(pos.get("fee") or 0.0) * qty / pos["lots"]
+        net = rec["pnl"] - rec["fee"] - open_fee
+        stats = c.setdefault("closed", {"count": 0, "best": 0.0, "pairs": {}, "sides": {}})
+        stats["count"] += 1
+        stats["best"] = max(stats["best"], net)
+        for group, key in (("pairs", pos["pair"]), ("sides", pos["side"])):
+            stats[group][key] = stats[group].get(key, 0.0) + net
 
-    def _challenge_update(self):
-        """每 tick 判定一次：破功不可逆，达标立刻打勾。"""
+    def _challenge_result(self, key, tier, eq, genesis):
+        c = self.s["challenge"]
+        stats = c.get("closed") or {}
+        if key == "hold_long":
+            actual, goal = int(c.get("hold_hits") or 0), CHALLENGE_TIERS[key][tier]
+            return actual >= goal, "%d/%d 条持满 %d tick" % (actual, goal, CHALLENGE_HOLD_TICKS)
+        if key == "bank_profit":
+            actual = stats.get("best", 0.0)
+            goal = genesis * CHALLENGE_TIERS[key][tier] / 100
+            return actual >= goal, "最高单笔净收益 %.0f / %.0f Tokens" % (actual, goal)
+        if key == "profitable_pairs":
+            per_pair = genesis * CHALLENGE_TIERS["pair_profit"][tier] / 100
+            actual = sum(pnl >= per_pair for pnl in stats.get("pairs", {}).values())
+            goal = CHALLENGE_TIERS[key][tier]
+            return actual >= goal, "%d/%d 个品种净收益达 %.0f Tokens" % (actual, goal, per_pair)
+        if key == "two_sided":
+            sides = stats.get("sides", {})
+            long, short = sides.get("LONG", 0.0), sides.get("SHORT", 0.0)
+            goal = genesis * CHALLENGE_TIERS[key][tier] / 100
+            return min(long, short) >= goal, "多单 %.0f、空单 %.0f，各需 %.0f Tokens" % (long, short, goal)
+        if key == "profit_floor":
+            if not stats.get("count"):
+                return False, "尚未主动平仓"
+            goal = genesis * (1 + CHALLENGE_TIERS[key][tier] / 100)
+        else:
+            target = float(self.s["target"])
+            goal = target if key == "double_goal" else target * CHALLENGE_TIERS[key][tier] / 100
+        return eq >= goal, "净值 %.0f / %.0f Tokens" % (eq, goal)
+
+    def _challenge_update(self, open_leverage=None, settling=False):
+        """在行情、成功操作和最终清算后检查挑战。"""
         c = self.s.get("challenge") or {}
         if c.get("stage") != "on":
             return
@@ -1077,8 +1168,7 @@ class Engine:
             dd = max(0.0, (peak - eq) / peak * 100.0)
             if dd > float(c.get("mdd_pct") or 0.0):
                 c["mdd_pct"] = dd
-        pos = self.s["positions"]
-        ml = self.margin_level()
+        genesis = float(self.s["genesis"])
         for t in c.get("tasks") or []:
             if t["status"] != "pending":
                 continue
@@ -1096,7 +1186,7 @@ class Engine:
                 if self._has_dual_side():
                     self._challenge_fail(t, "同品种出现多空对锁")
             elif k == "fee_cap":
-                cap = CHALLENGE_TIERS["fee_cap"][tier] * float(self.s.get("genesis") or STARTER_CASH)
+                cap = CHALLENGE_TIERS["fee_cap"][tier] * genesis
                 if float(self.s["total_fees"]) > cap:
                     self._challenge_fail(t, "手续费 %.0f 超过上限 %.0f" % (self.s["total_fees"], cap))
             elif k == "dd_cap":
@@ -1105,25 +1195,41 @@ class Engine:
                     self._challenge_fail(t, "回撤 %.1f%% 超过 %.0f%%" % (c["mdd_pct"], lim))
             elif k == "pos_cap":
                 lim = CHALLENGE_TIERS["pos_cap"][tier]
-                if len(pos) > lim:
-                    self._challenge_fail(t, "同时持仓 %d 个，上限 %d 个" % (len(pos), lim))
+                count = len(self.s["positions"])
+                if count > lim:
+                    self._challenge_fail(t, "同时持仓 %d 条，上限 %d 条" % (count, lim))
             elif k == "margin_floor":
+                ml = self.margin_level()
                 lim = CHALLENGE_TIERS["margin_floor"][tier]
                 if ml is not None and ml * 100.0 < lim:
                     self._challenge_fail(t, "保证金水平 %.0f%% 低于 %.0f%%" % (ml * 100.0, lim))
-            elif k == "hold_long":
-                need = CHALLENGE_TIERS["hold_long"][tier]
-                if int(c.get("hold_hits") or 0) >= need:
-                    self._challenge_done(t, "%d 笔满 %d tick" % (need, CHALLENGE_HOLD_TICKS))
-            elif k == "double_goal":
-                goal = float(self.s.get("target") or TARGET_EQUITY)
-                if eq >= goal:
-                    self._challenge_done(t, "净值 %.0f >= %.0f" % (eq, goal))
-            elif k == "beat_target":
-                ratio = CHALLENGE_TIERS["beat_target"][tier] / 100.0
-                goal = float(self.s.get("target") or TARGET_EQUITY) * ratio
-                if eq >= goal:
-                    self._challenge_done(t, "净值 %.0f >= %.0f" % (eq, goal))
+            elif k == "no_margin_call":
+                if self.s["margin_calls"] or self.s["blowups"]:
+                    self._challenge_fail(t, "已发生保证金追缴或强平")
+            elif k == "no_slot":
+                if self.s["special"]["slot_plays"]:
+                    self._challenge_fail(t, "已投注老虎机")
+            elif k == "leverage_cap":
+                lim = CHALLENGE_TIERS[k][tier]
+                if open_leverage is not None and open_leverage > lim:
+                    self._challenge_fail(t, "本次使用 %d 倍杠杆，上限 %d 倍" % (open_leverage, lim))
+            elif k == "notional_cap":
+                actual = self._account_notional()
+                lim = CHALLENGE_TIERS[k][tier] * genesis
+                if actual > lim:
+                    self._challenge_fail(t, "名义敞口 %.0f 超过上限 %.0f" % (actual, lim))
+            elif k == "swap_cap":
+                actual = self.s["total_swap"]
+                lim = CHALLENGE_TIERS[k][tier] * genesis / 100
+                if actual > lim:
+                    self._challenge_fail(t, "持仓费 %.0f 超过上限 %.0f" % (actual, lim))
+            elif t["kind"] == "final":
+                met, progress = self._challenge_result(k, tier, eq, genesis)
+                t["progress"] = progress
+                if met and (settling or k not in ("double_goal", "beat_target", "profit_floor")):
+                    self._challenge_done(t, progress)
+                elif settling:
+                    self._challenge_fail(t, progress)
 
 
     def _challenge_rule(self, key):
@@ -1132,47 +1238,18 @@ class Engine:
         return bool((c.get("rules") or {}).get(key))
 
     def _challenge_settle_end(self):
-        """局终清算，保证每条任务都有结局。
-
-        hold 类（不借款 / 不爆仓 / 不求助 / 不对锁 / 手续费 / 回撤 / 持仓数 / 保证金）
-        只会在破功时被判失败，若全程没破功，到结算时必须补记为达成；
-        final 类（按兵不动 / 更上层楼 / 孤注一掷）没达标就是未达成。
-        幂等：只处理仍为 pending 的任务，重复调用结果不变。
-        """
+        """用清算后的账本补判仍处于进行中的挑战。"""
         c = self.s.get("challenge") or {}
         if c.get("stage") != "on":
             return
         tasks = c.get("tasks") or []
-        if not tasks:
+        if c.get("settled") or not tasks:
             return
-        eq = self.equity()
+        self._challenge_update(settling=True)
         for t in tasks:
-            if t.get("status") != "pending":
-                continue
-            k, tier = t["key"], int(t.get("tier", 1))
-            if k == "double_goal":
-                goal = float(self.s.get("target") or TARGET_EQUITY)
-                if eq >= goal:
-                    self._challenge_done(t, "净值 %.0f >= %.0f" % (eq, goal))
-                else:
-                    self._challenge_fail(t, "净值 %.0f 未达翻倍目标 %.0f" % (eq, goal))
-            elif k == "beat_target":
-                ratio = CHALLENGE_TIERS["beat_target"][tier] / 100.0
-                goal = float(self.s.get("target") or TARGET_EQUITY) * ratio
-                if eq >= goal:
-                    self._challenge_done(t, "净值 %.0f >= %.0f" % (eq, goal))
-                else:
-                    self._challenge_fail(t, "净值 %.0f 未达 %.0f" % (eq, goal))
-            elif k == "hold_long":
-                need = CHALLENGE_TIERS["hold_long"][tier]
-                if int(c.get("hold_hits") or 0) >= need:
-                    self._challenge_done(t, "%d 笔满 %d tick" % (need, CHALLENGE_HOLD_TICKS))
-                else:
-                    self._challenge_fail(t, "%d 笔满 %d tick 未完成（实际 %d 笔）"
-                                      % (need, CHALLENGE_HOLD_TICKS, int(c.get("hold_hits") or 0)))
-            else:
-                # 其余全是一路监控的 hold 类，没破功即达成
+            if t["status"] == "pending":
                 self._challenge_done(t, "全程未破功")
+        c["settled"] = True
         cleared = sum(1 for t in tasks if t.get("status") == "done")
         self._event("【挑战任务】结算：%d/%d 达成" % (cleared, len(tasks)),
                     "ok" if cleared == len(tasks) else "news")
@@ -1350,7 +1427,7 @@ class Engine:
 
     def _liquidity(self, sym):
         st = self.s.get("liquidity", {}).get(sym)
-        return st["L"] if st else self._liq_base()
+        return (st["L"] if st else self._liq_base()) * self._mod("depth_mult")
 
     def _slip_rate(self, before, after, sym=None):
         """边际滑点率。成本 = SLIP_K/(2*LIQUIDITY)*(after^2 - before^2)。
@@ -1506,12 +1583,17 @@ class Engine:
                     if r[2] in HUGE_WAVE_BURST_KINDS and r[0] not in HUGE_WAVE_EXCLUDE_NAMES]
             if not pool:
                 return False
-            n = self._market_rng.randint(*HUGE_WAVE_BURST)
+            n = min(self._market_rng.randint(*HUGE_WAVE_BURST), len({_wave_group(row) for row in pool}))
             self._event("【爆发】冲击全面到来 —— %d 条风险事件同时生效" % n, "huge_wave")
-            for _ in range(n):
-                name, _w, kind, params = self._market_rng.choices(pool, weights=[r[1] for r in pool])[0]
+            price_events = [row for row in pool if row[2] in PRICE_NEWS_KINDS]
+            for i in range(n):
+                eligible = price_events if i == 0 and price_events else pool
+                picked = self._market_rng.choices(eligible, weights=[r[1] for r in eligible])[0]
+                name, _w, kind, params = picked
                 self._apply_news(name, kind, params)
                 self.s["last_news_name"] = name
+                group = _wave_group(picked)
+                pool = [row for row in pool if _wave_group(row) != group]
             return True
 
         # ---- ② 演出期：静默，不投任何普通新闻 ----
@@ -1575,7 +1657,8 @@ class Engine:
             mag = self._market_rng.uniform(*params) * self._market_rng.choice([-1, 1])
             for sym in PAIRS:
                 self._shock(sym, mag * self._market_rng.uniform(0.6, 1.0))
-            self._event("【突发】%s → 全线 %+.1f%%" % (name, mag * 100), "news")
+            lo, hi = sorted((mag * 60, mag * 100))
+            self._event("【突发】%s → 全市场同向冲击 %+.1f%%～%+.1f%%" % (name, lo, hi), "news")
         elif kind == "haven":
             mag = self._market_rng.uniform(*params)
             for sym in PAIRS:
@@ -1594,14 +1677,15 @@ class Engine:
                     "%.1f%%~+100%%；一旦抽中负数立即失效" % (
                         name, ticks, ticks * TICK_SECONDS / 60.0, val * 100), "warn")
             else:
-                self._event("【突发】%s（持续 %d tick）" % (name, ticks), "news")
+                self._event("【突发】%s → %s（持续 %d tick）" % (
+                    name, _mod_label(key, val), ticks), "news")
         elif kind == "halt":
             self.s["halt_orders"] = True
-            self._event("【突发】%s → 本 tick 无法下单" % name, "news")
+            self._event("【突发】%s → 本 tick 暂停开仓" % name, "news")
         elif kind == "halt_ticks":
             n = int(params)
             self.s["halt_until"] = self.s["tick"] + n
-            self._event("【天灾】%s → 未来 %d 个 tick 全面停止接单" % (name, n), "warn")
+            self._event("【天灾】%s → 暂停开仓 %d tick" % (name, n), "warn")
         elif kind == "gap_burst":
             lo, hi = params
             if not hasattr(self, "_gap_pairs"):
@@ -1631,8 +1715,6 @@ class Engine:
             self._event(
                 "【平台】%s → 未来 %d 个 tick（%.0f 分钟）暂停老虎机投注" % (
                     name, n, n * TICK_SECONDS / 60.0), "warn")
-        elif kind == "flavor":
-            self._event("【%s】%s" % (name, self._market_rng.choice(FLAVOR_LINES[name])), "info")
 
     def _advance_prices(self):
         self._expire_mods()
@@ -1811,6 +1893,7 @@ class Engine:
         self._event("本局结束：最终权益 %.2f Tokens（%s）%s" % (
             eq, verdict,
             "｜累计借款 %.0f" % borrowed if borrowed > 0 else ""), "end")
+        self._challenge_settle_end()
         self._save()
         report = self._write_report(reason, eq)
         out = {"ok": True, "final_equity": round(eq, 2),
@@ -1863,6 +1946,7 @@ class Engine:
         都不能少，并且写入成交流水 —— 否则报告无法重算账本，
         而「强制清算比主动平仓更便宜」也会成为可套利的口子。
         """
+        self._challenge_update()
         loss = 0.0
         n = 0
         for p in list(self.s["positions"]):
@@ -2125,6 +2209,8 @@ class Engine:
             self.s["assist_used"] = used
             ticket = "a%d" % used
             self._assist_push("ai", t, ticket=ticket, status="pending")
+            self._challenge_update()
+            self._save()
             return {"ok": True, "ticket": ticket, "remaining": self.ASSIST_ASK_LIMIT - used}
 
     def assist_inbox(self):
@@ -2458,6 +2544,7 @@ class Engine:
                             % (stake, mult, payout, bump_pct * 100, bump, self.s["target"]), "news")
             else:
                 self._event("【老虎机】投入 %.0f → 无所得" % stake, "news")
+            self._challenge_update()
             self._save()
             return {"ok": True, "payout": round(payout, 2), "mult": mult,
                     "bump_pct": round(bump_pct * 100, 2), "bump": round(bump, 2),
@@ -2533,6 +2620,7 @@ class Engine:
                 self.s["negative_since"] = None
                 self.s["negative_since_at"] = 0.0
                 self.s["negative_notified"] = False
+            self._challenge_update()
             self._save()
             return {"ok": True, "amount": amount,
                     "pct": round(pct * 100, 2), "bump": round(bump, 2),
@@ -2670,6 +2758,7 @@ class Engine:
                 cur["lots"] = tot
                 cur["margin"] = round(cur["margin"] + margin, 2)
                 cur["fee"] = round(cur["fee"] + fee, 2)
+                cur["added_tick"] = self.s["tick"]
                 # 不再把 leverage 改写成「名义/保证金」：杠杆是玩家下单时选的参数，
                 # 反推会写出 67 这类没人选过的值，还会让占用保证金与 state 里的数字打架。
                 pos = cur
@@ -2691,6 +2780,7 @@ class Engine:
             else:
                 self._event("开仓 %s %s %.0f 手 @%.4f（%d 倍杠杆，占用保证金 %.0f）" % (
                     pair, side, lots, fill, leverage, margin), "open")
+            self._challenge_update(open_leverage=leverage)
             self._save()
             return {"ok": True, "position": pos, "state": self._state_light()}
 
@@ -2736,22 +2826,22 @@ class Engine:
                 p = self.s["positions"][i]
                 qty = p["lots"] if remaining is None else min(p["lots"], remaining)
                 rec = self._settle_lot(p, qty)
+                self._challenge_record_close(p, qty, rec)
                 if qty >= p["lots"]:
                     self.s["positions"].pop(i)
                 else:
                     # 按手数比例缩减，保持与开仓时的 margin_mult 一致；
                     # 用 _position_margin 重算会套上「当前」事件系数，让占用额跳变。
                     p["margin"] = round(p["margin"] * (p["lots"] - qty) / p["lots"], 2)
+                    p["fee"] = float(p.get("fee") or 0.0) * (p["lots"] - qty) / p["lots"]
                     p["lots"] -= qty
                 closed.append({"pair": rec["pair"], "side": rec["side"], "lots": qty,
                                "fill": rec["fill"], "pnl": rec["pnl"]})
-                # 挑战任务「按兵不动」：记一笔够时长的平仓
-                if self.s["tick"] - int(p.get("opened_tick") or self.s["tick"]) >= CHALLENGE_HOLD_TICKS:
-                    self._challenge_hold_hit()
                 self._event("平仓 %s %s %.0f 手 @%.4f，盈亏 %+.0f" % (
                     pair, p["side"], qty, rec["fill"], rec["pnl"]), "close")
                 if remaining is not None:
                     remaining -= qty
+            self._challenge_update()
             self._save()
             return {"ok": True, "closed": closed, "state": self._state_light()}
 
@@ -2763,7 +2853,7 @@ class Engine:
             closed = []
             errors = []
             for p in list(self.s["positions"]):
-                r = self.close_position(p["pair"], p["lots"])
+                r = self.close_position(p["pair"], p["lots"], p["side"])
                 if r.get("ok"):
                     closed.extend(r["closed"])
                 elif r.get("error") and r["error"] not in errors:
@@ -3034,7 +3124,6 @@ class Engine:
         try:
             import datetime
             import re as _re
-            self._challenge_settle_end()
             m = self._metrics(final_eq)
             fmt = lambda v: "{:,.2f}".format(v)
             trader = _re.sub(r"[^\w\u4e00-\u9fa5-]", "", self.s.get("trader", "visitor"))[:60] or "visitor"
@@ -3684,6 +3773,7 @@ footer {{ color: var(--muted); font-size: 13px; text-align: center; padding-bloc
                 "spread_cost": round(float(m["spread_cost"]), 2),
                 "settled": bool((self.s.get("last_settle") or {}).get("settled", True)),
                 "settle_warnings": list((self.s.get("last_settle") or {}).get("warnings") or []),
+                "challenge": self._challenge_view(),
                 "audit": self._audit_ledger(),
             }
             with open(jp, "w", encoding="utf-8") as jf:
@@ -3857,7 +3947,7 @@ footer {{ color: var(--muted); font-size: 13px; text-align: center; padding-bloc
                      "label": _mod_label(k, v[0]),
                      "left_ticks": max(0, int(v[1]) - self.s["tick"])}
                     for k, v in (self.s.get("mods") or {}).items() if self.s["tick"] < v[1]
-                ][:6],
+                ],
                 "liquidity": {sym: round(self._liquidity(sym) / max(1.0, self._liq_base()), 3) for sym in PAIRS},
                 "total_borrowed": round(self.s["loan"]["borrowed"], 2),
                 # 【优惠融资】剩余秒数（墙钟，GUI 按秒刷新）；未生效为 None
@@ -3960,11 +4050,11 @@ footer {{ color: var(--muted); font-size: 13px; text-align: center; padding-bloc
                            SLOT_MAX_PLAYS, SLOT_MAX_STAKE)
                        ).replace("%%", "%"),
             "杠杆": "可选 %d - %d 倍（上限可被事件临时下调，以实际报错为准）" % (MIN_LEVERAGE, MAX_LEVERAGE),
-            "一大波预警": ("随机事件的特殊形态：整局最多 2 次（开局掷骰，35%% 不来 / 45%% 来 1 次 / 20%% 来 2 次），"
-                        "开局前 2.5 分钟不触发。触发时先出一条横幅事件（kind=huge_wave），"
-                        "随后 2 个 tick（10 秒）不投任何普通事件，第 3 个 tick 一次性涌出 3~5 条冲击类事件。"
-                        "只预告「要来」，不预告方向与量级；爆发池不含顺风事件；预警本身无数值影响" % ()),
-            "动态修正": ("杠杆上限、手续费、点差、隔夜利息、黑天鹅概率、贷款池都可能被随机事件临时改写；"
+            "随机事件池": {name: _news_summary(kind, params) for name, _, kind, params in NEWS_TABLE},
+            "一大波预警": ("开局等概率抽取 0～3 波，第 30 tick 起可预警。预警后第 2 个 tick "
+                        "集中触发 3～5 条不同机制的风险事件，至少一条价格冲击，最多一条全市场冲击。"
+                        "预警期间暂停普通新闻，跳空和正常行情继续。"),
+            "动态修正": ("杠杆上限、手续费、点差、市场深度、隔夜利息、黑天鹅概率、贷款池都可能被随机事件临时改写；"
                         "上面给的是基础值，当前生效的修正见 GET /state 的 active_mods"),
             "点差": {s: "%.3f%%" % (cfg["spread"] * 100) for s, cfg in PAIRS.items()},
             "隔夜利息": {s: "%.4f%%/tick" % (cfg["swap"] * 100) for s, cfg in PAIRS.items()},
@@ -3984,11 +4074,11 @@ footer {{ color: var(--muted); font-size: 13px; text-align: center; padding-bloc
             "手续费": "名义价值 %.3f%% / 次" % (FEE_RATE * 100),
             "贷款": "贷款池 %.0f Tokens（可能被「信贷紧缩 / 央行放水」临时缩放）；利率 %.2f%%/tick（%s）；每借一笔：总目标 = 原目标 + 该笔金额 × 随机比例（比例随累计借款额上升，首借 30 万约 4%%~8%%，一次借满约 35%%~66%%；按累计额做梯形积分，拆成十笔与一次借满等价；借完才定）" % (
                 LOAN_POOL, LOAN_RATE_PER_TICK * 100, "随借随还，到期强制清算"),
-            "挑战任务": ("难度定档后询问参赛者是否开启；开启则随机给出 3 条目标（必含至少一条"
-                        "结果型），难度越高阈值越紧。全程实时判定：破了打 ×（不可逆），达标打 √。"
-                        "不开启即普通玩法。三条目标的名称与判定口径见 GET /state 的 challenge.tasks。"
-                        "候选池：两袖清风 / 毫发无伤 / 自食其力 / 从一而终 / 精打细算 / 稳如磐石 / "
-                        "轻装上阵 / 留有余地 / 按兵不动 / 更上层楼"),
+            "挑战任务": ("开局先答复挑战，定档时从 %d 条候选中抽取一条结果任务、两条不同类型的过程任务。"
+                        "过程任务破功立即记录，净值目标在清算后判定。"
+                        "实际阈值和进度见 GET /state 的 challenge.tasks。" % len(CHALLENGE_POOL)),
+            "挑战任务池": {name: {"宽松": _challenge_desc(key, 0), "中等": _challenge_desc(key, 1),
+                               "严苛": _challenge_desc(key, 2)} for key, name, _ in CHALLENGE_POOL},
             "会话时长": "%d 分钟" % SESSION_MINUTES,
             "无活动自动收尾": _idle_rule_text(),
             "tick 间隔": "%d 秒" % TICK_SECONDS,

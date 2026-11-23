@@ -30,7 +30,7 @@ Use `TM_TRADER` before startup to set the contestant name. This also avoids the 
 | `/health` | `ok`, `tick`, `equity`, `finished`, `protocol` and `engine_version`. |
 | `/state` | State object. With `?history=0`, `price_history` is `{}`. Equity history and recent events still appear. |
 | `/prices` | Map from symbol to `{price, name, spread_pct}`. History is in `/state`. |
-| `/rules` | In-game rule summary. In v1.2.28 some descriptions still refer to the previous challenge flow, paid assistance and the older Huge Wave schedule. Use the rules and endpoint contract on these pages for those items. |
+| `/rules` | In-game rule summary, including effects for 40 random events and three tiers of criteria for 20 challenge objectives. Refer to this page for assistance, pause and quote-history behavior. |
 | `/roll/state` | `{ok, roll_left, rolled}`. While the challenge answer is pending, the roll timer does not count down. |
 | `/special` | Feature settings and counters. `fr_left` is always `null`. `slot_left` is `null` if disabled. |
 | `/scratchpad` | `{ok, items}` or `{ok, count}` with `?count=1`. |
@@ -69,7 +69,7 @@ Use a UTF-8 JSON object for bodies. Example bodies appear below. Check `ok` on a
 |---|---|
 | `session_id`, `tick`, `elapsed_seconds` | Match ID, number of market steps, and elapsed match seconds. One market step normally takes 5 seconds; fast-forward and the post-target cadence affect how these values advance. |
 | `equity`, `balance`, `genesis`, `target` | Equity is cash plus unrealized P&L minus debt. Cash is the slot spend limit. `genesis` is the P&L baseline. Use `target` for the current goal. |
-| `rolled`, `difficulty`, `challenge` | Difficulty indices `gap` and `liq` are 0–4. `difficulty` is `null` before locking. Tasks are empty until an enabled challenge is drawn. Look for `key: double_goal` in `challenge.tasks`. |
+| `rolled`, `difficulty`, `challenge` | Difficulty indices `gap` and `liq` are 0–4. `difficulty` is `null` before locking. Tasks are empty until an enabled challenge is drawn. Result tasks show live `progress`. Double or Nothing uses `key: double_goal`. |
 | `prices`, `liquidity`, `active_mods` | Current mid prices with base spreads, per-symbol liquidity relative to the selected tier, and active modifiers. `liquidity` is a multiplier, not the depth in Tokens. |
 | `positions`, `margin_used`, `maint_margin`, `maint_rate`, `margin_level` | Position rows, occupied margin, and the maintenance amount, base rate and current coverage. `margin_level` is a percentage or `null` with no open position. |
 | `loan`, `loan_bump_range`, `special` | Loan balance, limit, interest and target increases. `loan_bump_range` reports the standard financing setting. Double or Nothing uses 50–100% for each loan and slot payout. `special.slot_win_range` reflects that challenge. |
