@@ -88,74 +88,112 @@ HUGE_WAVE_GAP_TICKS = 36      # minimum gap between two Huge Waves (36 ticks = 3
                                # escape from, so the opening gets a grace period.
 HUGE_WAVE_WARN_TICKS = 2       # hold length in ticks: 2 x 5 s = 10 s
 HUGE_WAVE_BURST = (3, 5)       # events released at once when the hold expires (inclusive)
-# The burst pool keeps only shock and cost events -- no tailwind. A "huge wave" has to
-# be a threat, so "ample liquidity" must never be drawn into it.
-HUGE_WAVE_BURST_KINDS = ("pair_rand", "all_rand", "haven", "gap_burst", "mod")
+# Each burst starts with a price shock. The remaining slots can draw risk modifiers.
+PRICE_NEWS_KINDS = ("pair_rand", "all_rand", "haven", "gap_burst")
+HUGE_WAVE_BURST_KINDS = (*PRICE_NEWS_KINDS, "mod")
 HUGE_WAVE_EXCLUDE_NAMES = ("Ample liquidity", "Market makers return", "Black Swan silence",
                            "Liquidity feast", "Platform cuts margin", "Margin relief",
-                           "Interest-free window", "Fee cut window", "Central bank easing")
-
+                           "Interest-free window", "Fee cut window", "Central bank easing",
+                           "Depth Recovery", "Forum rumour")
 
 
 # ==================== Challenge Tasks (a port of PvZ2 Level Objectives) ====================
-# Same design rules as PvZ2 level goals: at most 3 objectives, each one constraining a
-# single thing, never contradicting the others; thresholds scale with difficulty so they
-# stay hard but achievable; status must be visible live, not only after the round.
+# Process constraints can fail immediately. Equity goals are checked at settlement.
 CHALLENGE_MAX = 3
 CHALLENGE_ASK_SECONDS = 75      # answer window; on timeout the round runs without tasks
 CHALLENGE_HOLD_TICKS = 5        # what "Patience Pays" counts as a long enough hold (ticks)
 
-# (key, name, kind)  hold = checked every tick, one violation fails it for good
-#                    final = checked every tick, can be cleared early
+# (key, name, kind)
 CHALLENGE_POOL = [
-    ("no_loan",      "No Borrowing",    "hold"),
-    ("no_blowup",    "No Blow-up",      "hold"),
-    ("no_assist",    "Self-reliant",    "hold"),
-    ("no_dual",      "No Locked Pairs", "hold"),
-    ("fee_cap",      "Fee Discipline",  "hold"),
-    ("dd_cap",       "Drawdown Guard",  "hold"),
-    ("pos_cap",      "Light Footprint", "hold"),
-    ("margin_floor", "Margin Cushion",  "hold"),
-    ("hold_long",    "Patience Pays",   "final"),
-    ("beat_target",  "Beat the Target", "final"),
-    ("double_goal",  "Double or Nothing", "final"),
+    ("no_loan",        "No Borrowing", "hold"),
+    ("no_blowup",      "No Blow-up", "hold"),
+    ("no_assist",      "Self-reliant", "hold"),
+    ("no_dual",        "No Locked Pairs", "hold"),
+    ("fee_cap",        "Fee Discipline", "hold"),
+    ("dd_cap",         "Drawdown Guard", "hold"),
+    ("pos_cap",        "Light Footprint", "hold"),
+    ("margin_floor",   "Margin Cushion", "hold"),
+    ("no_margin_call", "Clear of Margin Calls", "hold"),
+    ("leverage_cap",   "Low Leverage", "hold"),
+    ("notional_cap",   "Size Discipline", "hold"),
+    ("swap_cap",       "Carry Budget", "hold"),
+    ("no_slot",        "No Slot Bets", "hold"),
+    ("hold_long",      "Patience Pays", "final"),
+    ("beat_target",    "Beat the Target", "final"),
+    ("double_goal",    "Double or Nothing", "final"),
+    ("profit_floor",   "Small Gains", "final"),
+    ("bank_profit",    "Profit in Hand", "final"),
+    ("profitable_pairs", "Multiple Winners", "final"),
+    ("two_sided",      "Both Directions", "final"),
 ]
 
-# Three tiers (0 loose / 1 medium / 2 strict); higher difficulty means tighter limits
+# Draw process objectives from distinct groups.
+CHALLENGE_GROUPS = (
+    {"no_loan", "no_assist", "no_slot"},
+    {"no_blowup", "no_margin_call", "margin_floor", "notional_cap", "dd_cap"},
+    {"fee_cap", "swap_cap"},
+    {"no_dual", "pos_cap"},
+    {"leverage_cap"},
+)
+CHALLENGE_GROUP = {key: group for group, keys in enumerate(CHALLENGE_GROUPS) for key in keys}
+
+
 CHALLENGE_TIERS = {
     "fee_cap":      (0.015, 0.010, 0.007),
     "dd_cap":       (18.0, 12.0, 8.0),
     "pos_cap":      (4, 3, 2),
     "margin_floor": (150.0, 180.0, 220.0),
     "hold_long":    (1, 2, 3),
-    "beat_target":  (120.0, 150.0, 200.0),
+    "beat_target":  (110.0, 120.0, 130.0),
+    "leverage_cap": (30, 20, 10),
+    "notional_cap": (3.0, 2.5, 2.0),
+    "swap_cap":     (2.0, 1.4, 0.9),
+    "profit_floor": (3.0, 5.0, 8.0),
+    "bank_profit":  (1.0, 1.5, 2.0),
+    "profitable_pairs": (2, 2, 3),
+    "pair_profit":  (0.2, 0.3, 0.5),
+    "two_sided":    (0.3, 0.5, 0.8),
 }
 
 
 def _challenge_desc(key, tier):
     if key == "fee_cap":
-        return "Cumulative fees stay under %.1f%% of starting capital" % (CHALLENGE_TIERS[key][tier] * 100)
+        return "Keep cumulative fees at or below %.1f%% of starting capital" % (CHALLENGE_TIERS[key][tier] * 100)
     if key == "dd_cap":
-        return "Max equity drawdown stays under %.0f%%" % CHALLENGE_TIERS[key][tier]
+        return "Keep maximum equity drawdown at or below %.0f%%" % CHALLENGE_TIERS[key][tier]
     if key == "pos_cap":
-        return "Never hold more than %d pairs at once" % CHALLENGE_TIERS[key][tier]
+        return "Hold no more than %d position rows, counting long and short separately" % CHALLENGE_TIERS[key][tier]
     if key == "margin_floor":
-        return "Margin level never drops below %.0f%% while holding" % CHALLENGE_TIERS[key][tier]
+        return "Maintain a margin level of at least %.0f%% while holding" % CHALLENGE_TIERS[key][tier]
     if key == "hold_long":
-        return "Close at least %d position(s) held for %d ticks" % (
+        return "Voluntarily close at least %d positions in full after holding each for %d ticks since the last open or add" % (
             CHALLENGE_TIERS[key][tier], CHALLENGE_HOLD_TICKS)
     if key == "beat_target":
-        return "Final equity reaches %.0f%% of the target" % CHALLENGE_TIERS[key][tier]
+        return "Finish at or above %.0f%% of the live target" % CHALLENGE_TIERS[key][tier]
     if key == "double_goal":
-        # This branch does no % substitution, so the percent signs are literals. Writing
-        # %% here (as the formatted branches above do) leaks a doubled sign into /state and
-        # the report, which is exactly what the 2026-11-18 screenshot showed.
-        return ("Final equity reaches the current target (doubled at draw); this run's "
-                "slot and loan target bumps are fixed at 50%-100%")
+        return ("The target starts doubled at 4 million. Final equity must reach the live target. "
+                "Loans and slot payouts increase the target by 50% to 100% of the amount")
+    if key == "leverage_cap":
+        return "Use at most %dx leverage on every open or add" % CHALLENGE_TIERS[key][tier]
+    if key == "notional_cap":
+        return "Keep gross exposure at or below %.1fx starting capital, counting both directions" % CHALLENGE_TIERS[key][tier]
+    if key == "swap_cap":
+        return "Keep cumulative holding costs at or below %.1f%% of starting capital" % CHALLENGE_TIERS[key][tier]
+    if key == "profit_floor":
+        return "Close at least once voluntarily and finish %.0f%% above starting capital" % CHALLENGE_TIERS[key][tier]
+    if key == "bank_profit":
+        return "Earn at least %.1f%% of starting capital on one voluntary close" % CHALLENGE_TIERS[key][tier]
+    if key == "profitable_pairs":
+        return "For at least %d pairs, earn cumulative net profit of %.1f%% of starting capital on voluntary closes" % (
+            CHALLENGE_TIERS[key][tier], CHALLENGE_TIERS["pair_profit"][tier])
+    if key == "two_sided":
+        return "Earn cumulative net profit of %.1f%% of starting capital each from voluntary long and short closes" % CHALLENGE_TIERS[key][tier]
     return {"no_loan": "Never borrow from the loan pool",
-            "no_blowup": "Never get force-liquidated",
-            "no_assist": "Never use the Crowd's Mercy",
-            "no_dual": "Never hold long and short on the same pair"}.get(key, key)
+            "no_blowup": "Avoid margin liquidation",
+            "no_margin_call": "Avoid margin calls and margin liquidation",
+            "no_slot": "Do not use the Slot Machine",
+            "no_assist": "Do not use Outside Mercy",
+            "no_dual": "Never hold both directions on the same pair"}.get(key, key)
 
 _EVENTS_CACHE = None
 
@@ -241,22 +279,17 @@ def _pick_huge_wave_count(rng):
     return min(HUGE_WAVE_MAX, rng.choices([0, 1, 2, 3], weights=HUGE_WAVE_COUNT_W)[0])
 SAFE_HAVEN = ("FROST/CORE", "AMBER/CORE")
 
-# Design principles:
-# 1) Price-shock events are always direction-random -- long and short get equal odds, no systematic bias
-# 2) Cost events come in pairs (scarcity/abundance, raise/cut, fee up/down) so expectations cancel out over time
-# 3) Ambiance events have no numeric effect; they only add immersion
-# (name, weight, kind, params)
 NEWS_TABLE = [
-    # --- price shocks (random direction) ---
+
     ("Central bank surprise intervention",   6, "pair_rand", (0.020, 0.040)),
     ("Block order sweep",       6, "pair_rand", (0.025, 0.060)),
     ("Data surprise",       5, "pair_rand", (0.012, 0.028)),
     ("Broad market move",   4, "all_rand",  (0.008, 0.020)),
-    ("Flash crash",           2, "all_rand",  (0.040, 0.080)),
+    ("Market-wide jolt",       2, "all_rand",  (0.040, 0.080)),
     ("Swiss franc moment",       1, "pair_rand", (0.150, 0.250)),
-    # --- risk-off (has a direction, but longs and shorts read it differently) ---
+
     ("Safe-haven rush",   3, "haven",     (0.015, 0.030)),
-    # --- cost modifiers (paired, symmetric good/bad) ---
+
     ("Liquidity drought",     4, "mod", ("spread_mult", 4.0, 8)),
     ("Ample liquidity",     4, "mod", ("spread_mult", 0.5, 8)),
     ("Option expiry",       3, "mod", ("vol_mult", 2.2, 10)),
@@ -269,60 +302,53 @@ NEWS_TABLE = [
     ("Fee cut window",       3, "mod", ("fee_mult", 0.5, 20)),
     ("Quote delay",       4, "mod", ("slip_add", 0.004, 5)),
     ("Server stutter",     2, "halt", None),
-    # --- 8 new in v88 ---
+
     ("Credit crunch",       3, "mod", ("loan_pool_mult", 0.70, 20)),
     ("Central bank easing",       3, "mod", ("loan_pool_mult", 1.25, 20)),
-    ("Liquidation wave",     3, "all_rand", (0.010, 0.025)),
-    ("Liquidity withdrawal",     3, "mod", ("spread_mult", 3.0, 5)),
-    ("Holiday closure",     2, "mod", ("leverage_cap", 50, 10)),
+    ("Mass position unwind",       3, "all_rand", (0.010, 0.025)),
+    ("Liquidity withdrawal",     3, "mod", ("spread_mult", 2.0, 5)),
+    ("Holiday leverage cut",   2, "mod", ("leverage_cap", 50, 10)),
     ("Algorithm resonance",       3, "mod", ("vol_mult", 1.8, 12)),
     ("Margin relief",     3, "mod", ("margin_mult", 0.6, 15)),
     ("Black Swan alert",     2, "mod", ("gap_mult", 3.0, 10)),
-    # --- v89 disasters (severe but dodgeable) ---
-    ("Circuit-breaker halt",       2, "halt_ticks", 3),
+
+    ("Circuit-breaker entry freeze",       2, "halt_ticks", 3),
     ("Chained gaps",       2, "gap_burst", (0.030, 0.080)),
-    # --- v89 tailwinds (clearly favor holders) ---
+
     ("Market makers return",     3, "mod", ("spread_mult", 0.30, 12)),
     ("Black Swan silence",     3, "mod", ("gap_mult", 0.0, 15)),
     ("Liquidity feast",     3, "mod", ("vol_mult", 0.5, 20)),
-    # --- platform restrictions (temporarily disable an action) ---
-    ("Risk review",       3, "halt_loan",  60),   # 5 min no borrowing (negative-cash rescue window excepted)
-    ("Exchange maintenance",     1, "halt_close", 1),    # 1 tick no closing (forced liquidation still works)
-    ("Slot maintenance",     2, "halt_slot",  96),   # 8 min no betting
-    # --- the three former "ambiance" events now carry numeric effects ---
+
+    ("Risk review",       3, "halt_loan",  60),
+    ("Exchange maintenance",     1, "halt_close", 1),
+    ("Slot maintenance",     2, "halt_slot",  96),
+
     ("Forum rumour",       6, "pair_rand", (0.003, 0.008)),
     ("Someone got blown out",       5, "mod", ("spread_mult", 2.5, 5)),
-    ("Platform announcement",       5, "mod", ("fee_mult", 1.5, 10)),
-    # --- rare: loan-policy events ---
-    # Note: [Preferred Financing] is now a start-of-round global switch (see the special block) and no longer enters the random pool.
+    ("Trading surcharge",     5, "mod", ("fee_mult", 1.5, 10)),
+
+    ("Market Maker Withdrawals",     3, "mod", ("depth_mult", 0.75, 10)),
+    ("Depth Recovery",       3, "mod", ("depth_mult", 1.5, 10)),
+
+
 ]
 
-FLAVOR_LINES = {
-    "Forum rumour": [
-        "Someone in the group says something big is going down tonight; the post comes with a screenshot.",
-        "\"This time it is really different\" — a forum post from 3 a.m.",
-        "A self-proclaimed insider says a big move lands next week.",
-        "The board is spreading word that some pair is about to break; nobody can confirm it.",
-    ],
-    "Someone got blown out": [
-        "The group goes quiet for a few minutes, then someone says \"I'm out\".",
-        "Someone posts a forced-liquidation screenshot; two hours ago he was teaching others how to add to positions.",
-        "A familiar nickname disappears from the member list.",
-        "At 4 a.m. someone types \"lend me some money\" and never speaks again.",
-    ],
-    "Platform announcement": [
-        "Platform announcement: routine maintenance tonight.",
-        "Platform announcement: volatility has picked up recently, please size positions sensibly.",
-        "Platform announcement: margin requirements on some pairs will be adjusted to market conditions.",
-        "Platform announcement: settlement moves to 05:00 daily.",
-    ],
-}
+
+def _wave_group(row):
+    _, _, kind, params = row
+    if kind == "mod":
+        return kind, params[0]
+    if kind in ("all_rand", "haven", "gap_burst"):
+        return "market_shock"
+    return kind
+
 
 MOD_DEFAULT = {
     "spread_mult": 1.0, "vol_mult": 1.0, "margin_mult": 1.0,
     "fee_mult": 1.0, "swap_mult": 1.0, "slip_add": 0.0,
     "leverage_cap": 1000,   # kept in sync with MAX_LEVERAGE (defined later)
     "loan_pool_mult": 1.0,  # credit crunch / easing: temporary multiplier on loan pool size
+    "depth_mult": 1.0,
     "gap_mult": 1.0,        # Black Swan alert: temporary multiplier on gap chance
     "loan_bump_lo": 0.01,   # Preferred Financing borrow floor (default +1%, down to 0% when enabled)
 }
@@ -405,7 +431,7 @@ def _idle_rule_text():
             "activity'. Read-only calls (/state, /prices, /rules) do not count, so "
             "slow thinking is never cut short. TM_IDLE_ABORT tunes it, 0 disables"
             % ("/".join(IDLE_ACTION_LABELS), IDLE_ABORT_MINUTES))
-ENGINE_VERSION = "1.2.28"  # release version: report footer and docs both quote this
+ENGINE_VERSION = "1.2.29"  # release version: report footer and docs both quote this
 PROTOCOL_VERSION = 1        # Agent-facing protocol version. Any field add/remove or semantic change must bump it,
                             # and docs/ai-protocol.md plus the /health "protocol" field must be updated in step.
 
@@ -638,8 +664,24 @@ def _mod_label(key, val):
     tpl = {"spread_mult": "spread x%.1f", "vol_mult": "volatility x%.1f",
            "margin_mult": "margin x%.1f", "fee_mult": "commission x%.1f",
            "swap_mult": "interest x%.1f", "loan_pool_mult": "loan pool x%.2f",
-           "gap_mult": "gap x%.1f"}.get(key)
+           "gap_mult": "gap chance x%.1f", "depth_mult": "market depth x%.3g"}.get(key)
     return (tpl % val) if tpl else key
+
+
+def _news_summary(kind, params):
+    if kind == "mod":
+        key, value, ticks = params
+        return "%s for %d ticks" % (_mod_label(key, value), ticks)
+    if kind in ("pair_rand", "all_rand", "haven", "gap_burst"):
+        scope = {"pair_rand": "One pair, random direction", "all_rand": "Common direction across the market (0.6 to 1.0 times the move per pair)",
+                 "haven": "Safe havens rise, other pairs fall by 0.2 to 0.5 times that move",
+                 "gap_burst": "All pairs gap in independently sampled directions"}[kind]
+        return "%s, base move %.1f%% to %.1f%%" % (scope, params[0] * 100, params[1] * 100)
+    if kind == "halt":
+        return "New positions paused for this tick"
+    action = {"halt_ticks": "New positions paused", "halt_loan": "Borrowing paused (except during negative-cash rescue)",
+              "halt_close": "Voluntary closes paused", "halt_slot": "Slot bets paused"}[kind]
+    return "%s for %d ticks" % (action, params)
 
 
 def _writing(fn):
@@ -948,6 +990,7 @@ class Engine:
                 self.s["challenge"]["hold_hits"] = 0
                 self.s["challenge"]["peak_eq"] = self.equity()
                 self.s["challenge"]["mdd_pct"] = 0.0
+                self._challenge_update()
                 self._event("[Challenge] Objectives published: " + "; ".join(
                     "%s (%s)" % (t["name"], t["desc"]) for t in self.s["challenge"]["tasks"]),
                     "info")
@@ -974,34 +1017,31 @@ class Engine:
         return 0 if m <= 1 else (1 if m == 2 else 2)
 
     def _challenge_make(self):
-        """Draw three distinct objectives for the current difficulty.
-
-        At least one must be a ``final`` goal: three "do not do X" titles reduce the round
-        to doing nothing, whereas a final goal keeps the contestant attacking.
-        """
+        """Draw one result objective and two process objectives from different categories."""
         tier = self._challenge_tier()
         rng = random.Random((int(self.s.get("seed") or 0) ^ 0x5C3A) + tier * 7919)
-        pool = list(CHALLENGE_POOL)
-        finals = [p for p in pool if p[2] == "final"]
-        first = rng.choice(finals)
-        rest = [p for p in pool if p[0] != first[0]]
-        picks = [first] + rng.sample(rest, CHALLENGE_MAX - 1)
-        # "All-In" and "Higher Still" are mutually exclusive: doubling the target and then stacking 200% means 4x, a certain loss in one match.
-        # When both are drawn, replace "Higher Still" with a procedural-type objective that was not already picked.
-        _picked = {p[0] for p in picks}
-        if "double_goal" in _picked and "beat_target" in _picked:
-            _spare = [p for p in pool if p[0] not in _picked and p[2] != "final"]
-            picks = [rng.choice(_spare) if p[0] == "beat_target" else p for p in picks]
+        finals = [p for p in CHALLENGE_POOL if p[2] == "final"]
+        first = rng.choices(finals, weights=[1 if p[0] == "double_goal" else 3 for p in finals])[0]
+        unavailable = set()
+        if not self.s.get("assist_on"):
+            unavailable.add("no_assist")
+        if not self.s["special"].get("slot"):
+            unavailable.add("no_slot")
+        holds = [p for p in CHALLENGE_POOL if p[2] == "hold" and p[0] not in unavailable]
+        picks = [first]
+        for _ in range(CHALLENGE_MAX - 1):
+            picked = rng.choice(holds)
+            picks.append(picked)
+            holds = [p for p in holds if CHALLENGE_GROUP[p[0]] != CHALLENGE_GROUP[picked[0]]]
         tasks = [{"key": k, "name": n, "kind": kind, "tier": tier,
                   "desc": _challenge_desc(k, tier), "status": "pending", "note": ""}
                  for k, n, kind in picks]
         for t in tasks:
             if t["key"] == "double_goal":
-                # Applies on draw: the target doubles, and this match's slot-machine / loan target-uplift ranges tighten to 50%~100%
+
                 self.s["target"] = float(self.s.get("target") or TARGET_EQUITY) * 2.0
-                t["goal"] = float(self.s["target"])
                 self.s.setdefault("challenge", {}).setdefault("rules", {})["double_goal"] = True
-                self._event("[Challenge] Double or Nothing is live: target doubled to %.0f, slot / loan bumps fixed at 50%%-100%%" % self.s["target"], "warn")
+                self._event("[Challenge] Double or Nothing: target doubled to %.0f, with slot payout / loan uplifts of 50%% to 100%%" % self.s["target"], "warn")
         return tasks
 
     def _has_dual_side(self):
@@ -1021,7 +1061,8 @@ class Engine:
             "stage": stage,
             "ask_left": round(left, 1),
             "tasks": [{"key": t["key"], "name": t["name"], "desc": t["desc"],
-                       "status": t["status"], "note": t.get("note", "")} for t in tasks],
+                       "status": t["status"], "note": t.get("note", ""),
+                       "progress": t.get("progress", "")} for t in tasks],
             "cleared": sum(1 for t in tasks if t["status"] == "done"),
             "failed": sum(1 for t in tasks if t["status"] == "failed"),
             "total": len(tasks),
@@ -1079,13 +1120,53 @@ class Engine:
         t["note"] = why
         self._event("[Challenge] CLEARED %s%s" % (t["name"], (" - " + why) if why else ""), "ok")
 
-    def _challenge_hold_hit(self):
+    def _challenge_record_close(self, pos, qty, rec):
         c = self.s.get("challenge") or {}
-        if c.get("stage") == "on":
+        if c.get("stage") != "on":
+            return
+        opened = pos.get("added_tick", pos.get("opened_tick", self.s["tick"]))
+        if qty >= pos["lots"] and self.s["tick"] - opened >= CHALLENGE_HOLD_TICKS:
             c["hold_hits"] = int(c.get("hold_hits") or 0) + 1
 
-    def _challenge_update(self):
-        """Run once per tick: violations are permanent, clears are immediate."""
+        open_fee = float(pos.get("fee") or 0.0) * qty / pos["lots"]
+        net = rec["pnl"] - rec["fee"] - open_fee
+        stats = c.setdefault("closed", {"count": 0, "best": 0.0, "pairs": {}, "sides": {}})
+        stats["count"] += 1
+        stats["best"] = max(stats["best"], net)
+        for group, key in (("pairs", pos["pair"]), ("sides", pos["side"])):
+            stats[group][key] = stats[group].get(key, 0.0) + net
+
+    def _challenge_result(self, key, tier, eq, genesis):
+        c = self.s["challenge"]
+        stats = c.get("closed") or {}
+        if key == "hold_long":
+            actual, goal = int(c.get("hold_hits") or 0), CHALLENGE_TIERS[key][tier]
+            return actual >= goal, "%d/%d positions held for %d ticks" % (actual, goal, CHALLENGE_HOLD_TICKS)
+        if key == "bank_profit":
+            actual = stats.get("best", 0.0)
+            goal = genesis * CHALLENGE_TIERS[key][tier] / 100
+            return actual >= goal, "Best net profit per close: %.0f / %.0f Tokens" % (actual, goal)
+        if key == "profitable_pairs":
+            per_pair = genesis * CHALLENGE_TIERS["pair_profit"][tier] / 100
+            actual = sum(pnl >= per_pair for pnl in stats.get("pairs", {}).values())
+            goal = CHALLENGE_TIERS[key][tier]
+            return actual >= goal, "%d/%d pairs reached %.0f Tokens net profit" % (actual, goal, per_pair)
+        if key == "two_sided":
+            sides = stats.get("sides", {})
+            long, short = sides.get("LONG", 0.0), sides.get("SHORT", 0.0)
+            goal = genesis * CHALLENGE_TIERS[key][tier] / 100
+            return min(long, short) >= goal, "Long %.0f, short %.0f Tokens, each needs %.0f" % (long, short, goal)
+        if key == "profit_floor":
+            if not stats.get("count"):
+                return False, "No voluntary closes yet"
+            goal = genesis * (1 + CHALLENGE_TIERS[key][tier] / 100)
+        else:
+            target = float(self.s["target"])
+            goal = target if key == "double_goal" else target * CHALLENGE_TIERS[key][tier] / 100
+        return eq >= goal, "Equity %.0f / %.0f Tokens" % (eq, goal)
+
+    def _challenge_update(self, open_leverage=None, settling=False):
+        """Check challenges after market steps, successful actions and final settlement."""
         c = self.s.get("challenge") or {}
         if c.get("stage") != "on":
             return
@@ -1098,53 +1179,68 @@ class Engine:
             dd = max(0.0, (peak - eq) / peak * 100.0)
             if dd > float(c.get("mdd_pct") or 0.0):
                 c["mdd_pct"] = dd
-        pos = self.s["positions"]
-        ml = self.margin_level()
+        genesis = float(self.s["genesis"])
         for t in c.get("tasks") or []:
             if t["status"] != "pending":
                 continue
             k, tier = t["key"], int(t.get("tier", 1))
             if k == "no_loan":
                 if int(self.s["loan"]["loans"]) > 0:
-                    self._challenge_fail(t, "borrowed %d time(s)" % self.s["loan"]["loans"])
+                    self._challenge_fail(t, "Borrowed %d time(s)" % self.s["loan"]["loans"])
             elif k == "no_blowup":
                 if int(self.s.get("blowups") or 0) > 0:
-                    self._challenge_fail(t, "%d blow-up(s)" % self.s["blowups"])
+                    self._challenge_fail(t, "Liquidated %d time(s)" % self.s["blowups"])
             elif k == "no_assist":
                 if int(self.s.get("assist_used") or 0) > 0:
-                    self._challenge_fail(t, "asked the crowd %d time(s)" % self.s["assist_used"])
+                    self._challenge_fail(t, "Requested assistance %d time(s)" % self.s["assist_used"])
             elif k == "no_dual":
                 if self._has_dual_side():
-                    self._challenge_fail(t, "long and short open on one pair")
+                    self._challenge_fail(t, "Held long and short on the same pair")
             elif k == "fee_cap":
-                cap = CHALLENGE_TIERS["fee_cap"][tier] * float(self.s.get("genesis") or STARTER_CASH)
+                cap = CHALLENGE_TIERS["fee_cap"][tier] * genesis
                 if float(self.s["total_fees"]) > cap:
-                    self._challenge_fail(t, "fees %.0f above cap %.0f" % (self.s["total_fees"], cap))
+                    self._challenge_fail(t, "Fees %.0f exceeded the %.0f cap" % (self.s["total_fees"], cap))
             elif k == "dd_cap":
                 lim = CHALLENGE_TIERS["dd_cap"][tier]
                 if float(c.get("mdd_pct") or 0.0) > lim:
-                    self._challenge_fail(t, "drawdown %.1f%% above %.0f%%" % (c["mdd_pct"], lim))
+                    self._challenge_fail(t, "Drawdown %.1f%% exceeded %.0f%%" % (c["mdd_pct"], lim))
             elif k == "pos_cap":
                 lim = CHALLENGE_TIERS["pos_cap"][tier]
-                if len(pos) > lim:
-                    self._challenge_fail(t, "%d pairs open, cap is %d" % (len(pos), lim))
+                count = len(self.s["positions"])
+                if count > lim:
+                    self._challenge_fail(t, "Held %d positions at once, limit %d" % (count, lim))
             elif k == "margin_floor":
+                ml = self.margin_level()
                 lim = CHALLENGE_TIERS["margin_floor"][tier]
                 if ml is not None and ml * 100.0 < lim:
-                    self._challenge_fail(t, "margin level %.0f%% below %.0f%%" % (ml * 100.0, lim))
-            elif k == "hold_long":
-                need = CHALLENGE_TIERS["hold_long"][tier]
-                if int(c.get("hold_hits") or 0) >= need:
-                    self._challenge_done(t, "%d position(s) held %d ticks" % (need, CHALLENGE_HOLD_TICKS))
-            elif k == "double_goal":
-                goal = float(self.s.get("target") or TARGET_EQUITY)
-                if eq >= goal:
-                    self._challenge_done(t, "equity %.0f >= %.0f" % (eq, goal))
-            elif k == "beat_target":
-                ratio = CHALLENGE_TIERS["beat_target"][tier] / 100.0
-                goal = float(self.s.get("target") or TARGET_EQUITY) * ratio
-                if eq >= goal:
-                    self._challenge_done(t, "equity %.0f >= %.0f" % (eq, goal))
+                    self._challenge_fail(t, "Margin level %.0f%% fell below %.0f%%" % (ml * 100.0, lim))
+            elif k == "no_margin_call":
+                if self.s["margin_calls"] or self.s["blowups"]:
+                    self._challenge_fail(t, "Triggered a margin call or liquidation")
+            elif k == "no_slot":
+                if self.s["special"]["slot_plays"]:
+                    self._challenge_fail(t, "Placed a slot bet")
+            elif k == "leverage_cap":
+                lim = CHALLENGE_TIERS[k][tier]
+                if open_leverage is not None and open_leverage > lim:
+                    self._challenge_fail(t, "Used %dx leverage, limit %dx" % (open_leverage, lim))
+            elif k == "notional_cap":
+                actual = self._account_notional()
+                lim = CHALLENGE_TIERS[k][tier] * genesis
+                if actual > lim:
+                    self._challenge_fail(t, "Exposure %.0f exceeded %.0f" % (actual, lim))
+            elif k == "swap_cap":
+                actual = self.s["total_swap"]
+                lim = CHALLENGE_TIERS[k][tier] * genesis / 100
+                if actual > lim:
+                    self._challenge_fail(t, "Holding costs %.0f exceeded %.0f" % (actual, lim))
+            elif t["kind"] == "final":
+                met, progress = self._challenge_result(k, tier, eq, genesis)
+                t["progress"] = progress
+                if met and (settling or k not in ("double_goal", "beat_target", "profit_floor")):
+                    self._challenge_done(t, progress)
+                elif settling:
+                    self._challenge_fail(t, progress)
 
 
     def _challenge_rule(self, key):
@@ -1153,49 +1249,20 @@ class Engine:
         return bool((c.get("rules") or {}).get(key))
 
     def _challenge_settle_end(self):
-        """End-of-match settlement: every objective is guaranteed an outcome.
-
-        hold-type (no borrowing / no blow-up / no Mercy call / no counter-hedge / commission /
-        drawdown / position count / margin) only fails by being broken; never broken means it must
-        be recorded as achieved at settlement. final-type (Hold Still / Higher Still / All-In)
-        counts as missed unless the bar is cleared. Idempotent: only pending objectives are processed,
-        so repeated calls return the same result."""
+        """Resolve pending challenges against the settled ledger."""
         c = self.s.get("challenge") or {}
         if c.get("stage") != "on":
             return
         tasks = c.get("tasks") or []
-        if not tasks:
+        if c.get("settled") or not tasks:
             return
-        eq = self.equity()
+        self._challenge_update(settling=True)
         for t in tasks:
-            if t.get("status") != "pending":
-                continue
-            k, tier = t["key"], int(t.get("tier", 1))
-            if k == "double_goal":
-                goal = float(self.s.get("target") or TARGET_EQUITY)
-                if eq >= goal:
-                    self._challenge_done(t, "equity %.0f >= %.0f" % (eq, goal))
-                else:
-                    self._challenge_fail(t, "equity %.0f below the doubled target %.0f" % (eq, goal))
-            elif k == "beat_target":
-                ratio = CHALLENGE_TIERS["beat_target"][tier] / 100.0
-                goal = float(self.s.get("target") or TARGET_EQUITY) * ratio
-                if eq >= goal:
-                    self._challenge_done(t, "equity %.0f >= %.0f" % (eq, goal))
-                else:
-                    self._challenge_fail(t, "equity %.0f below %.0f" % (eq, goal))
-            elif k == "hold_long":
-                need = CHALLENGE_TIERS["hold_long"][tier]
-                if int(c.get("hold_hits") or 0) >= need:
-                    self._challenge_done(t, "%d closes reached %d ticks" % (need, CHALLENGE_HOLD_TICKS))
-                else:
-                    self._challenge_fail(t, "only %d of %d closes reached %d ticks"
-                                      % (int(c.get("hold_hits") or 0), need, CHALLENGE_HOLD_TICKS))
-            else:
-                # Everything else is a hold-type objective monitored throughout; unbroken means achieved
-                self._challenge_done(t, "no violation during the whole run")
+            if t["status"] == "pending":
+                self._challenge_done(t, "Maintained throughout the match")
+        c["settled"] = True
         cleared = sum(1 for t in tasks if t.get("status") == "done")
-        self._event("[Challenge] settlement: %d/%d cleared" % (cleared, len(tasks)),
+        self._event("[Challenge] Settlement: %d/%d cleared" % (cleared, len(tasks)),
                     "ok" if cleared == len(tasks) else "news")
 
     def _challenge_settle_ask(self, accept, why=""):
@@ -1375,7 +1442,7 @@ class Engine:
 
     def _liquidity(self, sym):
         st = self.s.get("liquidity", {}).get(sym)
-        return st["L"] if st else self._liq_base()
+        return (st["L"] if st else self._liq_base()) * self._mod("depth_mult")
 
     def _slip_rate(self, before, after, sym=None):
         """Marginal slippage rate. Cost = SLIP_K/(2*LIQUIDITY)*(after^2 - before^2).
@@ -1536,13 +1603,17 @@ class Engine:
                     if r[2] in HUGE_WAVE_BURST_KINDS and r[0] not in HUGE_WAVE_EXCLUDE_NAMES]
             if not pool:
                 return False
-            n = self._market_rng.randint(*HUGE_WAVE_BURST)
-            self._event("[BURST] The shock lands -- %d risk events take effect at once" % n,
-                        "huge_wave")
-            for _ in range(n):
-                name, _w, kind, params = self._market_rng.choices(pool, weights=[r[1] for r in pool])[0]
+            n = min(self._market_rng.randint(*HUGE_WAVE_BURST), len({_wave_group(row) for row in pool}))
+            self._event("[Burst] %d risk events land at once" % n, "huge_wave")
+            price_events = [row for row in pool if row[2] in PRICE_NEWS_KINDS]
+            for i in range(n):
+                eligible = price_events if i == 0 and price_events else pool
+                picked = self._market_rng.choices(eligible, weights=[r[1] for r in eligible])[0]
+                name, _w, kind, params = picked
                 self._apply_news(name, kind, params)
                 self.s["last_news_name"] = name
+                group = _wave_group(picked)
+                pool = [row for row in pool if _wave_group(row) != group]
             return True
 
         # ---- 2) hold running: stay silent ----
@@ -1606,7 +1677,8 @@ class Engine:
             mag = self._market_rng.uniform(*params) * self._market_rng.choice([-1, 1])
             for sym in PAIRS:
                 self._shock(sym, mag * self._market_rng.uniform(0.6, 1.0))
-            self._event("[Surprise] %s -> all pairs %+.1f%%" % (name, mag * 100), "news")
+            lo, hi = sorted((mag * 60, mag * 100))
+            self._event("[Surprise] %s -> market-wide move %+.1f%% to %+.1f%%" % (name, lo, hi), "news")
         elif kind == "haven":
             mag = self._market_rng.uniform(*params)
             for sym in PAIRS:
@@ -1624,14 +1696,14 @@ class Engine:
                     "[Policy] %s -> for the next %d ticks (%.1f minutes) the loan target uplift range widens to %.1f%%~+100%%; expires the moment a negative draw lands" % (
                         name, ticks, ticks * TICK_SECONDS / 60.0, val * 100), "warn")
             else:
-                self._event("[Surprise] %s (lasts %d ticks)" % (name, ticks), "news")
+                self._event("[Surprise] %s -> %s for %d ticks" % (name, _mod_label(key, val), ticks), "news")
         elif kind == "halt":
             self.s["halt_orders"] = True
-            self._event("[Surprise] %s -> no orders accepted this tick" % name, "news")
+            self._event("[Surprise] %s -> new positions paused for this tick" % name, "news")
         elif kind == "halt_ticks":
             n = int(params)
             self.s["halt_until"] = self.s["tick"] + n
-            self._event("[Disaster] %s -> no orders accepted for the next %d ticks" % (name, n), "warn")
+            self._event("[Disaster] %s -> new positions paused for %d ticks" % (name, n), "warn")
         elif kind == "gap_burst":
             lo, hi = params
             if not hasattr(self, "_gap_pairs"):
@@ -1659,8 +1731,6 @@ class Engine:
             self._event(
                 "[Platform] %s -> Slot Machine betting paused for the next %d ticks (%.0f minutes)" % (
                     name, n, n * TICK_SECONDS / 60.0), "warn")
-        elif kind == "flavor":
-            self._event("[%s] %s" % (name, self._market_rng.choice(FLAVOR_LINES[name])), "info")
 
     def _advance_prices(self):
         self._expire_mods()
@@ -1843,6 +1913,7 @@ class Engine:
         self._event("Run over: final equity %.2f Tokens (%s)%s" % (
             eq, verdict,
             " | total borrowed %.0f" % borrowed if borrowed > 0 else ""), "end")
+        self._challenge_settle_end()
         self._save()
         report = self._write_report(reason, eq)
         out = {"ok": True, "final_equity": round(eq, 2),
@@ -1896,6 +1967,7 @@ class Engine:
         report cannot rebuild the ledger, and "forced liquidation is cheaper
         than closing yourself" becomes an exploitable edge.
         """
+        self._challenge_update()
         loss = 0.0
         n = 0
         for p in list(self.s["positions"]):
@@ -2161,6 +2233,8 @@ class Engine:
             self.s["assist_used"] = used
             ticket = "a%d" % used
             self._assist_push("ai", t, ticket=ticket, status="pending")
+            self._challenge_update()
+            self._save()
             return {"ok": True, "ticket": ticket, "remaining": self.ASSIST_ASK_LIMIT - used}
 
     def assist_inbox(self):
@@ -2497,6 +2571,7 @@ class Engine:
                             % (stake, mult, payout, bump_pct * 100, bump, self.s["target"]), "news")
             else:
                 self._event("[Slot Machine] Staked %.0f -> nothing" % stake, "news")
+            self._challenge_update()
             self._save()
             return {"ok": True, "payout": round(payout, 2), "mult": mult,
                     "bump_pct": round(bump_pct * 100, 2), "bump": round(bump, 2),
@@ -2573,6 +2648,7 @@ class Engine:
                 self.s["negative_since"] = None
                 self.s["negative_since_at"] = 0.0
                 self.s["negative_notified"] = False
+            self._challenge_update()
             self._save()
             return {"ok": True, "amount": amount,
                     "pct": round(pct * 100, 2), "bump": round(bump, 2),
@@ -2710,6 +2786,7 @@ class Engine:
                 cur["lots"] = tot
                 cur["margin"] = round(cur["margin"] + margin, 2)
                 cur["fee"] = round(cur["fee"] + fee, 2)
+                cur["added_tick"] = self.s["tick"]
                 # Do not rewrite leverage as notional/margin: leverage is the parameter the
                 # player chose, and back-solving it produces values like 67 that nobody picked
                 # while making the reported margin disagree with the ledger.
@@ -2732,6 +2809,7 @@ class Engine:
             else:
                 self._event("Opened %s %s %.0f lots @%.4f (%d x leverage, margin used %.0f)" % (
                     pair, side, lots, fill, leverage, margin), "open")
+            self._challenge_update(open_leverage=leverage)
             self._save()
             return {"ok": True, "position": pos, "state": self._state_light()}
 
@@ -2779,22 +2857,22 @@ class Engine:
                 p = self.s["positions"][i]
                 qty = p["lots"] if remaining is None else min(p["lots"], remaining)
                 rec = self._settle_lot(p, qty)
+                self._challenge_record_close(p, qty, rec)
                 if qty >= p["lots"]:
                     self.s["positions"].pop(i)
                 else:
                     # Scale by lots so the margin_mult captured at open time is preserved;
                     # recomputing would apply the *current* event factor and make it jump.
                     p["margin"] = round(p["margin"] * (p["lots"] - qty) / p["lots"], 2)
+                    p["fee"] = float(p.get("fee") or 0.0) * (p["lots"] - qty) / p["lots"]
                     p["lots"] -= qty
                 closed.append({"pair": rec["pair"], "side": rec["side"], "lots": qty,
                                "fill": rec["fill"], "pnl": rec["pnl"]})
-                # "Patience Pays": count positions that were held long enough
-                if self.s["tick"] - int(p.get("opened_tick") or self.s["tick"]) >= CHALLENGE_HOLD_TICKS:
-                    self._challenge_hold_hit()
                 self._event("Closed %s %s %.0f lots @%.4f, P&L %+.0f" % (
                     pair, p["side"], qty, rec["fill"], rec["pnl"]), "close")
                 if remaining is not None:
                     remaining -= qty
+            self._challenge_update()
             self._save()
             return {"ok": True, "closed": closed, "state": self._state_light()}
 
@@ -2806,7 +2884,7 @@ class Engine:
             closed = []
             errors = []
             for p in list(self.s["positions"]):
-                r = self.close_position(p["pair"], p["lots"])
+                r = self.close_position(p["pair"], p["lots"], p["side"])
                 if r.get("ok"):
                     closed.extend(r["closed"])
                 elif r.get("error") and r["error"] not in errors:
@@ -3080,7 +3158,6 @@ class Engine:
         try:
             import datetime
             import re as _re
-            self._challenge_settle_end()
             m = self._metrics(final_eq)
             fmt = lambda v: "{:,.2f}".format(v)
             trader = _re.sub(r"[^\w\u4e00-\u9fa5-]", "", self.s.get("trader", "visitor"))[:60] or "visitor"
@@ -3724,6 +3801,7 @@ footer {{ color: var(--muted); font-size: 13px; text-align: center; padding-bloc
                 "spread_cost": round(float(m["spread_cost"]), 2),
                 "settled": bool((self.s.get("last_settle") or {}).get("settled", True)),
                 "settle_warnings": list((self.s.get("last_settle") or {}).get("warnings") or []),
+                "challenge": self._challenge_view(),
                 "audit": self._audit_ledger(),
             }
             with open(jp, "w", encoding="utf-8") as jf:
@@ -3898,7 +3976,8 @@ footer {{ color: var(--muted); font-size: 13px; text-align: center; padding-bloc
                      "label": _mod_label(k, v[0]),
                      "left_ticks": max(0, int(v[1]) - self.s["tick"])}
                     for k, v in (self.s.get("mods") or {}).items() if self.s["tick"] < v[1]
-                ][:6],                "liquidity": {sym: round(self._liquidity(sym) / max(1.0, self._liq_base()), 3) for sym in PAIRS},
+                ],
+                "liquidity": {sym: round(self._liquidity(sym) / max(1.0, self._liq_base()), 3) for sym in PAIRS},
                 "total_borrowed": round(self.s["loan"]["borrowed"], 2),
                 # [Preferred Financing] seconds left (wall clock, GUI refreshes per second); None when inactive
                 "loan_bump_remain": self._loan_bump_remain(),
@@ -3996,14 +4075,11 @@ footer {{ color: var(--muted); font-size: 13px; text-align: center; padding-bloc
                            SLOT_MAX_PLAYS, SLOT_MAX_STAKE)
                        ).replace("%%", "%"),
             "Leverage": "Selectable %d - %d x (the cap can be temporarily lowered by events; trust the error message)" % (MIN_LEVERAGE, MAX_LEVERAGE),
-            "Huge Wave warning": ("A special shape of random event: at most 2 per session "
-                                 "(rolled at start: 35%% none / 45%% one / 20%% two), never during "
-                                 "the first 2.5 minutes. When it fires, one banner event "
-                                 "(kind=huge_wave) is emitted, then 2 ticks (10 s) pass without any "
-                                 "ordinary news, then 3~5 shock events land in a single tick. It "
-                                 "announces arrival only, never direction or size; the burst pool "
-                                 "contains no tailwind events; the warning itself has no numeric effect" % ()),
-            "Dynamic modifiers": ("Leverage cap, fees, spread, overnight swap, gap chance and the loan pool can all be"
+            "Random event pool": {name: _news_summary(kind, params) for name, _, kind, params in NEWS_TABLE},
+            "Huge Wave warning": ("The match draws 0 to 3 waves with equal chances. Warnings are eligible from tick 30. "
+                                  "Two ticks after a warning, 3 to 5 distinct risk mechanisms trigger, with at least "
+                                  "one price shock and at most one market-wide shock. Ordinary news pauses until the burst."),
+            "Dynamic modifiers": ("Leverage cap, fees, spread, market depth, overnight swap, gap chance and the loan pool can all be"
                                   " temporarily rewritten by random events; the values above are base values, see"
                                   " active_mods in GET /state for what is currently in force"),
             "Spread": {s: "%.3f%%" % (cfg["spread"] * 100) for s, cfg in PAIRS.items()},
@@ -4025,14 +4101,12 @@ footer {{ color: var(--muted); font-size: 13px; text-align: center; padding-bloc
             "Commission": "%.3f%% of notional per order" % (FEE_RATE * 100),
             "Loan": "Loan pool %.0f Tokens (may be temporarily scaled by \"Credit crunch / Central bank easing\"); interest %.2f%%/tick (%s); each loan: total target = old target + loan amount × random ratio (the ratio rises with cumulative borrowing: about 4%%~8%% on the first 300k, about 35%%~66%% when borrowing the pool dry; trapezoid integration over the cumulative amount, so ten small loans cost exactly the same as one big one, decided once borrowed)" % (
                 LOAN_POOL, LOAN_RATE_PER_TICK * 100, "Borrow and repay at will; forced clearance at maturity"),
-            "Challenge tasks": ("Asked once the difficulty roll is fixed: the contestant may enable "
-                                "or decline. Enabling draws 3 objectives (always at least one result-type "
-                                "goal) whose thresholds tighten with difficulty. Judged live all round: "
-                                "a violation marks it failed permanently, meeting the goal marks it cleared. "
-                                "Declining simply runs a normal round. Names and exact wording live in "
-                                "GET /state under challenge.tasks. Pool: No Borrowing / No Blow-up / "
-                                "Self-reliant / No Locked Pairs / Fee Discipline / Drawdown Guard / "
-                                "Light Footprint / Margin Cushion / Patience Pays / Beat the Target"),
+            "Challenge tasks": ("Answer before the difficulty draw. At the lock, each enabled match draws "
+                                "one result objective and two different process constraints from %d candidates. "
+                                "Equity objectives are judged at settlement. See challenge.tasks in GET /state for progress."
+                                % len(CHALLENGE_POOL)),
+            "Challenge pool": {name: {"Loose": _challenge_desc(key, 0), "Medium": _challenge_desc(key, 1),
+                                     "Strict": _challenge_desc(key, 2)} for key, name, _ in CHALLENGE_POOL},
             "Session length": "%d minutes" % SESSION_MINUTES,
             "Idle abort": _idle_rule_text(),
             "tick interval": "%d seconds" % TICK_SECONDS,

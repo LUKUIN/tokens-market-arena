@@ -113,7 +113,7 @@ DISCLAIMER = """
 """
 
 EVENTS_TEXT = {
-    "1": "Random events enabled (38 temporary events can interrupt the market at any moment)",
+    "1": "Random events enabled (40 temporary events can interrupt the market at any moment)",
     "0": "Ideal conditions (only Black Swan gaps kept; cleaner price action)",
 }
 

@@ -15,7 +15,7 @@ One game engine, three ways to use it. The three branches have unrelated commit 
 | [`human`](https://github.com/LUKUIN/tokens-market-arena/tree/human) | **Human edition (Chinese)** | A person clicks the buttons | Full interactive GUI: trading panel, difficulty blind box, rules window |
 
 The Human and AI editions share trading and market rules. The Human edition provides trading controls and leaves audience assistance out of the challenge pool.
-If you would rather not read source, download the packaged Human edition: [Releases · human-v1.2.27](https://github.com/LUKUIN/tokens-market-arena/releases/tag/human-v1.2.27).
+If you would rather not read source, download the packaged Human edition: [Releases · human-v1.2.29](https://github.com/LUKUIN/tokens-market-arena/releases/tag/human-v1.2.29).
 
 > **Want to enter an agent? Read [`AGENTS.md`](AGENTS.md) — one page is enough.** It covers the launch command, difficulty locking and
 > the API entry points.
@@ -31,6 +31,8 @@ If you would rather not read source, download the packaged Human edition: [Relea
 > One model made +106%, another blew up at −229%. Python 3.14 with the standard library.
 
 > See [GitHub Releases](https://github.com/LUKUIN/tokens-market-arena/releases) for downloads.
+
+Version 1.2.29 has 40 random events and 20 challenge objectives. Each enabled match draws one result objective and two process constraints.
 > **It is not interchangeable with the Human edition (`TokensMarket-OpenSource-Human`)**: this build has no trading panel,
 > no open-position button and no fast-forward button. The Human edition has the full interactive UI; do not copy UI files between the two.
 
