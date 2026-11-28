@@ -100,6 +100,8 @@ if sys.version_info[:2] != PY_REQUIRED:
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "src"))
 
+from tm_contestant import CONTESTANT_HINT, parse_contestant_id
+
 DISCLAIMER = """
 ==============================================================
   Tokens Trading Market · AI Edition — Disclaimer
@@ -145,14 +147,36 @@ def _ask(prompt, default=""):
     return v or default
 
 
+def _contestant_from_env():
+    value = os.environ.get("TM_TRADER", "").strip()
+    if not value or value.casefold() in ("guest", "访客"):
+        return ""
+    name = parse_contestant_id(value)
+    if name is None:
+        print("  TM_TRADER: " + CONTESTANT_HINT)
+    return name
+
+
 def _interactive_setup():
     print(DISCLAIMER)
-    if _ask("Type y to confirm that you have read and agree to the above:").lower() != "y":
+    if (_ask("Type y to confirm that you have read and agree to the above:") or "").lower() != "y":
         print("  Cancelled.")
         return None
 
-    name = os.environ.get("TM_TRADER") or _ask(
-        "Contestant ID (model-effort-agent platform; segment 1 = model e.g. GLM-5.3, segment 3 = platform e.g. Doubao; press Enter to use \"guest\"):", "Guest")
+    name = _contestant_from_env()
+    if not name:
+        print("  " + CONTESTANT_HINT)
+        while True:
+            value = _ask("  Contestant ID (model-effort-platform, Enter for a guest practice match): ")
+            if value is None:
+                return None
+            if not value:
+                name = ""
+                break
+            name = parse_contestant_id(value)
+            if name is not None:
+                break
+            print("  " + CONTESTANT_HINT)
 
     mode = os.environ.get("TM_EVENTS")
     if mode not in ("0", "1"):
@@ -293,14 +317,18 @@ def _run_ai(interactive=False, port=None):
         trader, events_on = setup
     else:
         print(DISCLAIMER)
-        trader = os.environ.get("TM_TRADER") or "Guest"
+        trader = _contestant_from_env()
+        if trader is None:
+            return 2
         # Match Start Match.bat and the engine's _env_events() default: events on when unset
         events_on = (os.environ.get("TM_EVENTS") or "1") == "1"
 
     os.environ["TM_TRADER"] = trader
     os.environ["TM_EVENTS"] = "1" if events_on else "0"
 
-    print("  Player %s | %s" % (trader, EVENTS_TEXT["1" if events_on else "0"]))
+    if not trader:
+        print("  No contestant ID. This guest match is for practice only.")
+    print("  Player %s | %s" % (trader or "Guest", EVENTS_TEXT["1" if events_on else "0"]))
     print(SCRATCHPAD_HINT)
 
     port = int(port or os.environ.get("TM_PORT") or 8734)
@@ -319,38 +347,31 @@ def _run_ai(interactive=False, port=None):
     #   1. tm_watch_ai.py is not sealed (the guard seals engine / api / scratchpad only)
     #   2. that module imports nothing but the standard library, so it starts on its own
     base = os.path.dirname(os.path.abspath(__file__))
-    spectator = None
-    try:
-        # Two spectator builds exist. Both are read-only and talk HTTP /state only:
-        #   1) C# / WPF (viewer-cs/): vector rendering, anti-aliased curve. Default.
-        #   2) tkinter (src/tm_watch_ai.py): zero-dependency fallback when 1 is not built.
-        # Force the tkinter one: set TM_WATCH_IMPL=py before launching.
-        cs_exe = os.path.join(
-            base, "viewer-cs", "TokensWatch", "bin", "Release",
-            "net8.0-windows", "TokensWatch.exe")
-        want_py = (os.environ.get("TM_WATCH_IMPL") or "").strip().lower() in (
-            "py", "tk", "tkinter")
-
-        if os.path.isfile(cs_exe) and not want_py:
-            spectator = subprocess.Popen(
-                [cs_exe],
-                cwd=base,
-                env=dict(os.environ, TM_WATCH_API="http://127.0.0.1:%d" % port))
-            print("  Launching the read-only spectator stand (C# build, pid %d)..." % spectator.pid)
-        else:
-            spectator = subprocess.Popen(
-                [sys.executable, "-c",
-                 "import sys, os; sys.path.insert(0, os.path.join(os.getcwd(), 'src')); "
-                 "import tm_watch_ai; tm_watch_ai.main()"],
-                cwd=base,
-                env=dict(os.environ, TM_WATCH_API="http://127.0.0.1:%d" % port))
-            print("  Launching the read-only spectator stand (tkinter build, pid %d)..." % spectator.pid)
-    except Exception as exc:
-        print("  Spectator failed to start: %s (the match service keeps running)" % exc)
-
     guard_stop = _start_guard(port)
     if guard_stop is None:
         return 4
+
+    spectator = None
+    try:
+        from tm_watch_launch import start_wpf
+
+        api_url = "http://127.0.0.1:%d" % port
+        spectator, failure = start_wpf(base, api_url)
+        if spectator is not None:
+            print("  Launching the read-only spectator (C# build, pid %d)..." % spectator.pid)
+        else:
+            if failure:
+                print("  WPF startup failed (%s). Install the .NET 8 Desktop Runtime (x64) to use WPF. Using tkinter." % failure)
+            spectator = subprocess.Popen(
+                [sys.executable, "-c",
+                 "import sys; sys.path.insert(0, 'src'); "
+                 "import tm_watch_ai; tm_watch_ai.main()"],
+                cwd=base,
+                env=dict(os.environ, TM_WATCH_API=api_url))
+            print("  Launching the read-only spectator (tkinter build, pid %d)..." % spectator.pid)
+    except Exception as exc:
+        print("  Spectator failed to start: %s (the match service keeps running)" % exc)
+
     try:
         server_thread.join()      # returns once /quit or /shutdown stops the service
     except KeyboardInterrupt:
@@ -579,6 +600,12 @@ def main(argv=None):
             return 4
         # Import before sealing: sealing only swaps files on disk, loaded modules are fine;
         # the other order would import a decoy.
+        trader = _contestant_from_env()
+        if trader is None:
+            return 2
+        if not trader:
+            print("  No contestant ID. This guest match is for practice only.")
+        os.environ["TM_TRADER"] = trader
         from tm_api import serve
         guard_stop = _start_guard(port)
         if guard_stop is None:

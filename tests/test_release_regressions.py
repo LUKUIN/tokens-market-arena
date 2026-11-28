@@ -18,7 +18,7 @@ import tm_engine as engine
 class SettlementRegression(unittest.TestCase):
     def setUp(self):
         self.home = self.enterContext(tempfile.TemporaryDirectory())
-        self.enterContext(patch.dict(os.environ, {"TM_EVENTS": "0", "TM_TRADER": "Test"}))
+        self.enterContext(patch.dict(os.environ, {"TM_EVENTS": "0", "TM_TRADER": "TestModel-test-CLI"}))
         self.market = engine.Engine(self.home)
         self.market.challenge_decline()
         self.market.roll_stop()

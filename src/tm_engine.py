@@ -20,6 +20,7 @@ import shutil
 import threading
 import time
 
+from tm_contestant import CONTESTANT_HINT, parse_contestant_id
 from tm_report_renderer import render_report
 from tm_report_store import export_report, read_settlement, settlement_path
 from tm_storage import SessionRecoveryError, atomic_write, json_bytes
@@ -248,20 +249,6 @@ def _env_flag(name, default=True):
         v = (os.environ.get(name) or "").strip().lower()
         _SPECIAL_CACHE[name] = default if not v else v in ("1", "y", "yes", "on", "on", "Yes")
     return _SPECIAL_CACHE[name]
-
-
-def _sanitize_trader(name):
-    """Trader-label allow-list: keep CJK/Latin letters, digits, space and -_.()()·.
-
-    The name from /trader is written verbatim into the report filename and the
-    event stream, so it has to be closed here; report rendering additionally
-    escapes every event text as defence in depth.
-    """
-    import re as _re
-    if not name:
-        return ""
-    s = _re.sub("[^\\w\\s\\-_.()\uFF08\uFF09\u00B7]", "", str(name), flags=_re.UNICODE)  # CJK-width parens and middot stay allowed: contestant names may contain them
-    return s.strip()
 
 
 def _pick_news_rate(rng):
@@ -499,8 +486,8 @@ def _env_trader():
     """
     global _TRADER_CACHE
     if _TRADER_CACHE is None:
-        name = _sanitize_trader((os.environ.get("TM_TRADER") or "").strip())
-        _TRADER_CACHE = ("Guest", True) if not name else (name[:60], False)
+        name = parse_contestant_id(os.environ.get("TM_TRADER"))
+        _TRADER_CACHE = ("Guest", True) if not name else (name, False)
     return _TRADER_CACHE
 
 
@@ -2202,47 +2189,19 @@ class Engine:
             return self.state()
 
     # ---------------- player identification ----------------
-    UA_NAMES = (
-        ("kimi", "Kimi"), ("moonshot", "Kimi"),
-        ("mimo", "MiMo"), ("xiaomi", "MiMo"),
-        ("doubao", "Doubao"), ("Doubao", "Doubao"), ("bytedance", "Doubao"),
-        ("claude", "Claude"), ("anthropic", "Claude"),
-        ("openai", "GPT"), ("gpt", "GPT"), ("chatgpt", "GPT"),
-        ("gemini", "Gemini"), ("google", "Gemini"),
-        ("deepseek", "DeepSeek"),
-        ("qwen", "Tongyi"), ("tongyi", "Tongyi"),
-        ("glm", "Zhipu"), ("zhipu", "Zhipu"),
-    )
-
     def note_ua(self, ua):
-        """Log the request User-Agent and identify the current operator from it."""
-        with LOCK:
-            if not ua:
-                return
-            if self.s.get("last_ua") == ua:
-                return
-            self.s["last_ua"] = ua
-            low = ua.lower()
-            for kw, name in self.UA_NAMES:
-                if kw in low:
-                    if self.s["trader"] != name:
-                        self.s["trader"] = name
-                        self._event("Operator identified: %s" % name, "info")
-                    self._save()
-                    return
-            if self.s["trader"] == "Guest":
-                self._save()
+        """Record request client information for diagnostics."""
+        if ua:
+            with LOCK:
+                self.s["last_ua"] = ua
 
     @_writing
     def set_trader(self, name):
         with LOCK:
-            raw = (name or "").strip()
-            if not raw:
-                return {"ok": False, "error": "Name cannot be empty"}
-            clean = _sanitize_trader(raw)
-            if not clean:
-                return {"ok": False, "error": "Name contains no allowed characters; only letters, digits, spaces and -_.()()· are kept"}
-            self.s["trader"] = clean[:60]
+            label = parse_contestant_id(name)
+            if label is None:
+                return {"ok": False, "error": CONTESTANT_HINT}
+            self.s["trader"] = label
             self._event("Operator set to: %s" % self.s["trader"], "info")
             self._save()
             return {"ok": True, "trader": self.s["trader"]}
@@ -3659,7 +3618,7 @@ class Engine:
                 "GET /health": "Liveness probe: tick / equity / finished / protocol and engine version",
                 "POST /reset": "Start a fresh run (clears this run and re-rolls difficulty)",
                 "POST /pause": "Pause before the match starts; use /begin to resume",
-                "POST /trader": {"name": "Trader label, <=60 chars; keeps letters, digits, spaces and -_.()()·"},
+                "POST /trader": {"name": CONTESTANT_HINT},
                 "POST /shutdown": "Stop the server immediately (spectator Kill button); writes an abnormal-exit snapshot first",
                 "POST /assist/enable": "Legacy route always rejects; set TM_ASSIST=1 before launch to enable assistance",
                 "GET /assist/pending": "Current help ticket waiting for the spectator",

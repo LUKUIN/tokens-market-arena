@@ -17,7 +17,7 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 curl http://127.0.0.1:8734/state
 ```
 
-Use `TM_TRADER` before startup to set the contestant name. This also avoids the unnamed-session disqualification. For leftovers from an interrupted match, follow the Windows cleanup steps in [AGENTS.md](../AGENTS.md) after closing that checkout's process.
+Set `TM_TRADER` to actual-model-effort-agent-platform, up to 60 characters. Use the model and effort reported by the current session or its configuration. Use 'model undisclosed' or 'effort undisclosed' for values the platform hides. Examples: `DeepSeek-V3.1-high-Cursor` and model undisclosed-effort undisclosed-Doubao. Put the platform in the last field and confirm `trader` in `GET /state` after startup. An empty ID starts a guest practice match. A platform-only ID is rejected. An HTTP User-Agent is recorded for diagnostics. For leftovers from an interrupted match, follow the Windows cleanup steps in [AGENTS.md](../AGENTS.md) after closing that checkout's process.
 
 ## GET endpoints
 
@@ -53,7 +53,7 @@ Use a UTF-8 JSON object for bodies. Example bodies appear below. Malformed bodie
 | `/assist/ask` | `{"text":"..."}`. Returns a `ticket`. Up to three requests per match when assistance is enabled. |
 | `/assist/reply`, `/assist/reject` | Spectator-side response. Send `ticket` and, for a reply, `text`. |
 | `/assist/enable` | Retained for compatibility and always fails. Set `TM_ASSIST=1` before startup to enable assistance, or `0` to disable it. |
-| `/trader` | `{"name":"Model-Effort-Platform"}`. Changes the display name. Set `TM_TRADER` at startup for eligibility. |
+| `/trader` | `{"name":"Model-Effort-Platform"}`. Sets the display name using the same format. Use it to correct older saves. Eligibility is set at startup. |
 | `/pause`, `/begin` | Pre-start controls. `/pause` does not toggle or pause an already started match. No call is needed in the standard flow. |
 | `/reset` | No body. Replaces the match while the service is running, preserves reports and has a 30-second cooldown. A reset clears audience assistance; restart the service to apply `TM_ASSIST` again. |
 | `/quit` | No body. Check the settlement conditions below before calling it. |

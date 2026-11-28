@@ -51,7 +51,6 @@ rem This edition never waits for keyboard input.
 rem Everything is driven by environment variables; unset ones fall back
 rem to the defaults below.
 rem ------------------------------------------------------------------
-if not defined TM_TRADER set "TM_TRADER=Guest"
 if not defined TM_EVENTS set "TM_EVENTS=1"
 if not defined TM_FR     set "TM_FR=1"
 if not defined TM_SLOT   set "TM_SLOT=1"
@@ -66,7 +65,7 @@ echo   ==========================================
 echo      Tokens Trading Market - AI Edition
 echo   ==========================================
 echo   Endpoint        http://127.0.0.1:%TM_PORT%
-echo   Player          %TM_TRADER%
+echo   Player          model-effort-agent platform
 echo   Random events   %TM_EVENTS%
 echo   Preferred Financing %TM_FR%  Slot Machine %TM_SLOT%  Outside Mercy %TM_ASSIST%
 echo   Press Y within 5 seconds to start; otherwise the start is canceled.

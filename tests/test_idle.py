@@ -67,7 +67,7 @@ class TestIdleAbort(_IdleBase):
             ("borrow", lambda e: e.borrow(100000)),
             ("fast_forward", lambda e: e.fast_forward(180)),
             ("scratch_append", lambda e: e.scratch_append("note")),
-            ("set_trader", lambda e: e.set_trader("regression")),
+            ("set_trader", lambda e: e.set_trader("TestModel-test-CLI")),
             ("slot", lambda e: e.slot(10000)),
             ("close_all", lambda e: e.close_all()),
         ]

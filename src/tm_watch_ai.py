@@ -264,9 +264,6 @@ class Watch:
         _brand.pack(side="left", padx=(18, 0), pady=10)
         tk.Label(_brand, text="TOKENS TRADING MARKET", font=(FONT[0], 12, "bold"),
                  bg=TOPBAR, fg="#FFFFFF").pack(side="left")
-        self.lbl_trader = tk.Label(_brand, text="", font=(FONT[0], 11, "bold"),
-                                   bg=TOPBAR, fg="#8CC4F8")
-        self.lbl_trader.pack(side="left", padx=(14, 0))
         self.lbl_mode = tk.Label(_brand, text="", font=FONT_SMALL, bg=TOPBAR, fg="#AEBBD0")
         self.lbl_mode.pack(side="left", padx=(8, 0))
         tk.Label(_brand, text="Read-only spectator terminal", font=FONT_SMALL,
@@ -307,6 +304,12 @@ class Watch:
         tk.Button(topbar, text="End processes", command=self._kill_all,
                   bg="#1E3050", fg="#F2A6A0", activebackground="#2B3E5C",
                   activeforeground="#FFFFFF", **_b).pack(side="right", padx=(0, 10), pady=8)
+
+        self.lbl_trader = tk.Label(root, text="", font=(FONT[0], 11, "bold"),
+                                   bg=TOPBAR, fg="#8CC4F8", anchor="w", justify="left",
+                                   wraplength=max(280, self.W - 36))
+        self.lbl_trader.pack(fill="x", ipady=2)
+        self.lbl_trader.configure(padx=18)
 
         # ---------- KPI cards ----------
         metrics = tk.Frame(root, bg=BG)
@@ -540,6 +543,9 @@ class Watch:
                         text="UI render error (match still running; see data/watch.log)", fg=ORANGE)
                 except Exception:
                     pass
+            if isinstance(st, dict) and st.get("finished") is True:
+                self.root.after(3000, self.root.destroy)
+                return
         self._assist_n += 1
         if self._assist_n % 5 == 0:
             self._poll_assist()
@@ -783,7 +789,7 @@ class Watch:
         rolling = (not st.get("rolled")) and bool(st.get("roll_left"))
         if self._last_trader != (trader, mode, diff, rolling):
             self._last_trader = (trader, mode, diff, rolling)
-            self.lbl_trader.config(text="| %s" % trader)
+            self.lbl_trader.config(text="Contestant  %s" % trader)
             self.lbl_mode.config(text="(%s)" % mode,
                                  fg=BLUE if st.get("events_on", True) else MUTED)
             title = "Tokens Trading Market | %s (%s)" % (_fit_title(trader), mode)
@@ -928,7 +934,7 @@ class Watch:
             # A margin call is a live emergency; it outranks notices like "unnamed start"
             state_txt = "Margin call · %d ticks left" % st["margin_call_remain"]
         elif st.get("unnamed"):
-            state_txt = "Unnamed launch · please use Start Match.bat"
+            state_txt = "Guest practice match"
         elif ml is not None and ml < 50:
             state_txt = "Margin level critical"
         elif st["blowups"] > 0 and ml is None:
@@ -944,7 +950,7 @@ class Watch:
         self.lbl_status.config(
             text=("%s | %02d:%02d | Order %d" % (state_txt, mm, ss, st["order_count"])
                   + (("  |  " + " ".join(st["active_mods"])) if st.get("active_mods") else "")),
-            fg=RED if any(k in state_txt for k in ("Critical", "Tampered", "Rollback", "Unnamed", "Margin call", "Negative equity")) else MUTED)
+            fg=RED if any(k in state_txt for k in ("Critical", "Tampered", "Rollback", "Guest practice", "Margin call", "Negative equity")) else MUTED)
 
         # Positions table
         for row in self.tree.get_children():

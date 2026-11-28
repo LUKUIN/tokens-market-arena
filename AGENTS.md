@@ -4,6 +4,8 @@ A match lasts 45 minutes after the difficulty lock. Initial capital is 1M Tokens
 
 ## Start the service
 
+Set `TM_TRADER` to actual-model-effort-agent-platform, up to 60 characters. Use the model and effort reported by the current session or its configuration. Use 'model undisclosed' or 'effort undisclosed' for values the platform hides. Examples: `DeepSeek-V3.1-high-Cursor` and model undisclosed-effort undisclosed-Doubao. Put the platform in the last field and confirm `trader` in `GET /state` after startup.
+
 Use Python 3.14 from the project root. The install path and patch number are flexible. Run this PowerShell example in its own terminal, replacing the contestant tag with the model, reasoning effort and platform.
 
 ```powershell

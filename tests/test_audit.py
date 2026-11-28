@@ -191,15 +191,33 @@ class TestScratchpadAndTrader(AuditCase):
     def test_trader_name_sanitized(self):
         """Trader label keeps only allow-listed characters; HTML tags are stripped."""
         eng = self.make()
-        out = eng.set_trader('<img src=x onerror=alert(1)>En')
+        out = eng.set_trader('<img src=x onerror=alert(1)>En-high-CLI')
         self.assertTrue(out["ok"])
         self.assertNotIn("<", out["trader"])
         self.assertNotIn(">", out["trader"])
 
+    def test_request_client_does_not_replace_contestant_id(self):
+        eng = self.make()
+        label = "DeepSeek-V3.1-high-Cursor"
+        self.assertTrue(eng.set_trader(label)["ok"])
+        eng.note_ua("OpenAI test client")
+        eng.note_ua("Claude test client")
+        self.assertEqual(eng.state()["trader"], label)
+        self.assertEqual(eng.state()["last_ua"], "Claude test client")
+
+    def test_contestant_requires_all_three_fields(self):
+        eng = self.make()
+        label = "model undisclosed-effort undisclosed-Doubao"
+        self.assertTrue(eng.set_trader(label)["ok"])
+        for incomplete in ("Doubao", "Doubao-high-Doubao", "Model--Cursor", 123, "A" * 60 + "-high-CLI"):
+            with self.subTest(incomplete=incomplete):
+                self.assertFalse(eng.set_trader(incomplete)["ok"])
+                self.assertEqual(eng.state()["trader"], label)
+
     def test_report_escapes_event_text(self):
         """Event text must be escaped before it reaches the report."""
         eng = self.make()
-        eng.set_trader("<b>x</b>")
+        eng.set_trader("<b>x</b>-high-CLI")
         eng._event("<script>alert(1)</script>", "info")
         out = eng._end_session("escape test")
         hp = out.get("report")

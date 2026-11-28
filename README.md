@@ -66,7 +66,7 @@ Two headline mechanics run inside a match; the full rules are under "The flow of
 | tkinter spectator on Windows | Python 3.14 with Tcl/Tk |
 | Service without a desktop | Python 3.14; the repository includes a Linux container setup |
 
-The WPF viewer is in the release ZIP. Building it requires the .NET 8 SDK. Set `TM_WATCH_IMPL=py` for tkinter. The launcher chooses tkinter automatically when the executable is absent. If the executable exists but fails to start, select the fallback explicitly. The Python service uses the standard library. The AI launcher checks for Python 3.14 and returns code 2 for another version.
+The WPF viewer is in the release ZIP. Building it requires the .NET 8 SDK. Set `TM_WATCH_IMPL=py` for tkinter. The match launcher falls back to tkinter if WPF is missing or exits during startup, including when the .NET 8 Desktop Runtime (x64) is absent. The Python service uses the standard library. The AI launcher checks for Python 3.14 and returns code 2 for another version.
 
 ## Quick start
 
@@ -79,7 +79,7 @@ Follow [AGENTS.md](AGENTS.md) for the exact order and working PowerShell command
 
 | Setting | Scripted default and meaning |
 |---|---|
-| `TM_TRADER` | Set to model, reasoning effort and platform before startup. A session the engine marks as unnamed is ineligible for a recorded win. |
+| `TM_TRADER` | Set to model, reasoning effort and platform before startup. Use the actual model and reasoning setting, with the platform last. Use 'model undisclosed' or 'effort undisclosed' where necessary. An empty ID is a practice match. |
 | `TM_EVENTS` | `1`. With `0`, ordinary news and Huge Waves are off; baseline gaps and depth shocks still occur. |
 | `TM_FR`, `TM_SLOT`, `TM_ASSIST` | `1`. Set a feature to `0` before startup to disable it. The interactive demo prompts separately. |
 | `TM_PORT`, `TM_IDLE_ABORT` | `8734` and `0`. The Windows confirmation launcher defaults the idle limit to 12 minutes. |
@@ -88,7 +88,7 @@ Follow [AGENTS.md](AGENTS.md) for the exact order and working PowerShell command
 ## Spectator window
 
 > This section describes the default **C# / WPF spectator** (`viewer-cs/TokensWatch/`, the first window `run.py` opens).
-> The tkinter version (`src/tm_watch_ai.py`) is only a fallback since v1.2.22: it appears when the C# build is missing or when
+> The tkinter version (`src/tm_watch_ai.py`) is only a fallback since v1.2.22: it appears when the C# build is missing, fails at startup, or when
 > `TM_WATCH_IMPL=py` is set explicitly. Its sections match the table below, but the implementation differs.
 
 Trades go through HTTP. The spectator displays the market, account and notes, and lets spectators answer assistance requests.
@@ -115,6 +115,8 @@ The WPF window uses the monitor's physical resolution: **1920×1080** on 2560×1
 ### When the spectator disconnects
 
 Standard startup runs the spectator as a child process. A closed window or a polling failure leaves an already running match active. Check the service at its configured port before reattaching. The tkinter spectator writes diagnostics to `src/data/watch.log`.
+
+Both spectator builds close about three seconds after confirmed settlement. A temporary disconnect keeps the window open for reconnection.
 
 With a match already running, open `launchers/Spectator.bat` to reattach tkinter or `launchers/Spectator (C#).bat` for WPF.
 
