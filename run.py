@@ -230,27 +230,12 @@ def _probe(host="127.0.0.1", port=8734, timeout=1.0):
 
 
 def _run_spectator(host="127.0.0.1", port=8734):
-    """Open a spectator window, attaching to a running match when there is one.
-
-    Attaching must have no side effects: no server, no guard, no sealing. Sealing on
-    attach would re-encrypt decoys over a live vault and destroy the real sources.
-    """
-    existing = _probe(host, port)
-    if existing:
-        print("  Attaching to the match already running on %s:%d." % (host, port))
-    else:
-        if not _start_server(host, port):
-            print("  Failed to start the service on %s:%d." % (host, port))
-            return 1
-        print("  HTTP API: http://%s:%d (no match was running; the server was started here)" % (host, port))
+    """Attach a spectator to an existing match."""
+    if not _probe(host, port):
+        print("  No active match at %s:%d." % (host, port))
+        return 1
     import tm_watch_ai
-    guard_stop = None if existing else _start_guard(port)
-    print("  Launching the read-only spectator stand...")
-    try:
-        tm_watch_ai.main()
-    finally:
-        if guard_stop is not None:
-            guard_stop.set()
+    tm_watch_ai.main(api_url="http://%s:%d" % (host, port))
     return 0
 
 
@@ -617,6 +602,24 @@ def main(argv=None):
             except Exception as exc:
                 print("  cleanup failed: %s" % exc)
         return 0
+
+    if mode == "report-retry":
+        if len(argv) != 2:
+            print("Usage: python run.py report-retry <session_id>")
+            return 2
+        import guard
+        if os.path.exists(guard.VAULT) and not guard.restore_if_sealed(quiet=True):
+            print("Exit the match before regenerating its reports.")
+            return 1
+        from tm_engine import Engine
+        home = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "data")
+        try:
+            status = Engine.reexport_report(home, argv[1])
+        except (OSError, ValueError, KeyError, RuntimeError) as exc:
+            print("Unable to regenerate the reports: %s" % exc)
+            return 1
+        print(json.dumps(status, ensure_ascii=False, indent=2))
+        return 0 if all(item["ok"] for item in status.values()) else 1
 
     if mode == "state":
         import json

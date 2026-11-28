@@ -39,7 +39,7 @@ if (Test-Path -LiteralPath $guardState -PathType Leaf) {
     }
 }
 
-foreach ($name in @("session.json", "session.json.tmp", ".running", ".scratchpad.jsonl", ".seal")) {
+foreach ($name in @("session.json", "session.json.previous", "session.json.tmp", ".running", ".scratchpad.jsonl", ".seal")) {
     $path = Join-Path $dataDir $name
     if (Test-Path -LiteralPath $path -PathType Leaf) {
         Remove-Item -LiteralPath $path -Force

@@ -103,7 +103,7 @@ class SettlementRegression(unittest.TestCase):
         duration = engine.SESSION_MINUTES * 60
         self.market.s["created_at"] -= duration - 179
         reported = []
-        with patch.object(self.market, "_write_report", side_effect=lambda *_: reported.append(self.market.ff_plan()["used"])):
+        with patch.object(self.market, "_write_report", side_effect=lambda *_, **__: reported.append(self.market.ff_plan()["used"])):
             result = self.market.fast_forward(180)
         self.assertFalse(result["ok"])
         self.assertTrue(result["state"]["finished"])

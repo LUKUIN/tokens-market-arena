@@ -1441,12 +1441,15 @@ def _warn_already_open():
     sys.stderr.write("Spectator already running; not opening a second one (the match service is unaffected)%s" % chr(10))
 
 
-def main():
+def main(api_url=None):
     """True when the spectator window closed normally, False when it could not open.
 
     run.py uses this to decide whether to keep serving: the window is a display
     layer, not the host of the match.
     """
+    global API
+    if api_url is not None:
+        API = api_url.rstrip("/")
     if not _acquire_single_instance():
         _warn_already_open()
         return False
