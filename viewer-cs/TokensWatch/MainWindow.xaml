@@ -26,67 +26,43 @@
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition x:Name="ColHeaderStatus" Width="420" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <Grid Grid.Column="0" VerticalAlignment="Center">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="TOKENS" FontSize="19" FontWeight="Bold"
-                                   Foreground="{StaticResource Ink}" VerticalAlignment="Center" />
-                        <TextBlock Text=" 交易市场" FontSize="19" FontWeight="Bold"
-                                   Foreground="{StaticResource Muted}" VerticalAlignment="Center" />
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="TOKENS" FontSize="19" FontWeight="Bold"
+                               Foreground="{StaticResource Ink}" VerticalAlignment="Center" />
+                    <TextBlock Text=" 交易市场" FontSize="19" FontWeight="Bold"
+                               Foreground="{StaticResource Muted}" VerticalAlignment="Center" />
+                    <Border x:Name="ChipMode" Background="#EAF4FF" CornerRadius="11"
+                            Padding="10,3" Margin="12,0,0,0" VerticalAlignment="Center">
+                        <TextBlock x:Name="TxtMode" Text="已开启随机事件" FontSize="13"
+                                   Foreground="{StaticResource Accent}" />
+                    </Border>
 
-                        <Border Width="1" Height="20" Background="{StaticResource Line}"
-                                Margin="16,0" VerticalAlignment="Center" />
-                    </StackPanel>
+                    <!-- 每个全局事件一个独立胶囊，不拼成一条 -->
+                    <Border x:Name="ChipFr" Background="#F1F1F1" CornerRadius="11"
+                            Padding="10,3" Margin="6,0,0,0" VerticalAlignment="Center"
+                            Visibility="Collapsed">
+                        <TextBlock x:Name="TxtFr" Text="优惠融资" FontSize="13"
+                                   Foreground="{StaticResource Warn}" />
+                    </Border>
 
-                    <TextBlock Grid.Column="1" x:Name="TxtTrader" Text="访客" FontSize="16"
-                               FontWeight="SemiBold" Foreground="{StaticResource Ink}"
-                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                               ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
+                    <Border x:Name="ChipSlot" Background="#F1F1F1" CornerRadius="11"
+                            Padding="10,3" Margin="6,0,0,0" VerticalAlignment="Center"
+                            Visibility="Collapsed">
+                        <TextBlock x:Name="TxtSlot" Text="老虎机" FontSize="13"
+                                   Foreground="{StaticResource Warn}" />
+                    </Border>
 
-                    <StackPanel Grid.Column="2" Orientation="Horizontal">
-                        <Border x:Name="ChipMode" Background="#EAF4FF" CornerRadius="11"
-                                Padding="10,3" Margin="12,0,0,0" VerticalAlignment="Center">
-                            <TextBlock x:Name="TxtMode" Text="已开启随机事件" FontSize="13"
-                                       Foreground="{StaticResource Accent}" />
-                        </Border>
+                    <Border x:Name="ChipSpecial" Background="#F1F1F1" CornerRadius="11"
+                            Padding="10,3" Margin="6,0,0,0" VerticalAlignment="Center">
+                        <TextBlock x:Name="TxtSpecial" Text="无全局事件" FontSize="13"
+                                   Foreground="{StaticResource Muted}" />
+                    </Border>
+                </StackPanel>
 
-                        <!-- 每个全局事件一个独立胶囊，不拼成一条 -->
-                        <Border x:Name="ChipFr" Background="#F1F1F1" CornerRadius="11"
-                                Padding="10,3" Margin="6,0,0,0" VerticalAlignment="Center"
-                                Visibility="Collapsed">
-                            <TextBlock x:Name="TxtFr" Text="优惠融资" FontSize="13"
-                                       Foreground="{StaticResource Warn}" />
-                        </Border>
-
-                        <Border x:Name="ChipSlot" Background="#F1F1F1" CornerRadius="11"
-                                Padding="10,3" Margin="6,0,0,0" VerticalAlignment="Center"
-                                Visibility="Collapsed">
-                            <TextBlock x:Name="TxtSlot" Text="老虎机" FontSize="13"
-                                       Foreground="{StaticResource Warn}" />
-                        </Border>
-
-                        <Border x:Name="ChipSpecial" Background="#F1F1F1" CornerRadius="11"
-                                Padding="10,3" Margin="6,0,0,0" VerticalAlignment="Center">
-                            <TextBlock x:Name="TxtSpecial" Text="无全局事件" FontSize="13"
-                                       Foreground="{StaticResource Muted}" />
-                        </Border>
-                    </StackPanel>
-                </Grid>
-
-                <TextBlock Grid.Column="1" x:Name="TxtRunState" Text="等待服务启动"
-                           FontSize="15" Foreground="{StaticResource Muted}"
-                           HorizontalAlignment="Center" VerticalAlignment="Center"
-                           TextWrapping="Wrap" Margin="12,4" />
-
-                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button Content="老虎机" Style="{StaticResource GhostButton}"
                             Margin="0,0,6,0" Click="OnOpenSlotClick" />
                     <Button Content="投资界面" Style="{StaticResource PrimaryButton}"
@@ -100,6 +76,27 @@
                     <Button Content="结束进程" Style="{StaticResource DangerButton}"
                             Click="OnQuitClick" />
                 </StackPanel>
+
+                <Grid Grid.Row="1" Grid.ColumnSpan="2" Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid VerticalAlignment="Center">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="玩家" Foreground="{StaticResource Muted}"
+                                   VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <TextBlock Grid.Column="1" x:Name="TxtTrader" Text="访客" FontSize="16"
+                                   FontWeight="SemiBold" Foreground="{StaticResource Ink}" TextWrapping="Wrap"
+                                   VerticalAlignment="Center" />
+                    </Grid>
+                    <TextBlock Grid.Column="1" x:Name="TxtRunState" Text="等待服务启动"
+                               FontSize="15" Foreground="{StaticResource Muted}" TextWrapping="Wrap"
+                               HorizontalAlignment="Right" VerticalAlignment="Center" Margin="12,0,0,0" />
+                </Grid>
             </Grid>
         </Border>
 

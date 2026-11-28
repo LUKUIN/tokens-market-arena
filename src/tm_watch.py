@@ -417,9 +417,6 @@ class Watch:
         _brand.pack(side="left", padx=(18, 0), pady=10)
         tk.Label(_brand, text="TOKENS 交易市场", font=(FONT[0], 12, "bold"),
                  bg=TOPBAR, fg="#FFFFFF").pack(side="left")
-        self.lbl_trader = tk.Label(_brand, text="", font=(FONT[0], 11, "bold"),
-                                   bg=TOPBAR, fg="#8CC4F8")
-        self.lbl_trader.pack(side="left", padx=(14, 0))
         self.lbl_mode = tk.Label(_brand, text="", font=FONT_SMALL, bg=TOPBAR, fg="#AEBBD0")
         self.lbl_mode.pack(side="left", padx=(8, 0))
         tk.Label(_brand, text="投资终端", font=FONT_SMALL,
@@ -459,6 +456,12 @@ class Watch:
         tk.Button(topbar, text="结束相关进程", command=self._kill_all,
                   bg="#1E3050", fg="#F2A6A0", activebackground="#2B3E5C",
                   activeforeground="#FFFFFF", **btn_style).pack(side="right", padx=(0, 10), pady=8)
+
+        self.lbl_trader = tk.Label(root, text="", font=(FONT[0], 11, "bold"),
+                                   bg=TOPBAR, fg="#8CC4F8", anchor="w", justify="left",
+                                   wraplength=max(280, self.W - 36))
+        self.lbl_trader.pack(fill="x", ipady=2)
+        self.lbl_trader.configure(padx=18)
 
         # ---------- 指标卡 ----------
         metrics = tk.Frame(root, bg=BG)
@@ -681,6 +684,9 @@ class Watch:
             self._render(st)
             self._api_fail = 0
             self._api_ever = True
+            if st.get("finished") is True:
+                self.root.after(3000, self.root.destroy)
+                return
         except Exception:
             self._api_fail += 1
             self._set_offline()
@@ -832,7 +838,7 @@ class Watch:
         rolling = (not st.get("rolled")) and bool(st.get("roll_left"))
         if self._last_trader != (trader, mode, diff, rolling):
             self._last_trader = (trader, mode, diff, rolling)
-            self.lbl_trader.config(text="| %s" % trader)
+            self.lbl_trader.config(text="玩家  %s" % trader)
             self.lbl_mode.config(text="（%s）" % mode,
                                  fg=BLUE if st.get("events_on", True) else MUTED)
             title = "Tokens 交易市场 | %s（%s）" % (_fit_title(trader), mode)

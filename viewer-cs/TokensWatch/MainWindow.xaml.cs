@@ -500,13 +500,6 @@ public partial class MainWindow : Window
         bool compact = size.Width < 1450 || size.Height < 820;
         bool wide = size.Width >= 1800 && size.Height >= 1000;
         ColRight.Width = new GridLength(compact ? 308 : wide ? 400 : 360);
-        ColHeaderStatus.Width = new GridLength(wide ? 420 : 0);
-        Grid.SetRow(TxtRunState, wide ? 0 : 1);
-        Grid.SetColumn(TxtRunState, wide ? 1 : 0);
-        Grid.SetColumnSpan(TxtRunState, wide ? 1 : 3);
-        TxtRunState.HorizontalAlignment = wide ? HorizontalAlignment.Center : HorizontalAlignment.Left;
-        TxtRunState.Margin = wide ? new Thickness(12, 4, 12, 4) : new Thickness(0, 0, 0, 8);
-
         HeaderRow.MinHeight = compact ? 46 : 54;
         MainLayout.Margin = new Thickness(compact ? 12 : 16);
         foreach (Border card in MetricCards.Children)

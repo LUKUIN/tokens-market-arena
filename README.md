@@ -34,7 +34,7 @@
 | Windows WPF 主界面 | 推荐 Python 3.14 与 [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)（x64） |
 | Windows tkinter 界面 | 推荐 Python 3.14，含 Tcl/Tk |
 
-当前发行包已验证 Python 3.14，安装路径与补丁号不限。双击脚本从 PATH 查找 `python`。WPF 可执行文件已随发行 ZIP 提供，只有重编才需要 .NET 8 SDK。指定 `TM_WATCH_IMPL=py` 时使用 tkinter，WPF 可执行文件缺失时也会自动回退。若可执行文件存在但启动失败，请手动选择回退。Python 部分只用标准库。
+当前发行包已验证 Python 3.14，安装路径与补丁号不限。双击脚本从 PATH 查找 `python`。WPF 可执行文件已随发行 ZIP 提供，只有重编才需要 .NET 8 SDK。指定 `TM_WATCH_IMPL=py` 时使用 tkinter，WPF 程序缺失或启动时提前退出（例如缺少 .NET 8 Desktop Runtime x64）也会自动回退。Python 部分只用标准库。
 
 ## 快速开始
 
@@ -42,7 +42,7 @@
 
 主界面出现后先答复挑战任务。75 秒超时按拒绝，随后自动开始 30 秒难度抽选。可提前叫停，也可等它自动定档。**定档时开始 45 分钟计时**，打开规则窗不会暂停。开仓、借款、投注和快进需要定档。
 
-普通启动的 `TM_PORT` 默认是 8734。自定义端口并使用 tkinter 时，把 `TM_WATCH_API` 也设为对应地址。`python run.py server 127.0.0.1 8734` 是只运行 HTTP 服务的调试入口，端口从命令行参数读取。玩法详见[规则](docs/rules.md)。
+普通启动的 `TM_PORT` 默认是 8734。WPF 和 tkinter 都会跟随普通启动的服务端口。`python run.py server 127.0.0.1 8734` 是只运行 HTTP 服务的调试入口，端口从命令行参数读取。玩法详见[规则](docs/rules.md)。
 
 ## 难度：两个维度，开局随机抽，各 5 档
 
@@ -108,7 +108,7 @@ Tokens 交易市场 | 我的名字 | 黑天鹅频率：低 | 流动性枯竭程�
 ## 主界面（C# / WPF，默认）
 
 `viewer-cs/` 里就是默认主界面。`run.py` 起局后直接拉起它，不用另外双击；只有设了
-`TM_WATCH_IMPL=py`、或 `bin/Release` 里的 exe 不存在时，才回退到 `src/tm_watch.py` 那个 tkinter 窗口。
+`TM_WATCH_IMPL=py`，或 WPF 缺失、启动失败时，会回退到 `src/tm_watch.py` 那个 tkinter 窗口。
 主界面通过本地 HTTP 与引擎通信。
 
 WPF 窗口按显示器的物理分辨率选档：2560×1440 及以上用 **1920×1080**，1920×1080 及以上用 **1600×900**，更小的屏用 **1280×720**。这些尺寸是窗口的物理像素，Windows 缩放不会改变档位或外框尺寸。工作区放不下时等比缩小，标题栏显示实际尺寸。可设置 `TM_WATCH_SIZE=1600x900` 手动指定像素尺寸。

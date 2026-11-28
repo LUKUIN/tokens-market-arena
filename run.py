@@ -135,28 +135,21 @@ def _run_human(port=None):
         print("  服务启动失败：端口 %d 可能被占用，先结束残留的 python 进程再试。" % port)
         return 1
 
-    # 交互界面：默认 C# / WPF（viewer-cs，含投资界面、规则窗、难度盲盒），
-    # tkinter 版只在 C# 没构建或显式 TM_WATCH_IMPL=py 时兜底。
-    base = os.path.dirname(os.path.abspath(__file__))
-    cs_exe = os.path.join(base, "viewer-cs", "TokensWatch", "bin", "Release",
-                          "net8.0-windows", "TokensWatch.exe")
-    want_py = (os.environ.get("TM_WATCH_IMPL") or "").strip().lower() in (
-        "py", "tk", "tkinter")
+    from tm_watch_launch import start_wpf
 
-    if os.path.isfile(cs_exe) and not want_py:
-        import subprocess
+    api_url = "http://127.0.0.1:%d" % port
+    viewer, failure = start_wpf(HERE, api_url)
+    if viewer is not None:
         print("  正在拉起主界面（C# 版，含投资界面与难度盲盒）……")
         try:
-            subprocess.Popen(
-                [cs_exe],
-                cwd=base,
-                env=dict(os.environ, TM_WATCH_API="http://127.0.0.1:%d" % port),
-            ).wait()
+            viewer.wait()
         except KeyboardInterrupt:
             pass
         return 0
 
-    # 兜底：tkinter 版（自带分辨率选择与盲盒窗）
+    if failure:
+        print("  WPF 启动失败（%s）。使用 WPF 需安装 .NET 8 Desktop Runtime（x64），本次打开 tkinter。" % failure)
+    os.environ["TM_WATCH_API"] = api_url
     import tm_watch
     tm_watch.main()
     return 0
