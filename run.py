@@ -242,27 +242,12 @@ def _probe(host="127.0.0.1", port=8734, timeout=1.0):
 
 
 def _run_spectator(host="127.0.0.1", port=8734):
-    """开一个观众席窗口；已经有一局在跑就直接挂上去。
-
-    挂载必须无副作用：不起服务、不封存源码。对局进行中再封一次，会把诱饵加密进新箱子，
-    真源码就再也还原不回来了。
-    """
-    existing = _probe(host, port)
-    if existing:
-        print("  已连上正在进行的对局：%s:%d" % (host, port))
-    else:
-        if not _start_server(host, port):
-            print("  服务启动失败：%s:%d" % (host, port))
-            return 1
-        print("  HTTP 接口：http://%s:%d（此前没有对局，服务由本进程启动）" % (host, port))
+    """打开观众席并连接已有对局。"""
+    if not _probe(host, port):
+        print("  在 %s:%d 没有找到正在运行的对局。" % (host, port))
+        return 1
     import tm_watch_ai
-    guard_stop = None if existing else _start_guard(port)
-    print("  正在拉起只读观众席……")
-    try:
-        tm_watch_ai.main()
-    finally:
-        if guard_stop is not None:
-            guard_stop.set()
+    tm_watch_ai.main(api_url="http://%s:%d" % (host, port))
     return 0
 
 
@@ -607,6 +592,24 @@ def main(argv=None):
             except Exception as exc:
                 print("  收尾清理失败: %s" % exc)
         return 0
+
+    if mode == "report-retry":
+        if len(argv) != 2:
+            print("用法：python run.py report-retry <session_id>")
+            return 2
+        import guard
+        if os.path.exists(guard.VAULT) and not guard.restore_if_sealed(quiet=True):
+            print("请在对局退出后再补导战报。")
+            return 1
+        from tm_engine import Engine
+        home = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "data")
+        try:
+            status = Engine.reexport_report(home, argv[1])
+        except (OSError, ValueError, KeyError, RuntimeError) as exc:
+            print("补导战报失败：%s" % exc)
+            return 1
+        print(json.dumps(status, ensure_ascii=False, indent=2))
+        return 0 if all(item["ok"] for item in status.values()) else 1
 
     if mode == "state":
         import json

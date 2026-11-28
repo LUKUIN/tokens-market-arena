@@ -97,3 +97,11 @@ A successful response contains `final_equity`, `report`, `settled` and `warnings
 During a match use the scratchpad HTTP endpoints. The packaged `src/scratchpad.py` is one of the files sealed by the guard, and executing a decoy can terminate the match. Only notes submitted to the scratchpad are included there in the report. Spectator replies arrive via `/assist/inbox`, separate from the event stream.
 
 Use API data and your own analysis during a competition. Run integrations as a single writer when the order matters. Serialization of engine operations does not make a repeated POST safe to retry after a timeout, so read back the state before resending a trade.
+
+### Safe trade retries and report recovery
+
+Send an optional Idempotency-Key header (1–128 visible ASCII characters) on /open, /close, /close_all, /loan or /repay. After a timeout, repeat the same route, parameters and key. A completed trade is executed once per session. The replay returns its original outcome, current state and replayed:true. Reusing a key for a different operation returns HTTP 409. Include the current session_id in the body to keep a delayed retry from reaching a new match. Without a key, check the state before resending.
+
+The settlement's report_status records HTML and JSON export results separately. A render entry denotes failure before either export. After the match exits, run python run.py report-retry <session_id> to regenerate both files from the archived settlement snapshot.
+
+If the main save is damaged, the engine preserves it and tries the verified session.json.previous backup. A resumed backup is ineligible for a win and includes storage_recovery in its state. If neither file is usable, startup stops and preserves both files.

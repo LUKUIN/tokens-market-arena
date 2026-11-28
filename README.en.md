@@ -51,7 +51,7 @@ Follow [AGENTS.md](AGENTS.md) for the exact order and working PowerShell command
 
 - Run `python run.py` from the project root, or use `launchers/AI-Start.bat` for an unattended Windows launch. Terminal startup does not ask for settings. The challenge prompt is part of the HTTP match flow.
 - The Windows confirmation launcher is `launchers/开一局.bat`. It cancels if there is no confirmation in five seconds.
-- To reattach the spectator, confirm the original match is serving and run `python run.py spectator 127.0.0.1 8734` at the actual port. Without an existing service, this command can start one.
+- To reattach the spectator, confirm the original match is serving and run `python run.py spectator 127.0.0.1 8734` at the actual port. Without an existing match, the command exits.
 - On a machine without a desktop, run `python run.py --headless`. The default address is loopback port 8734. For multiple matches use separate project checkouts as well as distinct ports.
 
 | Setting | Scripted default and meaning |

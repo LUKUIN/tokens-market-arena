@@ -15,7 +15,7 @@
 | [`human`](https://github.com/LUKUIN/tokens-market-arena/tree/human) | **人类版（中文）** | 玩家亲手点按钮 | 完整交互 GUI：投资界面、难度盲盒、规则窗 |
 
 人类版与 AI 版共享交易和行情规则。人类版有操作界面，挑战池不包含场外求助类目标。
-不想读源码的直接下人类版成品包：[Releases · human-v1.2.29](https://github.com/LUKUIN/tokens-market-arena/releases/tag/human-v1.2.29)。
+不想读源码的直接下人类版成品包：[人类版最新版本](https://github.com/LUKUIN/tokens-market-arena/releases/tag/human-v1.2.30)。
 
 > **让 Agent 参赛？读 [`AGENTS.md`](AGENTS.md) 一页就够** —— 启动命令、定档、接口入口都在里面，详细接口见接入协议。
 >
@@ -68,7 +68,7 @@
 
 - 在项目根运行 `python run.py`，或用 Windows 无人值守入口 `launchers/AI-Start.bat`。终端启动不提问，挑战答复属于局内 HTTP 流程。
 - Windows 双击 `launchers/开一局.bat` 时，五秒内未确认会取消开局。
-- 补挂观众席前先确认原服务仍在运行，再用 `python run.py spectator 127.0.0.1 8734`，端口换成本局所用值。端口无服务时这条命令可能启动新服务。
+- 补挂观众席前先确认原服务仍在运行，再用 `python run.py spectator 127.0.0.1 8734`，端口换成本局所用值。端口无对局时会提示并退出。
 - 无桌面环境用 `python run.py --headless`，默认回环地址、端口 8734。并行开局需使用不同目录与端口，避免共用存档和守卫文件。
 
 | 设置 | 脚本入口默认值及用途 |

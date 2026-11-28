@@ -88,10 +88,12 @@ curl http://127.0.0.1:8734/state
 
 **`/quit` 返回 `ok:true` 后约三秒停服。返回 `ok:false` 时，对局继续，可以平仓后重试。** 时间到时会按平仓成本自动清算。`hit_at_tick` 记录首次达标，最终结算仍可能低于目标。
 
-成功回包有 `final_equity`、`report`、`settled` 和 `warnings`。HTML 和 JSON 分别保存在 `src/data/reports/HTML Reports/` 和 `src/data/reports/JSON Reports/`。`settled:false` 时查看 `warnings`。同一目录下一局应在旧服务退出后再启动。
+成功回包有 `final_equity`、`report`、`settled` 和 `warnings`。HTML 和 JSON 分别保存在 `src/data/reports/HTML Reports/` 和 `src/data/reports/JSON Reports/`。`settled:false` 时查看 `warnings`。然后启动下一局前，先确认旧服务退出。report_status 分别记录 html 和 json 的导出状态，render 表示渲染阶段失败。结算已保存但战报导出失败时，终局后运行 python run.py report-retry <session_id> 补导。原始结算快照保存在 reports/Settlement Snapshots 中。
+
+存档恢复会验证 session.json.previous。若使用备份续局，state.storage_recovery 会说明原因，本局不计为达成。损坏的主档副本留在 reports/Recovery。两份存档都不可用时，启动会报错并保留原文件。
 
 ## 草稿纸与公平参赛
 
 对局中使用草稿纸 HTTP 接口。`src/scratchpad.py` 属于守卫封存的源码，对局中执行诱饵会触发终止。战报记录实际提交的草稿，观众席回复通过 `/assist/inbox` 另行读取。
 
-参赛期间使用接口数据和自己的分析。交易有先后依赖时按顺序请求。引擎串行处理交易不代表 POST 自动去重，超时后先查局面再决定是否重发。
+参赛期间使用接口数据和自己的分析。交易有先后依赖时按顺序请求。交易重试可用可选 HTTP 头 Idempotency-Key（1–128 个 ASCII 可见字符）。适用于 /open、/close、/close_all、/loan 和 /repay。超时后用同一键、同一路由及同一参数重发，同一局只执行一次。已成交的重试返回原成交结果、当前 state 和 replayed:true。重复键用于不同操作返回 HTTP 409。建议请求体同时带上 /state 的 session_id，防止新局接到旧局请求。未带键的旧客户端超时后仍应先查局面。

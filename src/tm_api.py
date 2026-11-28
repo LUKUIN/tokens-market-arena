@@ -197,17 +197,21 @@ class Handler(BaseHTTPRequestHandler):
     def _route_post(self, path, b):
         # 「活动」由引擎方法自己记账（见 tm_engine._writing）：路由层不再维护
         # 第二份路径清单，也就不存在「新增写接口忘了加进来」这个漏点。
-        if path == "/open":
-            return self._send(ENGINE.open_position(b.get("pair"), b.get("side"),
-                                                   b.get("lots"), b.get("leverage")))
-        if path == "/close":
-            return self._send(ENGINE.close_position(b.get("pair"), b.get("lots"), b.get("side")))
-        if path == "/close_all":
-            return self._send(ENGINE.close_all())
-        if path == "/loan":
-            return self._send(ENGINE.borrow(b.get("amount")))
-        if path == "/repay":
-            return self._send(ENGINE.repay(b.get("amount")))
+        trade = {
+            "/open": (ENGINE.open_position, ("pair", "side", "lots", "leverage")),
+            "/close": (ENGINE.close_position, ("pair", "lots", "side")),
+            "/close_all": (ENGINE.close_all, ()),
+            "/loan": (ENGINE.borrow, ("amount",)),
+            "/repay": (ENGINE.repay, ("amount",)),
+        }.get(path)
+        if trade is not None:
+            action, fields = trade
+            result = action(*(b.get(field) for field in fields),
+                            request_id=self.headers.get("Idempotency-Key"),
+                            expected_session=b.get("session_id"))
+            code = {"session_mismatch": 409, "idempotency_conflict": 409,
+                    "invalid_idempotency_key": 400}.get(result.get("code"), 200)
+            return self._send(result, code)
         if path == "/quit":
             resp = ENGINE.quit_session()
             try:
