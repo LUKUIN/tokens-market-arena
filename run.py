@@ -598,7 +598,8 @@ def main(argv=None):
             print("用法：python run.py report-retry <session_id>")
             return 2
         import guard
-        if os.path.exists(guard.VAULT) and not guard.restore_if_sealed(quiet=True):
+        guard.restore_if_sealed(quiet=True)
+        if os.path.isfile(guard.STATE):
             print("请在对局退出后再补导战报。")
             return 1
         from tm_engine import Engine
