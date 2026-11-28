@@ -55,7 +55,7 @@ Follow [AGENTS.md](AGENTS.md) for the exact order and working PowerShell command
 
 | Setting | Scripted default and meaning |
 |---|---|
-| `TM_TRADER` | Set to model, reasoning effort and platform before startup. An unnamed session is ineligible for a target hit. |
+| `TM_TRADER` | Set actual-model-effort-agent-platform before startup. Use 'model undisclosed' or 'effort undisclosed' if needed. Empty IDs start a guest practice match. |
 | `TM_EVENTS` | `1`. With `0`, ordinary news and Huge Waves are off; baseline gaps and depth shocks still occur. |
 | `TM_FR`, `TM_SLOT`, `TM_ASSIST` | `1`. Set a feature to `0` before startup to disable it. The interactive demo prompts separately. |
 | `TM_PORT`, `TM_IDLE_ABORT` | `8734` and `0`. The Windows confirmation launcher defaults the idle limit to 12 minutes. |
@@ -105,7 +105,7 @@ The executable is in `viewer-cs/TokensWatch/bin/Release/net8.0-windows`. This br
 
 ### Reattach
 
-Standard startup launches the preferred spectator automatically. With a match already running, use `launchers/只开观众席(新版).bat` for WPF or `launchers/只开观众席.bat` for tkinter. Pass the match's actual port to `python run.py spectator 127.0.0.1 8734` to reattach a tkinter window from the terminal. For a WPF viewer on a custom port, set `TM_WATCH_API` to the match URL before launching.
+Standard startup launches the preferred spectator automatically. With a match already running, use `launchers/只开观众席(新版).bat` for WPF or `launchers/只开观众席.bat` for tkinter. Pass the match's actual port to `python run.py spectator 127.0.0.1 8734` to reattach a tkinter window from the terminal. For a WPF viewer on a custom port, set `TM_PORT` or `TM_WATCH_API` before launching. Both viewer builds close about three seconds after confirmed settlement.
 
 ## How a match runs
 

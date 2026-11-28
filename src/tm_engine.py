@@ -20,6 +20,7 @@ import shutil
 import threading
 import time
 
+from tm_contestant import CONTESTANT_HINT, parse_contestant_id
 from tm_report_renderer import render_report
 from tm_report_store import export_report, read_settlement, settlement_path
 from tm_storage import SessionRecoveryError, atomic_write, json_bytes
@@ -242,19 +243,6 @@ def _env_flag(name, default=True):
         v = (os.environ.get(name) or "").strip().lower()
         _SPECIAL_CACHE[name] = default if not v else v in ("1", "y", "yes", "on", "开", "是")
     return _SPECIAL_CACHE[name]
-
-
-def _sanitize_trader(name):
-    """参赛标识白名单：只保留中英文、数字、空格与 -_.()（）· 等安全字符。
-
-    /trader 的名字会原样写进报告文件名与事件流，必须在这里收口，
-    否则模型可以塞进 HTML 标签污染战报（报告渲染另有 html.escape 兜底）。
-    """
-    import re as _re
-    if not name:
-        return ""
-    s = _re.sub(r"[^\w\s\-_.()（）·]", "", str(name), flags=_re.UNICODE)
-    return s.strip()
 
 
 def _pick_news_rate(rng):
@@ -495,8 +483,8 @@ def _env_trader():
     """
     global _TRADER_CACHE
     if _TRADER_CACHE is None:
-        name = _sanitize_trader((os.environ.get("TM_TRADER") or "").strip())
-        _TRADER_CACHE = ("访客", True) if not name else (name[:60], False)
+        name = parse_contestant_id(os.environ.get("TM_TRADER"))
+        _TRADER_CACHE = ("访客", True) if not name else (name, False)
     return _TRADER_CACHE
 
 
@@ -2181,47 +2169,19 @@ class Engine:
             return self.state()
 
     # ---------------- 游戏者识别 ----------------
-    UA_NAMES = (
-        ("kimi", "Kimi"), ("moonshot", "Kimi"),
-        ("mimo", "MiMo"), ("xiaomi", "MiMo"),
-        ("doubao", "豆包"), ("豆包", "豆包"), ("bytedance", "豆包"),
-        ("claude", "Claude"), ("anthropic", "Claude"),
-        ("openai", "GPT"), ("gpt", "GPT"), ("chatgpt", "GPT"),
-        ("gemini", "Gemini"), ("google", "Gemini"),
-        ("deepseek", "DeepSeek"),
-        ("qwen", "通义"), ("tongyi", "通义"),
-        ("glm", "智谱"), ("zhipu", "智谱"),
-    )
-
     def note_ua(self, ua):
-        """记录请求的 User-Agent，并据此识别当前操作者。"""
-        with LOCK:
-            if not ua:
-                return
-            if self.s.get("last_ua") == ua:
-                return
-            self.s["last_ua"] = ua
-            low = ua.lower()
-            for kw, name in self.UA_NAMES:
-                if kw in low:
-                    if self.s["trader"] != name:
-                        self.s["trader"] = name
-                        self._event("识别到操作者：%s" % name, "info")
-                    self._save()
-                    return
-            if self.s["trader"] == "访客":
-                self._save()
+        """记录请求客户端信息，供排查使用。"""
+        if ua:
+            with LOCK:
+                self.s["last_ua"] = ua
 
     @_writing
     def set_trader(self, name):
         with LOCK:
-            raw = (name or "").strip()
-            if not raw:
-                return {"ok": False, "error": "名字不能为空"}
-            clean = _sanitize_trader(raw)
-            if not clean:
-                return {"ok": False, "error": "名字含非法字符；只允许中英文、数字、空格与 -_.()（）·"}
-            self.s["trader"] = clean[:60]
+            label = parse_contestant_id(name)
+            if label is None:
+                return {"ok": False, "error": CONTESTANT_HINT}
+            self.s["trader"] = label
             self._event("操作者设置为：%s" % self.s["trader"], "info")
             self._save()
             return {"ok": True, "trader": self.s["trader"]}
@@ -3629,7 +3589,7 @@ class Engine:
                 "GET /health": "存活探针：tick / equity / finished / 协议与引擎版本",
                 "POST /reset": "开新的一局（清空本局存档并重新抽难度）",
                 "POST /pause": "开局前暂停，调用 /begin 恢复",
-                "POST /trader": {"name": "参赛标识，≤60 字符；只保留中英文、数字、空格与 -_.()（）·"},
+                "POST /trader": {"name": CONTESTANT_HINT},
                 "POST /shutdown": "立即停止服务（观众席「结束相关进程」用），会先留一份异常退出快照",
                 "POST /assist/enable": "旧接口始终拒绝；启动前用 TM_ASSIST=1 开启援助",
                 "GET /assist/pending": "看当前待观众席回复的求助工单",

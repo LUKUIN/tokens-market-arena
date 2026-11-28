@@ -49,7 +49,6 @@ exit /b 1
 rem ------------------------------------------------------------------
 rem 本版不等待任何键盘输入。所有参数走环境变量，未设置的用下面默认值。
 rem ------------------------------------------------------------------
-if not defined TM_TRADER set "TM_TRADER=访客"
 if not defined TM_EVENTS set "TM_EVENTS=1"
 if not defined TM_FR     set "TM_FR=1"
 if not defined TM_SLOT   set "TM_SLOT=1"
@@ -64,7 +63,7 @@ echo   ==========================================
 echo      Tokens 交易市场 · AI 版
 echo   ==========================================
 echo   接口地址     http://127.0.0.1:%TM_PORT%
-echo   参赛模型     %TM_TRADER%
+echo   参赛模型     实际模型-思考强度-Agent平台
 echo   随机事件     %TM_EVENTS%
 echo   优惠融资 %TM_FR%    老虎机 %TM_SLOT%    外部的怜悯 %TM_ASSIST%
 echo   5 秒内按 Y 才启动对局；不按则取消开局。

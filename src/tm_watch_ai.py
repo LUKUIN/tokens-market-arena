@@ -263,9 +263,6 @@ class Watch:
         _brand.pack(side="left", padx=(18, 0), pady=10)
         tk.Label(_brand, text="TOKENS 交易市场", font=(FONT[0], 12, "bold"),
                  bg=TOPBAR, fg="#FFFFFF").pack(side="left")
-        self.lbl_trader = tk.Label(_brand, text="", font=(FONT[0], 11, "bold"),
-                                   bg=TOPBAR, fg="#8CC4F8")
-        self.lbl_trader.pack(side="left", padx=(14, 0))
         self.lbl_mode = tk.Label(_brand, text="", font=FONT_SMALL, bg=TOPBAR, fg="#AEBBD0")
         self.lbl_mode.pack(side="left", padx=(8, 0))
         tk.Label(_brand, text="只读观战终端", font=FONT_SMALL,
@@ -306,6 +303,12 @@ class Watch:
         tk.Button(topbar, text="结束相关进程", command=self._kill_all,
                   bg="#1E3050", fg="#F2A6A0", activebackground="#2B3E5C",
                   activeforeground="#FFFFFF", **_b).pack(side="right", padx=(0, 10), pady=8)
+
+        self.lbl_trader = tk.Label(root, text="", font=(FONT[0], 11, "bold"),
+                                   bg=TOPBAR, fg="#8CC4F8", anchor="w", justify="left",
+                                   wraplength=max(280, self.W - 36))
+        self.lbl_trader.pack(fill="x", ipady=2)
+        self.lbl_trader.configure(padx=18)
 
         # ---------- 指标卡 ----------
         metrics = tk.Frame(root, bg=BG)
@@ -539,6 +542,9 @@ class Watch:
                         text="界面渲染异常（对局仍在继续，详见 data/watch.log）", fg=ORANGE)
                 except Exception:
                     pass
+            if isinstance(st, dict) and st.get("finished") is True:
+                self.root.after(3000, self.root.destroy)
+                return
         self._assist_n += 1
         if self._assist_n % 5 == 0:
             self._poll_assist()
@@ -779,7 +785,7 @@ class Watch:
         rolling = (not st.get("rolled")) and bool(st.get("roll_left"))
         if self._last_trader != (trader, mode, diff, rolling):
             self._last_trader = (trader, mode, diff, rolling)
-            self.lbl_trader.config(text="| %s" % trader)
+            self.lbl_trader.config(text="参赛者  %s" % trader)
             self.lbl_mode.config(text="（%s）" % mode,
                                  fg=BLUE if st.get("events_on", True) else MUTED)
             title = "Tokens 交易市场 | %s（%s）" % (_fit_title(trader), mode)
@@ -924,7 +930,7 @@ class Watch:
             # 追缴是实时紧急状态，优先级高于「未命名启动」这类提示
             state_txt = "追加保证金·还剩 %d tick" % st["margin_call_remain"]
         elif st.get("unnamed"):
-            state_txt = "未命名启动·请用开一局.bat"
+            state_txt = "访客练习局·不计达标"
         elif ml is not None and ml < 50:
             state_txt = "保证金水平告急"
         elif st["blowups"] > 0 and ml is None:
@@ -940,7 +946,7 @@ class Watch:
         self.lbl_status.config(
             text=("%s | %02d:%02d | 订单 %d" % (state_txt, mm, ss, st["order_count"])
                   + (("  |  " + " ".join(st["active_mods"])) if st.get("active_mods") else "")),
-            fg=RED if any(k in state_txt for k in ("告急", "篡改", "回拨", "未命名", "追加保证金", "资金为负")) else MUTED)
+            fg=RED if any(k in state_txt for k in ("告急", "篡改", "回拨", "访客练习", "追加保证金", "资金为负")) else MUTED)
 
         # 持仓表
         for row in self.tree.get_children():

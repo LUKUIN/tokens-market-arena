@@ -175,8 +175,15 @@ public partial class MainWindow : Window
         try
         {
             var st = await _client.GetStateAsync();
-            if (st is null) return;
+            if (_closing || st is null) return;
             _state = st;
+            if (st.Finished)
+            {
+                _closing = true;
+                _uiTimer.Stop();
+                _assistTimer.Stop();
+                _ = CloseAfterSettlementAsync();
+            }
             Render(st);
         }
         catch (Exception ex)
@@ -196,13 +203,19 @@ public partial class MainWindow : Window
         }
     }
 
+    private async Task CloseAfterSettlementAsync()
+    {
+        await Task.Delay(3000);
+        Application.Current.Shutdown();
+    }
+
     private async Task PollAssistAsync()
     {
         if (_closing) return;
         try
         {
             var a = await _client.GetAssistPendingAsync();
-            if (a is null) return;
+            if (_closing || a is null) return;
 
             int n = a.Pending.Count;
 
@@ -302,7 +315,7 @@ public partial class MainWindow : Window
         else if (st.MarginCallRemain is { } mcr)
             stateTxt = $"追加保证金·还剩 {(int)mcr} tick";
         else if (st.Unnamed)
-            stateTxt = "未命名启动·请用开一局.bat";
+            stateTxt = "访客练习局·不计达标";
         else if (st.MarginLevel is { } mlv && mlv < 50)
             stateTxt = "保证金水平告急";
         else if (st.Blowups > 0 && st.MarginLevel is null)
@@ -496,13 +509,6 @@ public partial class MainWindow : Window
         bool compact = size.Width < 1450 || size.Height < 820;
         bool wide = size.Width >= 1800 && size.Height >= 1000;
         ColRight.Width = new GridLength(compact ? 308 : wide ? 400 : 360);
-        ColHeaderStatus.Width = new GridLength(wide ? 420 : 0);
-        Grid.SetRow(TxtRunState, wide ? 0 : 1);
-        Grid.SetColumn(TxtRunState, wide ? 1 : 0);
-        Grid.SetColumnSpan(TxtRunState, wide ? 1 : 3);
-        TxtRunState.HorizontalAlignment = wide ? HorizontalAlignment.Center : HorizontalAlignment.Left;
-        TxtRunState.Margin = wide ? new Thickness(12, 4, 12, 4) : new Thickness(0, 0, 0, 8);
-
         HeaderRow.MinHeight = compact ? 46 : 54;
         MainLayout.Margin = new Thickness(compact ? 12 : 16);
         foreach (Border card in MetricCards.Children)
@@ -964,6 +970,7 @@ public partial class MainWindow : Window
 
     private void OnQuitClick(object sender, RoutedEventArgs e)
     {
+        if (_closing) return;
         var r = MessageBox.Show(
             "这会把本局服务一起结束，对局将记一次异常退出。\n\n确定要结束吗？",
             "结束相关进程",

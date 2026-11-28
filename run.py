@@ -111,6 +111,8 @@ if sys.version_info[:2] != PY_REQUIRED:
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "src"))
 
+from tm_contestant import CONTESTANT_HINT, parse_contestant_id
+
 DISCLAIMER = """
 ==============================================================
   Tokens 交易市场 · AI 版 —— 免责声明
@@ -156,14 +158,36 @@ def _ask(prompt, default=""):
     return v or default
 
 
+def _contestant_from_env():
+    value = os.environ.get("TM_TRADER", "").strip()
+    if not value or value.casefold() in ("guest", "访客"):
+        return ""
+    name = parse_contestant_id(value)
+    if name is None:
+        print("  TM_TRADER: " + CONTESTANT_HINT)
+    return name
+
+
 def _interactive_setup():
     print(DISCLAIMER)
-    if _ask("输入 y 表示你已经读过并同意以上内容：").lower() != "y":
+    if (_ask("输入 y 表示你已经读过并同意以上内容：") or "").lower() != "y":
         print("  已取消。")
         return None
 
-    name = os.environ.get("TM_TRADER") or _ask(
-        "参赛标识（模型名-思考强度-Agent平台；第一段填模型如 GLM-5.3，第三段才填平台如 豆包，直接回车用「访客」）：", "访客")
+    name = _contestant_from_env()
+    if not name:
+        print("  " + CONTESTANT_HINT)
+        while True:
+            value = _ask("  参赛标识（实际模型-思考强度-Agent平台，直接回车进入访客练习局）：")
+            if value is None:
+                return None
+            if not value:
+                name = ""
+                break
+            name = parse_contestant_id(value)
+            if name is not None:
+                break
+            print("  " + CONTESTANT_HINT)
 
     mode = os.environ.get("TM_EVENTS")
     if mode not in ("0", "1"):
@@ -355,14 +379,18 @@ def _run_ai(interactive=False, port=None):
         trader, events_on = setup
     else:
         print(DISCLAIMER)
-        trader = os.environ.get("TM_TRADER") or "访客"
+        trader = _contestant_from_env()
+        if trader is None:
+            return 2
         # 与 开一局.bat 和引擎 _env_events() 的默认保持一致：未设置时开启随机事件
         events_on = (os.environ.get("TM_EVENTS") or "1") == "1"
 
     os.environ["TM_TRADER"] = trader
     os.environ["TM_EVENTS"] = "1" if events_on else "0"
 
-    print("  玩家 %s | %s" % (trader, EVENTS_TEXT["1" if events_on else "0"]))
+    if not trader:
+        print("  未填写参赛标识。本局按访客练习局记录，不计达标成绩。")
+    print("  玩家 %s | %s" % (trader or "访客", EVENTS_TEXT["1" if events_on else "0"]))
     print(SCRATCHPAD_HINT)
 
     port = int(port or os.environ.get("TM_PORT") or 8734)
@@ -382,38 +410,31 @@ def _run_ai(interactive=False, port=None):
     #   1. tm_watch_ai.py 不参与封存（guard 只封 engine / api / scratchpad）
     #   2. 该模块只依赖标准库，不 import 被封存的文件，所以能独立启动
     base = os.path.dirname(os.path.abspath(__file__))
+    guard_stop = _start_guard(port)
+    if guard_stop is None:
+        return 4
+
     spectator = None
     try:
-        # 观众席有两套实现，都是只读、都只经 HTTP 读 /state：
-        #   1) C# / WPF（viewer-cs/）：矢量渲染，曲线有抗锯齿，默认用这个
-        #   2) tkinter（src/tm_watch_ai.py）：零依赖兜底，没构建 C# 版时用它
-        # 想强制回到 tkinter：启动前设 TM_WATCH_IMPL=py
-        cs_exe = os.path.join(
-            base, "viewer-cs", "TokensWatch", "bin", "Release",
-            "net8.0-windows", "TokensWatch.exe")
-        want_py = (os.environ.get("TM_WATCH_IMPL") or "").strip().lower() in (
-            "py", "tk", "tkinter")
+        from tm_watch_launch import start_wpf
 
-        if os.path.isfile(cs_exe) and not want_py:
-            spectator = subprocess.Popen(
-                [cs_exe],
-                cwd=base,
-                env=dict(os.environ, TM_WATCH_API="http://127.0.0.1:%d" % port))
+        api_url = "http://127.0.0.1:%d" % port
+        spectator, failure = start_wpf(base, api_url)
+        if spectator is not None:
             print("  正在拉起只读观众席（C# 版，进程 %d）……" % spectator.pid)
         else:
+            if failure:
+                print("  WPF 启动失败（%s）。使用 WPF 需安装 .NET 8 Desktop Runtime（x64），本次打开 tkinter。" % failure)
             spectator = subprocess.Popen(
                 [sys.executable, "-c",
-                 "import sys, os; sys.path.insert(0, os.path.join(os.getcwd(), 'src')); "
+                 "import sys; sys.path.insert(0, 'src'); "
                  "import tm_watch_ai; tm_watch_ai.main()"],
                 cwd=base,
-                env=dict(os.environ, TM_WATCH_API="http://127.0.0.1:%d" % port))
+                env=dict(os.environ, TM_WATCH_API=api_url))
             print("  正在拉起只读观众席（tkinter 版，进程 %d）……" % spectator.pid)
     except Exception as exc:
         print("  观众席启动失败：%s（对局服务照常运行）" % exc)
 
-    guard_stop = _start_guard(port)
-    if guard_stop is None:
-        return 4
     try:
         server_thread.join()      # /quit 或 /shutdown 让服务退出后，这里才会返回
     except KeyboardInterrupt:
@@ -570,6 +591,12 @@ def main(argv=None):
             return 4
         # import 必须在封存之前：封存只换磁盘上的文件，已加载的模块不受影响；
         # 反过来做就会把诱饵 import 进来。
+        trader = _contestant_from_env()
+        if trader is None:
+            return 2
+        if not trader:
+            print("  未填写参赛标识。本局按访客练习局记录，不计达标成绩。")
+        os.environ["TM_TRADER"] = trader
         from tm_api import serve
         guard_stop = _start_guard(port)
         if guard_stop is None:

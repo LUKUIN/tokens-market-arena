@@ -190,16 +190,34 @@ class TestScratchpadAndTrader(AuditCase):
     def test_trader_name_sanitized(self):
         """参赛标识只保留白名单字符，HTML 标签会被剔除。"""
         eng = self.make()
-        out = eng.set_trader('<img src=x onerror=alert(1)>测')
+        out = eng.set_trader('<img src=x onerror=alert(1)>测-high-CLI')
         self.assertTrue(out["ok"])
         self.assertNotIn("<", out["trader"])
         self.assertNotIn(">", out["trader"])
         self.assertIn("测", out["trader"])
 
+    def test_request_client_does_not_replace_contestant_id(self):
+        eng = self.make()
+        label = "DeepSeek-V3.1-high-Cursor"
+        self.assertTrue(eng.set_trader(label)["ok"])
+        eng.note_ua("OpenAI test client")
+        eng.note_ua("Claude test client")
+        self.assertEqual(eng.state()["trader"], label)
+        self.assertEqual(eng.state()["last_ua"], "Claude test client")
+
+    def test_contestant_requires_all_three_fields(self):
+        eng = self.make()
+        label = "model undisclosed-effort undisclosed-Doubao"
+        self.assertTrue(eng.set_trader(label)["ok"])
+        for incomplete in ("Doubao", "Doubao-high-Doubao", "Model--Cursor", 123, "A" * 60 + "-high-CLI"):
+            with self.subTest(incomplete=incomplete):
+                self.assertFalse(eng.set_trader(incomplete)["ok"])
+                self.assertEqual(eng.state()["trader"], label)
+
     def test_report_escapes_event_text(self):
         """事件文本进报告前必须被转义，不能把 <script> 当标签渲染。"""
         eng = self.make()
-        eng.set_trader("<b>x</b>")
+        eng.set_trader("<b>x</b>-high-CLI")
         eng._event("<script>alert(1)</script>", "info")
         out = eng._end_session("测试转义")
         hp = out.get("report")
