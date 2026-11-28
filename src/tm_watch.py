@@ -332,6 +332,14 @@ def post(path, payload=None):
         return json.loads(r.read().decode("utf-8"))
 
 
+def _show_report_warning(parent, result):
+    if any(not item.get("ok") for item in result.get("report_status", {}).values()):
+        session_id = (result.get("state") or {}).get("session_id", "")
+        messagebox.showwarning("战报补导", "结算已保存，部分战报导出失败。\n"
+                               f"退出后运行 python run.py report-retry {session_id} 补导。",
+                               parent=parent)
+
+
 def card(parent, pad=0):
     return tk.Frame(parent, bg=CARD, highlightbackground=BORDER, highlightthickness=1)
 
@@ -1225,6 +1233,7 @@ class Watch:
         if not r.get("ok"):
             self._loan_msg.config(text="结束失败：%s" % r.get("error", "未知错误"), fg=RED)
             return
+        _show_report_warning(self.root, r)
         if self._loan_win is not None:
             try:
                 self._loan_win.destroy()
@@ -2366,6 +2375,7 @@ class Watch:
         try:
             r = post("/quit")
             if r.get("ok"):
+                _show_report_warning(self.root, r)
                 self._tp_say("已结算，服务将在 3 秒后退出", GREEN)
             else:
                 self._tp_say("结束失败：%s" % r.get("error", "未知错误"), RED)

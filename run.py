@@ -180,6 +180,21 @@ def main(argv=None):
         serve(host, port)
         return 0
 
+    if mode == "report-retry":
+        if len(argv) != 2:
+            print("用法：python run.py report-retry <session_id>")
+            return 2
+        import json
+        from tm_engine import Engine
+        home = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "data")
+        try:
+            status = Engine.reexport_report(home, argv[1])
+        except (OSError, ValueError, KeyError, RuntimeError) as exc:
+            print("补导战报失败：%s" % exc)
+            return 1
+        print(json.dumps(status, ensure_ascii=False, indent=2))
+        return 0 if all(item["ok"] for item in status.values()) else 1
+
     if mode == "state":
         import json
         from tm_engine import Engine

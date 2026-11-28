@@ -216,6 +216,8 @@ public partial class TradeWindow : Window
         if (r != MessageBoxResult.Yes) return;
 
         var (ok, err) = await _client.QuitAsync();
+        if (ok && !string.IsNullOrEmpty(err))
+            MessageBox.Show(this, err, "战报补导", MessageBoxButton.OK, MessageBoxImage.Warning);
         Say(ok ? "已提交结算" : (string.IsNullOrEmpty(err) ? "结算失败" : err),
             ok ? Theme.Green : Theme.Red);
     }

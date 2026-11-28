@@ -110,6 +110,8 @@ public partial class LoanRescueWindow : Window
         _busy = true;
         SetButtons(false);
         var (ok, err) = await _client.QuitAsync();
+        if (ok && !string.IsNullOrEmpty(err))
+            MessageBox.Show(this, err, "战报补导", MessageBoxButton.OK, MessageBoxImage.Warning);
 
         _busy = false;
         if (!ok)

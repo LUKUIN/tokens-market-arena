@@ -251,6 +251,17 @@ public sealed class StateClient : IDisposable
             ? errEl.GetString() ?? ""
             : "";
 
+        if (ok && path == "/quit"
+            && doc.RootElement.TryGetProperty("report_status", out var reportStatus)
+            && reportStatus.ValueKind == JsonValueKind.Object)
+        {
+            var failed = reportStatus.EnumerateObject().Any(item =>
+                item.Value.TryGetProperty("ok", out var exported) && exported.ValueKind == JsonValueKind.False);
+            if (failed && doc.RootElement.TryGetProperty("state", out var state)
+                && state.TryGetProperty("session_id", out var sessionId))
+                err = $"结算已保存，部分战报导出失败。\n退出后运行 python run.py report-retry {sessionId.GetString()} 补导。";
+        }
+
         return (ok, err);
     }
 

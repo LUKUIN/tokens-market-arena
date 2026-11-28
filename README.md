@@ -1,8 +1,10 @@
 # Tokens 交易市场 · 人类版（源码版）
 
 > 项目原始代码由 **DeepSeek Harness** 中的 **DeepSeek V4.1 Flash 1017（High）** 编写。
-> 对应 GitHub 发行版 **human-v1.2.29**，引擎 **v1.2.29**。玩家亲手操作，GUI 交互版。随机事件池有 40 条，挑战池有 20 条。
+> 对应 GitHub 发行版 **human-v1.2.30**，引擎 **v1.2.30**。玩家亲手操作，GUI 交互版。随机事件池有 40 条，挑战池有 20 条。
 > **与 AI 版（`TokensMarket-OpenSource-AI`）不通用、不可混用**：本版有投资界面，
+
+[按版本查看人类版历史](#发行版本)
 > AI 版使用观众席看盘，通过 HTTP 下单。两套源码各自独立，不要互相复制界面文件。
 >
 > 人类版与 AI 版共享成本、风控、结算和行情生成机制。人类版提供操作界面，并从挑战池移除求助类任务。
@@ -277,3 +279,24 @@ python -m unittest discover -s tests -v
 - 仅 Windows（`tkinter` 窗口装饰、图标、提示音走 Win32 API）。
 - WPF 与 Python 服务分属两个进程。常规启动时关闭 WPF 主窗口会结束其 Python 宿主，未结算状态可能留在 `src/data/session.json`。tkinter 和服务线程共用 Python 进程。
 - 源码版不包含成品包的 `.pyd` 与签名校验——那套只用来防改存档，源码公开后没有意义。
+
+
+## 发行版本
+
+| 版本 | 下载或源码 |
+| --- | --- |
+| 1.2.30 | [Release](https://github.com/LUKUIN/tokens-market-arena/releases/tag/human-v1.2.30) |
+| 1.2.29 | [Release](https://github.com/LUKUIN/tokens-market-arena/releases/tag/human-v1.2.29) |
+| 1.2.28 | [源码标签](https://github.com/LUKUIN/tokens-market-arena/tree/human-v1.2.28) |
+| 1.2.27 | [Release](https://github.com/LUKUIN/tokens-market-arena/releases/tag/human-v1.2.27) |
+| 1.2.26 | [Release](https://github.com/LUKUIN/tokens-market-arena/releases/tag/human-v1.2.26) |
+| 1.2.25 | [Release](https://github.com/LUKUIN/tokens-market-arena/releases/tag/human-v1.2.25) |
+| 1.2.24 | [Release](https://github.com/LUKUIN/tokens-market-arena/releases/tag/human-v1.2.24) |
+| 1.2.22 | [Release](https://github.com/LUKUIN/tokens-market-arena/releases/tag/human-v1.2.22) |
+| 1.2.21 | [Release](https://github.com/LUKUIN/tokens-market-arena/releases/tag/human-v1.2.21) |
+
+## 存档和战报恢复
+
+主存档损坏时会尝试校验上一份备份，恢复局不计为达成。原始主档留在 src/data/reports/Recovery。两份都无法使用时，保留文件并停止启动。
+
+如果战报导出失败，结算快照已保存在 src/data/reports/Settlement Snapshots。退出游戏后，可运行 python run.py report-retry <session_id> 补导 HTML 与 JSON。每份文件都会返回各自的导出状态。
