@@ -21,13 +21,12 @@ public sealed class EquityChart : FrameworkElement
 
     private const double PadLeft = 64;
     private const double PadRight = 16;
-    private const double PadTop = 14;
-    private const double PadBottom = 32;
+    private const double CurrentLabelBand = 18;
+    private const double PadTop = 28;
+    private const double PadBottom = 25;
 
     public EquityChart()
     {
-        // Make sure the parent gives enough height, and let WPF render it as vectors
-        MinHeight = 120;
         RenderOptions.SetEdgeMode(this, EdgeMode.Unspecified);
         RenderOptions.SetBitmapScalingMode(this, BitmapScalingMode.HighQuality);
     }
@@ -44,7 +43,7 @@ public sealed class EquityChart : FrameworkElement
     {
         double w = ActualWidth;
         double h = ActualHeight;
-        if (w <= 4 || h <= 4) return;
+        if (w <= PadLeft + PadRight || h <= PadTop + PadBottom) return;
 
         // Background
         dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, w, h));
@@ -179,13 +178,12 @@ public sealed class EquityChart : FrameworkElement
         // Peak label above the point, Trough below it; flip to the other side when the point hugs an edge.
         // The "Now" readout always sits in the top-left corner, so a peak near that corner would print
         // straight over it; in that case put the peak label below its dot instead.
-        bool peakAbove = !(peakPt.X < PadLeft + 200 && peakPt.Y < PadTop + 60);
-        DrawExtremum(dc, peakPt, $"Peak {peakVal:N0}", Theme.GreenHex, preferAbove: peakAbove);
-        DrawExtremum(dc, troughPt, $"Trough {troughVal:N0}", Theme.RedHex, preferAbove: false);
+        DrawExtremum(dc, peakPt, $"Peak {peakVal:N0}", Theme.GreenHex, preferAbove: true);
+        if (iMin != iMax)
+            DrawExtremum(dc, troughPt, $"Trough {troughVal:N0}", Theme.RedHex, preferAbove: false);
 
-        // Final value: tuck it into the top right so it never overlaps the curve
         var last = _curve[^1].Equity;
-        DrawText(dc, $"Now {last:N0}", new Point(PadLeft + 6, PadTop + 2), lineColor, 14, bold: true);
+        DrawText(dc, $"Now {last:N0}", new Point(PadLeft + 6, 1), lineColor, 14, bold: true);
     }
 
     /// <summary>Draw a glowing dot at an extreme point and print its value beside it.</summary>
@@ -205,15 +203,16 @@ public sealed class EquityChart : FrameworkElement
 
         // Above the point by default; flip below when there is no room
         bool above = preferAbove;
-        if (above && p.Y - ft.Height - 10 < 2) above = false;
-        if (!above && p.Y + ft.Height + 12 > ActualHeight - 2) above = true;
+        if (above && p.Y - ft.Height - 10 < CurrentLabelBand) above = false;
+        double chartBottom = ActualHeight - PadBottom;
+        if (!above && p.Y + ft.Height + 12 > chartBottom) above = true;
 
         double x = p.X - ft.Width / 2;
         double y = above ? p.Y - ft.Height - 9 : p.Y + 9;
 
         // Clamp horizontally and vertically to the plot area so nothing is clipped
         x = Math.Clamp(x, PadLeft + 2, Math.Max(PadLeft + 2, ActualWidth - ft.Width - 4));
-        y = Math.Clamp(y, 2, Math.Max(2, ActualHeight - ft.Height - 2));
+        y = Math.Clamp(y, CurrentLabelBand, Math.Max(CurrentLabelBand, chartBottom - ft.Height - 2));
 
         dc.DrawText(ft, new Point(x, y));
     }

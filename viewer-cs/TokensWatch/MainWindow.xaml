@@ -4,7 +4,6 @@
         xmlns:controls="clr-namespace:TokensWatch.Controls"
         Title="Tokens Exchange · Spectator"
         Width="1920" Height="1080"
-        MinWidth="1280" MinHeight="760"
         ResizeMode="NoResize"
         Background="{StaticResource Bg}"
         WindowStartupLocation="CenterScreen"
@@ -12,7 +11,7 @@
         SnapsToDevicePixels="True">
 
     <Grid>
-        <Grid Margin="16">
+        <Grid x:Name="MainLayout" Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -24,67 +23,73 @@
              ============================================================ -->
         <Border Grid.Row="0" Background="{StaticResource Card}" CornerRadius="8"
                 BorderBrush="{StaticResource Line}" BorderThickness="1"
-                Height="56" Padding="18,0" Margin="0,0,0,10">
+                Padding="18,0" Margin="0,0,0,10">
             <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition x:Name="HeaderRow" Height="Auto" MinHeight="54" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition x:Name="ColHeaderStatus" Width="420" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="TOKENS" FontSize="19" FontWeight="Bold"
-                               Foreground="{StaticResource Ink}" VerticalAlignment="Center" />
-                    <TextBlock Text=" EXCHANGE" FontSize="19" FontWeight="Bold"
-                               Foreground="{StaticResource Muted}" VerticalAlignment="Center" />
+                <Grid Grid.Column="0" VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="TOKENS" FontSize="19" FontWeight="Bold"
+                                   Foreground="{StaticResource Ink}" VerticalAlignment="Center" />
+                        <TextBlock Text=" EXCHANGE" FontSize="19" FontWeight="Bold"
+                                   Foreground="{StaticResource Muted}" VerticalAlignment="Center" />
 
-                    <Border Width="1" Height="20" Background="{StaticResource Line}"
-                            Margin="16,0" VerticalAlignment="Center" />
+                        <Border Width="1" Height="20" Background="{StaticResource Line}"
+                                Margin="16,0" VerticalAlignment="Center" />
+                    </StackPanel>
 
-                    <TextBlock x:Name="TxtTrader" Text="Guest" FontSize="16"
+                    <TextBlock Grid.Column="1" x:Name="TxtTrader" Text="Guest" FontSize="16"
                                FontWeight="SemiBold" Foreground="{StaticResource Ink}"
-                               VerticalAlignment="Center" />
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
 
-                    <Border x:Name="ChipMode" Background="#EAF4FF" CornerRadius="11"
-                            Padding="10,3" Margin="12,0,0,0" VerticalAlignment="Center">
-                        <TextBlock x:Name="TxtMode" Text="Random events ON" FontSize="13"
-                                   Foreground="{StaticResource Accent}" />
-                    </Border>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                        <Border x:Name="ChipMode" Background="#EAF4FF" CornerRadius="11"
+                                Padding="10,3" Margin="12,0,0,0" VerticalAlignment="Center">
+                            <TextBlock x:Name="TxtMode" Text="Random events ON" FontSize="13"
+                                       Foreground="{StaticResource Accent}" />
+                        </Border>
 
-                    <!-- One chip per global event; they are not joined into a single label -->
-                    <Border x:Name="ChipFr" Background="#F1F1F1" CornerRadius="11"
-                            Padding="10,3" Margin="6,0,0,0" VerticalAlignment="Center"
-                            Visibility="Collapsed">
-                        <TextBlock x:Name="TxtFr" Text="Preferred Financing" FontSize="13"
-                                   Foreground="{StaticResource Warn}" />
-                    </Border>
+                        <!-- One chip per global event; they are not joined into a single label -->
+                        <Border x:Name="ChipFr" Background="#F1F1F1" CornerRadius="11"
+                                Padding="10,3" Margin="6,0,0,0" VerticalAlignment="Center"
+                                Visibility="Collapsed">
+                            <TextBlock x:Name="TxtFr" Text="Preferred Financing" FontSize="13"
+                                       Foreground="{StaticResource Warn}" />
+                        </Border>
 
-                    <Border x:Name="ChipSlot" Background="#F1F1F1" CornerRadius="11"
-                            Padding="10,3" Margin="6,0,0,0" VerticalAlignment="Center"
-                            Visibility="Collapsed">
-                        <TextBlock x:Name="TxtSlot" Text="Slot machine" FontSize="13"
-                                   Foreground="{StaticResource Warn}" />
-                    </Border>
+                        <Border x:Name="ChipSlot" Background="#F1F1F1" CornerRadius="11"
+                                Padding="10,3" Margin="6,0,0,0" VerticalAlignment="Center"
+                                Visibility="Collapsed">
+                            <TextBlock x:Name="TxtSlot" Text="Slot machine" FontSize="13"
+                                       Foreground="{StaticResource Warn}" />
+                        </Border>
 
-                    <Border x:Name="ChipSpecial" Background="#F1F1F1" CornerRadius="11"
-                            Padding="10,3" Margin="6,0,0,0" VerticalAlignment="Center">
-                        <TextBlock x:Name="TxtSpecial" Text="No global events" FontSize="13"
-                                   Foreground="{StaticResource Muted}" />
-                    </Border>
-                </StackPanel>
+                        <Border x:Name="ChipSpecial" Background="#F1F1F1" CornerRadius="11"
+                                Padding="10,3" Margin="6,0,0,0" VerticalAlignment="Center">
+                            <TextBlock x:Name="TxtSpecial" Text="No global events" FontSize="13"
+                                       Foreground="{StaticResource Muted}" />
+                        </Border>
+                    </StackPanel>
+                </Grid>
 
-                <!-- Status, centred: the visual anchor at 1920 and the one line that changes every
-                     second. Both side columns are Auto (brand + chips / button group), so on a
-                     narrower window this column gets squeezed to almost nothing and
-                     "Trading normally | 44:59 | orders 2 | loan pool x0.70" is clipped.
-                     Viewbox(DownOnly) keeps 15 px while there is room and scales the whole line
-                     down when there is not, so it stays readable end to end at any width. -->
-                <Viewbox Grid.Column="1" Stretch="Uniform" StretchDirection="DownOnly"
-                         HorizontalAlignment="Center" VerticalAlignment="Center"
-                         Margin="24,0">
-                    <TextBlock x:Name="TxtRunState" Text="Waiting for service…"
-                               FontSize="15" Foreground="{StaticResource Muted}" />
-                </Viewbox>
+                <TextBlock Grid.Column="1" x:Name="TxtRunState" Text="Waiting for service…"
+                           FontSize="15" Foreground="{StaticResource Muted}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           TextWrapping="Wrap" Margin="12,4" />
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button Content="AI Actions" Style="{StaticResource GhostButton}"
@@ -106,7 +111,6 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="12" />
-                <!-- Width comes from DisplayProfile per window tier: 400 at the 1920 tier, 360 at the 1600 tier -->
                 <ColumnDefinition x:Name="ColRight" Width="400" />
             </Grid.ColumnDefinitions>
 
@@ -116,13 +120,13 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />  <!-- Metric cards -->
                     <RowDefinition Height="Auto" />  <!-- Status bar -->
-                    <RowDefinition Height="*" />     <!-- Equity curve: takes the remaining height, 200 px minimum -->
+                    <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />  <!-- Positions detail -->
                     <RowDefinition Height="Auto" />  <!-- Quote board -->
                 </Grid.RowDefinitions>
 
                 <!-- Metric cards: ample width at 1920, four symmetric cells -->
-                <UniformGrid Grid.Row="0" Columns="4" Margin="0,0,0,10">
+                <UniformGrid x:Name="MetricCards" Grid.Row="0" Columns="4" Margin="0,0,0,10">
                     <Border Style="{StaticResource CardBorder}" Margin="0,0,5,0" Padding="18,14">
                         <StackPanel>
                             <TextBlock Text="Account Equity (Tokens)" Style="{StaticResource Caption}" />
@@ -158,7 +162,7 @@
                 </UniformGrid>
 
                 <!-- Funds + Target stats merged into one compact strip (the original used two full-width rows) -->
-                <Border Grid.Row="1" Style="{StaticResource CardBorder}" Padding="16,10" Margin="0,0,0,10">
+                <Border x:Name="FundsCard" Grid.Row="1" Style="{StaticResource CardBorder}" Padding="16,10" Margin="0,0,0,10">
                     <StackPanel>
                         <TextBlock x:Name="TxtFunds" Text="—" FontSize="14" TextWrapping="Wrap" />
                         <TextBlock x:Name="TxtStats" Text="—" FontSize="12"
@@ -168,9 +172,8 @@
                 </Border>
 
                 <!-- Equity curve: primary visual -->
-                <Border Grid.Row="2" Style="{StaticResource CardBorder}" Padding="14" Margin="0,0,0,10">
-                    <!-- Was a fixed 420: at 1600x900 that pushed the quote board out of the window. Now 200 px minimum plus auto-fit. -->
-                    <Grid MinHeight="200">
+                <Border x:Name="ChartCard" Grid.Row="2" Style="{StaticResource CardBorder}" Padding="14" Margin="0,0,0,10">
+                    <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
@@ -186,7 +189,7 @@
                 </Border>
 
                 <!-- Positions: collapses on its own when empty -->
-                <Border Grid.Row="3" Style="{StaticResource CardBorder}" Padding="14" Margin="0,0,0,10">
+                <Border x:Name="HoldCard" Grid.Row="3" Style="{StaticResource CardBorder}" Padding="14" Margin="0,0,0,10">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -221,7 +224,7 @@
                 </Border>
 
                 <!-- Quotes: 7 instruments in one row, about 200 px each, no 4+3 gap -->
-                <Border Grid.Row="4" Style="{StaticResource CardBorder}" Padding="14">
+                <Border x:Name="QuoteCard" Grid.Row="4" Style="{StaticResource CardBorder}" Padding="14">
                     <StackPanel>
                         <TextBlock Text="Quotes" Style="{StaticResource SectionTitle}" Margin="4,0,0,10" />
                         <UniformGrid x:Name="PriceGrid" Columns="7" />
@@ -233,14 +236,14 @@
             <Grid Grid.Column="2">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="12" />
+                    <RowDefinition x:Name="ChallengeGap" Height="12" />
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="12" />
+                    <RowDefinition x:Name="ActivityGap" Height="12" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
                 <!-- Status -->
-                <Border Grid.Row="0" Style="{StaticResource CardBorder}" Padding="16,14">
+                <Border x:Name="StatusCard" Grid.Row="0" Style="{StaticResource CardBorder}" Padding="16,14">
                     <StackPanel>
                         <TextBlock Text="Status" Style="{StaticResource SectionTitle}" Margin="0,0,0,10" />
 
@@ -262,42 +265,42 @@
 </Grid.RowDefinitions>
 
                             <TextBlock Grid.Row="0" Grid.Column="0" Text="Ledger"
-                                       Style="{StaticResource Caption}" Margin="0,0,14,9" />
+                                       Style="{StaticResource Caption}" Margin="0,0,14,6" />
                             <TextBlock Grid.Row="0" Grid.Column="1" x:Name="TxtAudit" Text="—"
-                                       FontSize="15" Margin="0,0,0,9" TextWrapping="Wrap" />
+                                       FontSize="15" Margin="0,0,0,6" TextWrapping="Wrap" />
 
                             <TextBlock Grid.Row="1" Grid.Column="0" Text="Black swan"
-                                       Style="{StaticResource Caption}" Margin="0,0,14,9" />
+                                       Style="{StaticResource Caption}" Margin="0,0,14,6" />
                             <TextBlock Grid.Row="1" Grid.Column="1" x:Name="TxtGap" Text="—"
-                                       FontSize="15" Margin="0,0,0,9" />
+                                       FontSize="15" Margin="0,0,0,6" />
 
                             <TextBlock Grid.Row="2" Grid.Column="0" Text="Liquidity"
-                                       Style="{StaticResource Caption}" Margin="0,0,14,9" />
+                                       Style="{StaticResource Caption}" Margin="0,0,14,6" />
                             <TextBlock Grid.Row="2" Grid.Column="1" x:Name="TxtLiq" Text="—"
-                                       FontSize="15" Margin="0,0,0,9" />
+                                       FontSize="15" Margin="0,0,0,6" />
 
                             <TextBlock Grid.Row="3" Grid.Column="0" Text="Fast-forward"
-                                       Style="{StaticResource Caption}" Margin="0,0,14,9" />
+                                       Style="{StaticResource Caption}" Margin="0,0,14,6" />
                             <TextBlock Grid.Row="3" Grid.Column="1" x:Name="TxtFf" Text="—"
-                                       FontSize="15" Margin="0,0,0,9" />
+                                       FontSize="15" Margin="0,0,0,6" />
 
                             <TextBlock Grid.Row="4" Grid.Column="0" Text="Global events"
-                                       Style="{StaticResource Caption}" Margin="0,0,14,9" />
+                                       Style="{StaticResource Caption}" Margin="0,0,14,6" />
                             <TextBlock Grid.Row="4" Grid.Column="1" x:Name="TxtSpecialState" Text="None"
-                                       FontSize="14" Margin="0,0,0,9" TextWrapping="Wrap" />
+                                       FontSize="14" Margin="0,0,0,6" TextWrapping="Wrap" />
 
                             <TextBlock Grid.Row="5" Grid.Column="0" Text="Peak"
-                                       Style="{StaticResource Caption}" Margin="0,0,14,9" />
+                                       Style="{StaticResource Caption}" Margin="0,0,14,6" />
                             <TextBlock Grid.Row="5" Grid.Column="1" x:Name="TxtPeak" Text="—"
-                                       FontSize="15" Margin="0,0,0,9" />
+                                       FontSize="15" Margin="0,0,0,6" />
 
                             <TextBlock Grid.Row="6" Grid.Column="0" Text="Trough"
-                                       Style="{StaticResource Caption}" Margin="0,0,14,9" />
+                                       Style="{StaticResource Caption}" Margin="0,0,14,6" />
                             <TextBlock Grid.Row="6" Grid.Column="1" x:Name="TxtTrough" Text="—"
-                                       FontSize="15" Margin="0,0,0,9" />
+                                       FontSize="15" Margin="0,0,0,6" />
 
                             <TextBlock Grid.Row="7" Grid.Column="0" Text="Drawdown|Sharpe"
-                                       Style="{StaticResource Caption}" Margin="0,0,14,9" />
+                                       Style="{StaticResource Caption}" Margin="0,0,14,6" />
                             <TextBlock Grid.Row="7" Grid.Column="1" x:Name="TxtRisk" Text="—"
                                        FontSize="15" TextWrapping="Wrap" />
 
@@ -329,7 +332,7 @@
                 <!-- Challenge tasks: asked after the difficulty roll; once enabled, the three
                      objectives show their live status. A port of PvZ2 Level Objectives:
                      checked = cleared / cross = broken / dot = in progress. -->
-                <Border Grid.Row="2" Style="{StaticResource CardBorder}" Padding="16,14">
+                <Border x:Name="ChallengeCard" Grid.Row="2" Style="{StaticResource CardBorder}" Padding="16,14">
                     <StackPanel>
                         <Grid Margin="0,0,0,10">
                             <TextBlock Text="Challenge Tasks" Style="{StaticResource SectionTitle}"
@@ -337,13 +340,15 @@
                             <TextBlock x:Name="TxtChallengeCount" HorizontalAlignment="Right"
                                        VerticalAlignment="Center" FontSize="13" Foreground="#6B6B6B" />
                         </Grid>
-                        <StackPanel x:Name="ChallengeList" />
+                        <ScrollViewer x:Name="ChallengeScroll" VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="ChallengeList" />
+                        </ScrollViewer>
                         <TextBlock x:Name="TxtChallengeHint" Style="{StaticResource Caption}"
                                    TextWrapping="Wrap" Text="The contestant did not enable challenge tasks" />
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Row="4" Style="{StaticResource CardBorder}" Padding="16,14">
+                <Border x:Name="ActivityCard" Grid.Row="4" Style="{StaticResource CardBorder}" Padding="16,14">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />

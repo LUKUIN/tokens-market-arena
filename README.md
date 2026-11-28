@@ -99,18 +99,16 @@ Sections, top to bottom:
 
 | Area | Contents |
 |---|---|
-| Top bar (light card, 56 px) | Market name "TOKENS EXCHANGE" (the literal on-screen text), contestant tag, mode badge, global event switches (Preferred Financing / Slot Machine), end-process / minimize / AI Notes / Outside Mercy |
+| Top bar (light card) | Market name "TOKENS EXCHANGE" (the literal on-screen text), contestant tag, mode badge, global event switches (Preferred Financing / Slot Machine), end-process / minimize / AI Notes / Outside Mercy |
 | Metric cards | Account equity, cumulative P&L, margin level, target progress |
 | Status strip | Borrowing capacity / cash / borrowed / debt / interest; target / drawdown / Sharpe / trades / profit factor / fees and interest; ledger-audit warning slot; previous-match abnormal-exit notice |
 | Equity curve | The main visual, Y axis auto-scaled (padding from this match's extremes, always including the principal and target lines) |
 | Runtime status | Ledger audit, black-swan rate, liquidity, fast-forward budget, global events, peak, trough, drawdown \| Sharpe, Huge Wave (total / fired / pending) |
-| Positions | Up to 7 rows in the main window; **from the second position on** a "More" link appears at the top-right of the header and opens the full table (no paging) that refreshes with the match; flat shows an empty state |
+| Positions | The main window previews 7, 4 or 2 rows by window size; **from the second position on** a "More" link appears at the top-right of the header and opens the full table (no paging) that refreshes with the match; flat shows an empty state |
 | Quote board | Current price, change and a mini sparkline drawn from `price_history` for the 7 pairs |
 | Event feed | The right column shows the latest 30 entries; "More" opens the full list (filter by category: all / black swan / liquidity crunch / random event / open and close / risk), browsable back to the first entry |
 
-The window picks its size class from the display (`viewer-cs/TokensWatch/Helpers/DisplayProfile.cs`): **1920×1080** for 2K and above,
-**1600×900** for 1080p, and smaller screens scale down to fit the usable area (never below 1280×720). The current class is shown at the end
-of the title bar so that bug reports can state the resolution. To pin the size, set `TM_WATCH_SIZE=1600x900` (`width x height`, DIPs).
+The WPF window uses the monitor's physical resolution: **1920×1080** on 2560×1440 and above, **1600×900** on 1920×1080 and above, and **1280×720** on smaller displays. Windows scaling keeps these outer window dimensions in physical pixels. If the work area is smaller, the window scales down to fit. The caption reports the actual size. Set `TM_WATCH_SIZE=1600x900` to request a specific size in pixels.
 
 > Every number in the UI comes from `/state`; none of them is simulated. For details, read the HTML report.
 
@@ -126,7 +124,7 @@ The WPF spectator uses vector charts and connects to the service over local HTTP
 
 ### What it needs
 
-- Windows x64; the release was verified on Windows 11
+- Windows x64
 - .NET 8 SDK (to build) or .NET 8 Desktop Runtime (to run)
 
 ### How to build
@@ -249,7 +247,7 @@ Project root/
 | How positions open | HTTP `/open` | Click a button |
 | Fast-forward | `/fastforward` | Two step buttons (5 minutes / 3 minutes) |
 | Scratchpad | Yes | No |
-| Resolution | Auto-selected per display (1920×1080 / 1600×900 / proportional scaling) | Same; both share `DisplayProfile.cs` |
+| Resolution | Auto-selected per display (1920×1080 / 1600×900 / 1280×720) | Same; both share `DisplayProfile.cs` |
 | Process cleanup script | Yes | No |
 
 ---
