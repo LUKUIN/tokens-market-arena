@@ -608,7 +608,8 @@ def main(argv=None):
             print("Usage: python run.py report-retry <session_id>")
             return 2
         import guard
-        if os.path.exists(guard.VAULT) and not guard.restore_if_sealed(quiet=True):
+        guard.restore_if_sealed(quiet=True)
+        if os.path.isfile(guard.STATE):
             print("Exit the match before regenerating its reports.")
             return 1
         from tm_engine import Engine
