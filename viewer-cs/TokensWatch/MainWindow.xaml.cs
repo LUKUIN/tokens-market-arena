@@ -59,16 +59,14 @@ public partial class MainWindow : Window
         }
 
         // 1) 标题栏配色跟随浅灰主题，而不是系统强调色（本机是红色）
-        try
+        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
         {
-            int caption = 0x00F3F3F3;   // COLORREF 是 0x00BBGGRR，不是 RGB
-            DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, ref caption, sizeof(int));
-            int text = 0x001A1A1A;
-            DwmSetWindowAttribute(hwnd, DWMWA_TEXT_COLOR, ref text, sizeof(int));
-        }
-        catch
-        {
-            // Win10 没有这两个属性，保留系统默认
+            int caption = 0x00F3F3F3;
+            if (DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, ref caption, sizeof(int)) >= 0)
+            {
+                int text = 0x001A1A1A;
+                DwmSetWindowAttribute(hwnd, DWMWA_TEXT_COLOR, ref text, sizeof(int));
+            }
         }
 
         // 2) 去掉 最小化 / 最大化 / 关闭
@@ -146,8 +144,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-
-        BuildPriceGrid();
+        DisplayProfile.Configure(this, MainLayout, ApplyDisplayLayout);
 
         _uiTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(PollMs) };
         _uiTimer.Tick += async (_, _) => await PollAsync();
@@ -157,15 +154,6 @@ public partial class MainWindow : Window
 
         Loaded += (_, _) =>
         {
-            // 设计基准是 1920×1080。本机是 2K 屏，正常情况下放得下；
-            // 但如果系统缩放调到 150%，1920 DIP 会超出 2560 物理像素宽，
-            // 这里兜一层，保证窗口永远不跑到屏幕外。
-            var wa = SystemParameters.WorkArea;
-            if (Width > wa.Width) Width = wa.Width;
-            if (Height > wa.Height) Height = wa.Height;
-            Left = wa.Left + (wa.Width - Width) / 2;
-            Top = wa.Top + (wa.Height - Height) / 2;
-
             _uiTimer.Start();
             _assistTimer.Start();
             _ = RunStartupFlowAsync();
@@ -465,7 +453,7 @@ public partial class MainWindow : Window
         TxtHoldEmpty.Visibility = Visibility.Collapsed;
         BtnHoldMore.Visibility = st.Positions.Count > 7 ? Visibility.Visible : Visibility.Collapsed;
 
-        foreach (var p in st.Positions.Take(7))
+        foreach (var p in st.Positions.Take(_holdPreviewLimit))
         {
             var row = new UniformGrid { Columns = 8, Margin = new Thickness(0, 3, 0, 3) };
 
@@ -500,7 +488,48 @@ public partial class MainWindow : Window
         return tb;
     }
 
-    private void BuildPriceGrid()
+    private DisplayProfile.WindowSize? _layoutSize;
+    private bool? _compactQuotes;
+    private int _holdPreviewLimit = 7;
+
+    private void ApplyDisplayLayout(DisplayProfile.WindowSize size)
+    {
+        if (_layoutSize == size) return;
+        _layoutSize = size;
+
+        bool compact = size.Width < 1450 || size.Height < 820;
+        bool wide = size.Width >= 1800 && size.Height >= 1000;
+        ColRight.Width = new GridLength(compact ? 308 : wide ? 400 : 360);
+        ColHeaderStatus.Width = new GridLength(wide ? 420 : 0);
+        Grid.SetRow(TxtRunState, wide ? 0 : 1);
+        Grid.SetColumn(TxtRunState, wide ? 1 : 0);
+        Grid.SetColumnSpan(TxtRunState, wide ? 1 : 3);
+        TxtRunState.HorizontalAlignment = wide ? HorizontalAlignment.Center : HorizontalAlignment.Left;
+        TxtRunState.Margin = wide ? new Thickness(12, 4, 12, 4) : new Thickness(0, 0, 0, 8);
+
+        HeaderRow.MinHeight = compact ? 46 : 54;
+        MainLayout.Margin = new Thickness(compact ? 12 : 16);
+        foreach (Border card in MetricCards.Children)
+            card.Padding = compact ? new Thickness(12, 8, 12, 8) : new Thickness(18, 14, 18, 14);
+        FundsCard.Padding = compact ? new Thickness(12, 6, 12, 6) : new Thickness(16, 10, 16, 10);
+        ChartCard.Padding = HoldCard.Padding = compact ? new Thickness(10, 6, 10, 6) : new Thickness(14);
+        QuoteCard.Padding = compact ? new Thickness(10, 8, 10, 8) : new Thickness(14);
+        StatusCard.Padding = compact ? new Thickness(12, 10, 12, 10) : new Thickness(16, 14, 16, 14);
+        ChallengeGap.Height = ActivityGap.Height = new GridLength(compact ? 8 : 12);
+        ChallengeCard.Padding = ActivityCard.Padding = compact ? new Thickness(12, 8, 12, 8) : new Thickness(16, 14, 16, 14);
+        ChallengeScroll.MaxHeight = compact ? 56 : double.PositiveInfinity;
+        _holdPreviewLimit = compact ? 2 : wide ? 7 : 4;
+
+        if (_compactQuotes != compact)
+        {
+            _compactQuotes = compact;
+            BuildPriceGrid(compact);
+            if (_state is not null) RenderPrices(_state);
+        }
+        if (_state is not null) RenderPositions(_state);
+    }
+
+    private void BuildPriceGrid(bool compact)
     {
         PriceGrid.Children.Clear();
         _sparklines.Clear();
@@ -542,25 +571,34 @@ public partial class MainWindow : Window
                 VerticalAlignment = VerticalAlignment.Center,
             };
 
-            // 7 列时每格只有约 200px：品种名、价格、涨跌挤在一行会被裁掉，
-            // 所以拆成「名称 + 涨跌」一行、「价格」一行的两行结构。
             chg.Margin = new Thickness(0);
             chg.HorizontalAlignment = HorizontalAlignment.Right;
-
-            var topLine = new Grid();
-            topLine.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            topLine.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            Grid.SetColumn(name, 0);
-            Grid.SetColumn(chg, 1);
-            topLine.Children.Add(name);
-            topLine.Children.Add(chg);
-
-            price.Margin = new Thickness(0, 3, 0, 0);
-
-            var spark = new Sparkline { Height = 48, Margin = new Thickness(0, 6, 0, 0) };
+            var change = new Viewbox
+            {
+                StretchDirection = StretchDirection.DownOnly,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Child = chg,
+            };
 
             var body = new StackPanel();
-            body.Children.Add(topLine);
+            if (compact)
+            {
+                body.Children.Add(name);
+                body.Children.Add(change);
+            }
+            else
+            {
+                var topLine = new Grid();
+                topLine.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                topLine.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                Grid.SetColumn(change, 1);
+                topLine.Children.Add(name);
+                topLine.Children.Add(change);
+                body.Children.Add(topLine);
+            }
+
+            price.Margin = new Thickness(0, 3, 0, 0);
+            var spark = new Sparkline { Height = compact ? 25 : 48, Margin = new Thickness(0, 6, 0, 0) };
             body.Children.Add(price);
             body.Children.Add(spark);
 

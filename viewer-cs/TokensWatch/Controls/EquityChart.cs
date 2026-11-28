@@ -21,13 +21,12 @@ public sealed class EquityChart : FrameworkElement
 
     private const double PadLeft = 64;
     private const double PadRight = 16;
-    private const double PadTop = 14;
-    private const double PadBottom = 32;
+    private const double CurrentLabelBand = 18;
+    private const double PadTop = 28;
+    private const double PadBottom = 25;
 
     public EquityChart()
     {
-        // 保证父容器给足高度；同时让 WPF 以矢量方式渲染
-        MinHeight = 120;
         RenderOptions.SetEdgeMode(this, EdgeMode.Unspecified);
         RenderOptions.SetBitmapScalingMode(this, BitmapScalingMode.HighQuality);
     }
@@ -44,7 +43,7 @@ public sealed class EquityChart : FrameworkElement
     {
         double w = ActualWidth;
         double h = ActualHeight;
-        if (w <= 4 || h <= 4) return;
+        if (w <= PadLeft + PadRight || h <= PadTop + PadBottom) return;
 
         // 背景
         dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, w, h));
@@ -178,11 +177,11 @@ public sealed class EquityChart : FrameworkElement
 
         // 峰值在点上方、谷值在点下方；贴边时自动翻到另一侧
         DrawExtremum(dc, peakPt, $"峰 {peakVal:N0}", Theme.GreenHex, preferAbove: true);
-        DrawExtremum(dc, troughPt, $"谷 {troughVal:N0}", Theme.RedHex, preferAbove: false);
+        if (iMin != iMax)
+            DrawExtremum(dc, troughPt, $"谷 {troughVal:N0}", Theme.RedHex, preferAbove: false);
 
-        // 终点数值：贴在右上方，避免和曲线重叠
         var last = _curve[^1].Equity;
-        DrawText(dc, $"当前 {last:N0}", new Point(PadLeft + 6, PadTop + 2), lineColor, 14, bold: true);
+        DrawText(dc, $"当前 {last:N0}", new Point(PadLeft + 6, 1), lineColor, 14, bold: true);
     }
 
     /// <summary>在极值点画一个带光晕的圆点，并在旁边标出数值。</summary>
@@ -202,15 +201,16 @@ public sealed class EquityChart : FrameworkElement
 
         // 默认在点上方；上方放不开就翻到下方
         bool above = preferAbove;
-        if (above && p.Y - ft.Height - 10 < 2) above = false;
-        if (!above && p.Y + ft.Height + 12 > ActualHeight - 2) above = true;
+        if (above && p.Y - ft.Height - 10 < CurrentLabelBand) above = false;
+        double chartBottom = ActualHeight - PadBottom;
+        if (!above && p.Y + ft.Height + 12 > chartBottom) above = true;
 
         double x = p.X - ft.Width / 2;
         double y = above ? p.Y - ft.Height - 9 : p.Y + 9;
 
         // 左右/上下夹到绘图区内，避免被裁掉
         x = Math.Clamp(x, PadLeft + 2, Math.Max(PadLeft + 2, ActualWidth - ft.Width - 4));
-        y = Math.Clamp(y, 2, Math.Max(2, ActualHeight - ft.Height - 2));
+        y = Math.Clamp(y, CurrentLabelBand, Math.Max(CurrentLabelBand, chartBottom - ft.Height - 2));
 
         dc.DrawText(ft, new Point(x, y));
     }
