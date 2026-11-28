@@ -39,12 +39,12 @@ Use `TM_TRADER` before startup to set the contestant name. This also avoids the 
 
 ## POST endpoints
 
-Use a UTF-8 JSON object for bodies. Example bodies appear below. Check `ok` on actions even with HTTP 200. Some read endpoints return a bare object without an `ok` field. Expect transport failures separately from game rejections.
+Use a UTF-8 JSON object for bodies. Example bodies appear below. Malformed bodies return HTTP 400, and bodies over 1 MiB return 413. Check `ok` on actions even with HTTP 200. Some read endpoints return a bare object without an `ok` field. Expect transport failures separately from game rejections.
 
 | Endpoint | Body and behavior |
 |---|---|
 | `/open` | `{"pair":"AURA/CORE","side":"LONG","lots":1,"leverage":20}`. All four fields are required. |
-| `/close` | `{"pair":"AURA/CORE","side":"LONG","lots":1}`. Omit `lots` or pass zero to close all matching positions. Omit `side` to include both directions. A partial close without `side` starts at the newest matching position. |
+| `/close` | `{"pair":"AURA/CORE","side":"LONG","lots":1}`. Omit `lots` or pass 0 to close all matching positions. Omit `side` to match both sides. An explicit side must be `LONG` or `SHORT`. Partial closes process the most recent match first and realize P&L only on the quantity filled. |
 | `/close_all` | No body. Attempts every open position using normal close rules and can fail during a close restriction. Check the resulting state. |
 | `/loan` | `{"amount":100000}`. Subject to the remaining pool and current restrictions. Returns the target increase for this loan. |
 | `/repay` | `{"amount":50000}`, or omit `amount` to request full repayment. The payment is limited by debt and available cash. |
@@ -74,7 +74,7 @@ Use a UTF-8 JSON object for bodies. Example bodies appear below. Check `ok` on a
 | `positions`, `margin_used`, `maint_margin`, `maint_rate`, `margin_level` | Position rows, occupied margin, and the maintenance amount, base rate and current coverage. `margin_level` is a percentage or `null` with no open position. |
 | `loan`, `loan_bump_range`, `special` | Loan balance, limit, interest and target increases. `loan_bump_range` reports the standard financing setting. Double or Nothing uses 50–100% for each loan and slot payout. `special.slot_win_range` reflects that challenge. |
 | `ff`, `negative_remain`, `margin_call_remain` | Fast-forward quota and cooldown in seconds, remaining cash-rescue time in seconds, and margin-call grace in market steps. |
-| `price_history`, `equity_curve`, `events` | At most 600 prices per symbol, 900 equity points and the latest 60 events. Use `(session, seq)` to deduplicate events. Action responses that include a compact `state` omit these series' contents. |
+| `price_history`, `equity_curve`, `events` | At most 600 prices per symbol, 900 equity points and the latest 60 events. Use state `session_id` and event `seq` to deduplicate events. Action responses that include a compact `state` omit these series' contents. |
 | `huge_wave` | Pre-warning flag for the current step and counters `total`, `left` and `fired`. |
 | `closed_n`, `win_n`, `profit_factor` | Closed-fill count, profitable close count, and gross profits divided by absolute gross losses; `null` if the denominator is zero. |
 | `audit`, `settlement`, `finished`, `disqualified` | Audit messages, latest settlement result, completion flag and eligibility indicator. An empty audit means those checks found no issues. |
@@ -82,13 +82,13 @@ Use a UTF-8 JSON object for bodies. Example bodies appear below. Check `ok` on a
 
 ## Fast-forward
 
-The total budget is 900 seconds. A 300-second advance starts a 120-second real-time cooldown. A 180-second advance starts a 90-second cooldown. Send options only when the corresponding `ff.can5` or `ff.can3` is true. A full 300-second request normally advances 60 steps. If the match ends during the request, inspect the returned `ticks`, `seconds` and `state.finished` before acting again. Market ticks continue automatically during cooldown.
+The total budget is 900 seconds. A 300-second advance starts a 120-second real-time cooldown. A 180-second advance starts a 90-second cooldown. Send options only when the corresponding `ff.can5` or `ff.can3` is true. A full 300-second request normally advances 60 steps. If the match ends during the request, inspect the returned `ticks`, `seconds` and `state.finished` before acting again. Market ticks continue automatically during cooldown. Only one fast-forward can run at a time.
 
 ## Settlement and reports
 
 Read `/state` before `/quit`. At or above the current target, close open positions first and read the updated equity. If closing costs push equity below target, quitting counts as abandonment. Below target, quitting settles remaining positions and debt. Eligibility also matters to a recorded target hit.
 
-**v1.2.28 schedules a server shutdown about three seconds after a `/quit` request even when `ok:false`. Treat `/quit` as terminal, and use state polling for the preflight.** When time expires, the engine applies regular close costs in automatic settlement. `hit_at_tick` records the first observed target hit, and the final result can still be a miss.
+**The service shuts down about three seconds after `/quit` returns `ok:true`. If it returns `ok:false`, the match continues and you can close positions before retrying.** When time expires, the engine applies regular close costs in automatic settlement. `hit_at_tick` records the first observed target hit, and the final result can still be a miss.
 
 A successful response contains `final_equity`, `report`, `settled` and `warnings`. Reports are under `src/data/reports/HTML Reports/` and `src/data/reports/JSON Reports/`. A false `settled` flag calls for checking `warnings`. Wait for a normal shutdown to finish before starting a new service from the same directory.
 

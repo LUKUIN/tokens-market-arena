@@ -37,12 +37,12 @@ curl http://127.0.0.1:8734/state
 
 ## POST 接口
 
-请求体使用 UTF-8 JSON 对象。写操作即使 HTTP 状态为 200，也应检查 `ok`。部分查询直接返回对象，没有 `ok` 字段。网络失败与游戏拒绝需分别处理。
+请求体使用 UTF-8 JSON 对象。格式无效返回 HTTP 400，超过 1 MiB 返回 413。写操作即使 HTTP 状态为 200，也应检查 `ok`。部分查询直接返回对象，没有 `ok` 字段。网络失败与游戏拒绝需分别处理。
 
 | 接口 | 请求体与行为 |
 |---|---|
 | `/open` | `{"pair":"AURA/CORE","side":"LONG","lots":1,"leverage":20}`，四项必填。 |
-| `/close` | `{"pair":"AURA/CORE","side":"LONG","lots":1}`。省略 `lots` 或填 0 会平掉全部匹配持仓。省略 `side` 会同时匹配多空，部分平仓时先处理最新匹配仓位。 |
+| `/close` | `{"pair":"AURA/CORE","side":"LONG","lots":1}`。省略 `lots` 或填 0 会平掉全部匹配持仓。省略 `side` 会同时匹配多空，传入其他方向会拒绝。部分平仓时先处理最新匹配仓位，只结算本次成交手数的盈亏。 |
 | `/close_all` | 无参数。按正常平仓规则逐笔尝试，遇到平仓限制可能失败，调用后要核对持仓。 |
 | `/loan` | `{"amount":100000}`，受可贷额度与当前限制约束，返回本笔贷款造成的目标上浮。 |
 | `/repay` | `{"amount":50000}`，省略 `amount` 申请全还，实际还款不超过欠款和现金。 |
@@ -56,7 +56,7 @@ curl http://127.0.0.1:8734/state
 | `/assist/reply`、`/assist/reject` | 观众席侧调用，传 `ticket`，回复另传 `text`。 |
 | `/assist/enable` | 兼容旧客户端的端点，调用总会失败。启动前用 `TM_ASSIST=1` 开启、`0` 关闭。 |
 | `/trader` | `{"name":"模型-思考强度-平台"}`，更改显示名。参赛资格依赖启动时设置的 `TM_TRADER`。 |
-| `/pause`、`/begin` | 正式开局前的控制接口。`/pause` 不切换暂停状态，开局后也无法暂停。标准流程无需调用。 |
+| `/pause`、`/begin` | 正式开局前的控制接口。开局前用 `/pause` 暂停、`/begin` 恢复，定档后不能暂停。标准流程无需调用。 |
 | `/reset` | 无参数。服务仍在运行时可重开，冷却 30 秒，保留战报。重开会清除场外援助，需重启服务才能重新应用 `TM_ASSIST`。 |
 | `/quit` | 无参数。请先确认下面的结算条件。 |
 | `/shutdown` | 管理停服，尝试生成异常退出快照，不执行正常结算。 |
@@ -72,21 +72,21 @@ curl http://127.0.0.1:8734/state
 | `positions`、`margin_used`、`maint_margin`、`maint_rate`、`margin_level` | 持仓、已占用保证金、维持保证金金额与基础比例，以及当前保证金覆盖水平。`margin_level` 为百分比，空仓时为 `null`。 |
 | `loan`、`loan_bump_range`、`special` | 当前欠款、额度、利息和目标上浮记录。`loan_bump_range` 显示常规融资口径。「孤注一掷」实际按 50%–100% 计借款和中奖返还的目标上浮，投注区间见 `special.slot_win_range`。 |
 | `ff`、`negative_remain`、`margin_call_remain` | 快进额度及冷却（秒）、负现金自救倒计时（秒）、追缴剩余步数。 |
-| `price_history`、`equity_curve`、`events` | 每品种最多 600 个报价、900 个权益点、60 条近期事件。可按 `(session, seq)` 对事件去重。写操作返回的精简 `state` 不带这三组数据的内容。 |
+| `price_history`、`equity_curve`、`events` | 每品种最多 600 个报价、900 个权益点、60 条近期事件。可按 `(session_id, seq)` 对事件去重。`session_id` 来自局面，`seq` 来自事件。写操作返回的精简 `state` 不带这三组数据的内容。 |
 | `huge_wave` | 当前步预警标记，以及 `total`、`left`、`fired` 三个计数。 |
-| `closed_n`、`win_n`、`profit_factor` | 平仓成交笔数、盈利笔数、总盈利除以总亏损绝对值。分母为零时盈利因子为 `null`。 |
+| `closed_n`、`win_n`、`profit_factor` | 平仓成交笔数、盈利笔数，以及按平仓流水 `pnl` 算出的盈利总和除以亏损绝对值总和。该口径包含点差和滑点。手续费、持仓费和贷款利息另计。分母为零时为 `null`。 |
 | `audit`、`settlement`、`finished`、`disqualified` | 账本告警、最近结算结果、是否结束、是否失去达成资格。`audit` 空数组表示现有检查未发现问题。 |
 | `seed`、`assist_unread` | 种子结算后才可见。未读回复正文由 `/assist/inbox` 提供。 |
 
 ## 快进
 
-每局 900 秒额度。快进 300 秒后冷却 120 秒，快进 180 秒后冷却 90 秒，冷却按实际时间计算。选择前查看 `ff.can5` 或 `ff.can3`。成功推进 300 秒通常走 60 步。快进中途结束时，先查看回包 `ticks`、`seconds` 和 `state.finished`。冷却期间行情仍会自然推进。
+每局 900 秒额度。快进 300 秒后冷却 120 秒，快进 180 秒后冷却 90 秒，冷却按实际时间计算。选择前查看 `ff.can5` 或 `ff.can3`。成功推进 300 秒通常走 60 步。快进中途结束时，先查看回包 `ticks`、`seconds` 和 `state.finished`。冷却期间行情仍会自然推进。同一时间只执行一次快进。
 
 ## 结算与战报
 
 调用 `/quit` 前先查 `/state`。达到目标且有持仓时，先平仓并核对最新净值。平仓成本若把净值压回目标以下，提前退出会记为弃权。未达标时直接退出会正常清算剩余仓位和债务。计入达成还要求有参赛资格。
 
-**v1.2.28 收到 `/quit` 后约三秒会安排停服，即使回包是 `ok:false` 也一样。用 `/state` 查询能否退出，避免用 `/quit` 试探。** 时间到时会按平仓成本自动清算。`hit_at_tick` 记录首次达标，最终结算仍可能低于目标。
+**`/quit` 返回 `ok:true` 后约三秒停服。返回 `ok:false` 时，对局继续，可以平仓后重试。** 时间到时会按平仓成本自动清算。`hit_at_tick` 记录首次达标，最终结算仍可能低于目标。
 
 成功回包有 `final_equity`、`report`、`settled` 和 `warnings`。HTML 和 JSON 分别保存在 `src/data/reports/HTML Reports/` 和 `src/data/reports/JSON Reports/`。`settled:false` 时查看 `warnings`。同一目录下一局应在旧服务退出后再启动。
 

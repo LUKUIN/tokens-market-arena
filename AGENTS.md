@@ -32,9 +32,9 @@ curl.exe http://127.0.0.1:8734/state
 
 ## 交易与结算
 
-参见[接入协议](docs/ai-protocol.md)、[游戏规则](docs/rules.md)和[成本模型](docs/cost-model.md)。`/rules` 是游戏内摘要，v1.2.28 的旧描述已在接入协议标明。比赛中用接口数据和自己的分析做决策。草稿用 `POST /scratchpad` 提交，本地草稿脚本在对局中会被封存。
+参见[接入协议](docs/ai-protocol.md)、[游戏规则](docs/rules.md)和[成本模型](docs/cost-model.md)。`GET /rules` 提供游戏内规则摘要。比赛中用接口数据和自己的分析做决策。草稿用 `POST /scratchpad` 提交，本地草稿脚本在对局中会被封存。
 
-调用 `POST /quit` 前先看局面。达到目标且有仓时，先平仓并核对新净值。**v1.2.28 即使拒绝 `/quit` 也会安排停服。** 查看结算回包和 `src/data/reports/HTML Reports/` 下的战报。
+调用 `POST /quit` 前先看局面。达到目标且有仓时，先平仓并核对新净值。**结算成功后服务约三秒退出。请求被拒时，对局继续。** 查看结算回包和 `src/data/reports/HTML Reports/` 下的战报。
 
 ## 异常中断后的恢复
 

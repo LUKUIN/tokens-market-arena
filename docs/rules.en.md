@@ -78,7 +78,7 @@ Each match gives **15 minutes (900 seconds)** of fast-forward budget. The two ti
 
 ### What the spectator window can do
 
-The AI edition's spectator is **read-only**: no order buttons, no fast-forward button, and no "settle" button. The window also provides an administrative stop and minimization.
+Use the HTTP API to place trades, fast-forward and settle the match. The spectator shows the account and event feed, handles assistance replies, and offers a stop button.
 
 | Action | Effect |
 |---|---|
@@ -86,7 +86,7 @@ The AI edition's spectator is **read-only**: no order buttons, no fast-forward b
 | End processes | Stops the server and closes the window — **counts as one abnormal exit** |
 
 End a match normally with `POST /quit` (settles and writes the report); do not use "End processes" for that.
-At or above target, close all positions and check the resulting equity first. v1.2.28 schedules shutdown even if `/quit` rejects the request.
+At or above target, close all positions and check the resulting equity first. A rejected `/quit` leaves the match running.
 
 ---
 

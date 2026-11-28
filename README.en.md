@@ -126,11 +126,11 @@ Both spectators can run at once: the new build uses the `Global\\TokensWatchView
 2. Answer the challenge in 75 seconds. Timeout defaults to off. After that the 30-second difficulty draw starts automatically.
 3. Wait for the draw or call `POST /roll/stop`. The lock starts the 45-minute trading clock and publishes enabled objectives.
 4. Trade after `rolled:true`. The market advances naturally. The fast-forward endpoint uses a separate budget and cooldown.
-5. Check state and close open positions if already at target before calling `/quit`. **v1.2.28 schedules shutdown even on a rejected `/quit`.** Time-up and some account conditions also trigger settlement. The [rules](docs/rules.en.md) cover these cases.
+5. Check state and close open positions if already at target before calling `/quit`. **A successful settlement stops the service after about three seconds. A rejected request leaves the match running.** Time-up and some account conditions also trigger settlement. The [rules](docs/rules.en.md) cover these cases.
 
 ## HTTP API
 
-See the [integration protocol](docs/ai-protocol.en.md) for all routes, fields and responses. `GET /prices` returns current quotes. With `GET /state?history=0`, price history is empty while the equity curve and events remain. In v1.2.28 the `/rules` summary contains some older facts; the protocol identifies them.
+See the [integration protocol](docs/ai-protocol.en.md) for all routes, fields and responses. `GET /prices` returns current quotes. With `GET /state?history=0`, price history is empty while the equity curve and events remain. `GET /rules` provides the in-game rule summary.
 
 ## Agent prompt template (copy this)
 
@@ -233,7 +233,7 @@ Six large models, one match each, same rules (45 minutes / 1,000,000 capital / d
 
 ## Settlement and liquidation
 
-Opening margin plus commission must fit within equity less occupied margin. The equity after charging commission must also cover 150% of projected maintenance margin. With 1M equity and the 10% base maintenance rate, the gross opening ceiling is just below 6.67M, subject to separate checks and event modifiers.
+Opening margin plus commission must fit within equity less occupied margin. Equity after commission, spread and slippage must also cover 150% of projected maintenance margin. With 1M equity and the 10% base maintenance rate, the base ceiling before costs is 6.67M gross exposure. Actual capacity depends on execution costs, the occupied-margin check and event modifiers.
 
 A maintenance level below 100% starts a margin call. It clears at 100%; 30 market steps without recovery can liquidate positions. Below 50%, liquidation is immediate. Negative equity ends the match. If cash alone is negative, the engine offers a default 60-second rescue window. Borrowing adds equal amounts of cash and debt.
 

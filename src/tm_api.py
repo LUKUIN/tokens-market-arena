@@ -91,6 +91,10 @@ class _BodyTooLarge(Exception):
     """请求体超过上限：映射为 HTTP 413，而不是 500。"""
 
 
+class _InvalidBody(ValueError):
+    pass
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "TokensMarket/2.0"
 
@@ -116,17 +120,26 @@ class Handler(BaseHTTPRequestHandler):
         ENGINE.note_ua(self.headers.get("User-Agent", ""))
 
     def _body(self):
-        n = int(self.headers.get("Content-Length") or 0)
-        if n <= 0:
-            return {}
-        if n > MAX_BODY_BYTES:
-            self.close_connection = True
-            raise _BodyTooLarge("请求体过大：%d 字节（上限 %d）" % (n, MAX_BODY_BYTES))
         try:
-            obj = json.loads(self.rfile.read(n).decode("utf-8"))
-        except Exception:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError as exc:
+            raise _InvalidBody("请求体必须是 UTF-8 JSON 对象") from exc
+        if length < 0 or self.headers.get("Transfer-Encoding"):
+            raise _InvalidBody("请求体必须是 UTF-8 JSON 对象")
+        if length == 0:
             return {}
-        return obj if isinstance(obj, dict) else {}
+        if length > MAX_BODY_BYTES:
+            raise _BodyTooLarge("请求体过大: %d > %d" % (length, MAX_BODY_BYTES))
+        body = self.rfile.read(length)
+        if len(body) != length:
+            raise _InvalidBody("请求体必须是 UTF-8 JSON 对象")
+        try:
+            obj = json.loads(body.decode("utf-8"))
+        except (UnicodeError, ValueError, RecursionError) as exc:
+            raise _InvalidBody("请求体必须是 UTF-8 JSON 对象") from exc
+        if not isinstance(obj, dict):
+            raise _InvalidBody("请求体必须是 UTF-8 JSON 对象")
+        return obj
 
     def do_GET(self):
         self._t0 = time.perf_counter()
@@ -172,11 +185,9 @@ class Handler(BaseHTTPRequestHandler):
             path = urlparse(self.path).path.rstrip("/") or "/"
             b = self._body()
             return self._route_post(path, b)
-        except _BodyTooLarge as exc:
-            try:
-                self._send({"ok": False, "error": str(exc)}, 413)
-            except Exception:
-                pass
+        except (_InvalidBody, _BodyTooLarge) as exc:
+            self.close_connection = True
+            self._send({"ok": False, "error": str(exc)}, 413 if isinstance(exc, _BodyTooLarge) else 400)
         except Exception as exc:
             try:
                 self._send({"ok": False, "error": "请求处理失败：%s" % exc}, 500)
@@ -199,10 +210,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(ENGINE.repay(b.get("amount")))
         if path == "/quit":
             resp = ENGINE.quit_session()
-            self._send(resp)
-            # 玩家结束游戏后，服务与观众席随之退出
-            threading.Timer(3.0, lambda: SERVER and SERVER.shutdown()).start()
-            return
+            try:
+                return self._send(resp)
+            finally:
+                if resp.get("ok"):
+                    threading.Timer(3.0, self.server.shutdown).start()
         if path == "/shutdown":
             # 立即停止服务（不结算、不清数据），供观众席的「结束相关进程」按钮使用。
             # 但「非正常退出」也要在 reports/ 里留一份快照，方便事后翻账。

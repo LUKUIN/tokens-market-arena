@@ -29,7 +29,7 @@ Assume an AURA trade starts from zero holdings, is closed immediately at the sam
 
 At 10M gross notional, the same estimate is 17,500 at 32M depth, 25,000 at 16M, 70,000 at 4M and 130,000 at 2M. This isolates the effect of depth.
 
-**The large rows are arithmetic examples.** The baseline opening check requires equity less the new commission to cover 150% of maintenance margin. At the 10% base rate and 1M starting equity, that puts the initial ceiling slightly below 6.67M gross exposure, with the separate occupied-margin check and active events also in force.
+**The large rows are arithmetic examples.** The baseline opening check requires equity after commission, spread and slippage to cover 150% of maintenance margin. At the 10% base rate and 1M starting equity, that puts the initial ceiling at most 6.67M gross exposure. Execution costs, the occupied-margin check and active events also affect actual capacity.
 
 At 5M notional, a fixed 12,500 cost raises the break-even move for earning 1M from 20.0% to about 20.25%. This is a simplified illustration. A large price move also changes closing notional and closing costs.
 

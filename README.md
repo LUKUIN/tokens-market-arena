@@ -10,7 +10,7 @@
 
 | 分支 | 产品 | 谁在操作 | 说明 |
 |---|---|---|---|
-| [`main`](https://github.com/LUKUIN/tokens-market-arena/tree/main) | **AI 版（中文）** | 大模型走 HTTP 接口 | 就是本页，只读观众席 |
+| [`main`](https://github.com/LUKUIN/tokens-market-arena/tree/main) | **AI 版（中文）** | 大模型走 HTTP 接口 | 中文观众席与文档 |
 | [`english`](https://github.com/LUKUIN/tokens-market-arena/tree/english) | **AI 版（英文）** | 同上 | 全英文界面与文档 |
 | [`human`](https://github.com/LUKUIN/tokens-market-arena/tree/human) | **人类版（中文）** | 玩家亲手点按钮 | 完整交互 GUI：投资界面、难度盲盒、规则窗 |
 
@@ -29,7 +29,7 @@
 > slippage, gap risk and overnight interest. One model made +106%, another blew up at
 > −229%. Python 3.14 with the standard library.
 
-> 发行包见 [GitHub Releases](https://github.com/LUKUIN/tokens-market-arena/releases)。参赛模型通过 HTTP 接口操作，GUI 只是一个**只读观众席**。
+> 发行包见 [GitHub Releases](https://github.com/LUKUIN/tokens-market-arena/releases)。参赛模型通过 HTTP 接口交易，观众席提供行情查看和求助回复。
 > **与人类版（`TokensMarket-OpenSource-Human`）不通用、不可混用**：本版没有投资界面、
 > 没有开仓按钮、没有快进按钮。人类版有完整交互界面，两套源码不要互相复制界面文件。
 
@@ -85,7 +85,7 @@
 > tkinter 版（`src/tm_watch_ai.py`）自 v1.2.22 起只是回退路径：C# 没构建、或显式设了
 > `TM_WATCH_IMPL=py` 时才会出现，分区与下方表格一致但实现细节不同。
 
-观众席是**只读**的，除「AI 行为」「外部的怜悯」两个查看按钮外不能操作任何东西。
+交易走 HTTP。观众席可查看账户、行情、活动流和 AI 草稿，也可回复或驳回求助。
 
 AI 每发一次求助（`POST /assist/ask`），屏幕正中会弹一个**系统原生**提示框（`messagebox.showwarning`）并响提示音，标题是「外部的怜悯」，正文写明当前有几条求助。
 
@@ -95,7 +95,7 @@ AI 每发一次求助（`POST /assist/ask`），屏幕正中会弹一个**系统
 
 | 区域 | 内容 |
 |---|---|
-| 顶栏（浅色卡片，56 px） | 市场名「TOKENS 交易市场」、参赛模型标识、模式徽章、全局事件开关（优惠融资 / 老虎机）、结束进程 / 最小化 / AI 行为 / 外部的怜悯 |
+| 顶栏（浅色卡片，56 px） | 市场名「TOKENS 交易市场」、参赛模型标识、模式徽章、全局事件状态（优惠融资 / 老虎机）、结束进程 / 最小化 / AI 行为 / 外部的怜悯 |
 
 | 指标卡 | 账户权益、累计盈亏、保证金水平、目标进度 |
 | 状态条 | 可贷额度 / 现金 / 已借 / 欠款 / 利息；目标 / 回撤 / 夏普 / 笔数 / 盈利因子 / 费息；账本自检告警位；上局异常退出提示 |
@@ -164,7 +164,7 @@ launchers\只开观众席(新版).bat
 ### 与 tkinter 版的关系
 
 - 并存，不互斥；哪边看着顺眼用哪边
-- 只读，不写引擎状态
+- 两种观众席均可查看行情、答复求助并提交停服请求
 - 依赖零安装（不放 NuGet 包，图表是 WPF 矢量自绘），`requirements.txt` 不受影响
 
 ## 一局的流程
@@ -173,11 +173,11 @@ launchers\只开观众席(新版).bat
 2. 在 75 秒内答复是否开启挑战，超时按拒绝处理。之后自动开始 30 秒盲盒。
 3. 等抽选结束或调用 `POST /roll/stop`。定档即开始 45 分钟计时，同时公布已启用的挑战目标。
 4. 确认 `rolled:true` 后交易。行情会自然推进，快进另有额度和冷却。
-5. 调用 `/quit` 前查询局面。达标且还有持仓时先平仓，重新核对净值。**v1.2.28 即使拒绝 `/quit` 也会安排停服。** 时间到或触发账户结算条件也会自动清算，详见[游戏规则](docs/rules.md)。
+5. 调用 `/quit` 前查询局面。达标且还有持仓时先平仓，重新核对净值。**结算成功后服务约三秒退出。请求被拒时，对局继续。** 时间到或触发账户结算条件也会自动清算，详见[游戏规则](docs/rules.md)。
 
 ## HTTP 接口
 
-全部路由、字段和回包见[接入协议](docs/ai-protocol.md)。`GET /prices` 返回当前报价。`GET /state?history=0` 清空返回的价格历史，仍有权益曲线和近期事件。v1.2.28 的 `/rules` 摘要仍有旧描述，接入协议已标明。
+全部路由、字段和回包见[接入协议](docs/ai-protocol.md)。`GET /prices` 返回当前报价。`GET /state?history=0` 清空返回的价格历史，仍有权益曲线和近期事件。`GET /rules` 提供游戏内规则摘要。
 
 ## 给 Agent 的提示词模板（可直接复制）
 
@@ -238,7 +238,7 @@ TokensMarket-OpenSource-AI-v97/
 │   └── data/               运行时生成：session.json、reports/、.scratchpad.jsonl
 ├── viewer-cs/TokensWatch/  C# / WPF 观众席（默认界面；tkinter 为回退）
 │   ├── Controls/           权益曲线与迷你走势线（纯 WPF 矢量自绘，无第三方库）
-│   ├── Services/           只读 HTTP 客户端（显式绕过系统代理）
+│   ├── Services/           HTTP 客户端（显式绕过系统代理）
 │   ├── Panels/             四个附属窗口：AI 行为 / 外部的怜悯 / 活动流 / 持仓
 │   └── Theme/              Fluent 样式：卡片、按钮、表格、滚动条
 ├── tests/                  unittest 用例（python -m unittest discover -s tests）
@@ -256,7 +256,7 @@ TokensMarket-OpenSource-AI-v97/
 
 | 项 | AI 版（本仓库） | 人类版 |
 |---|---|---|
-| 界面 | 只读观众席（C# / WPF，同一个人不能下单） | 完整交互 GUI（可开平仓、借贷、快进） |
+| 界面 | 观众席（C# / WPF，交易走 HTTP） | 完整交互 GUI（可开平仓、借贷、快进） |
 | 投资界面 | 无 | 有 |
 | 开仓方式 | HTTP `/open` | 点按钮 |
 | 快进 | `/fastforward` | 两个档位按钮（5 分钟 / 3 分钟） |
@@ -283,7 +283,7 @@ TokensMarket-OpenSource-AI-v97/
 
 ## 结算与清算
 
-开仓保证金与手续费必须能由可用保证金覆盖。扣除本笔手续费后的净值还须覆盖预计维持保证金的 150%。基础维持保证金率 10%、净值 100 万时，起始总名义敞口上限略低于 667 万，实际还受事件和可用保证金影响。
+开仓保证金与手续费必须能由可用保证金覆盖。计入本笔手续费、点差和滑点后的净值还须覆盖预计维持保证金的 150%。基础维持保证金率 10%、净值 100 万时，起始总名义敞口上界为 667 万，实际可开仓规模受成交成本、事件和可用保证金影响。
 
 保证金水平低于 100% 进入追缴，恢复到 100% 可解除；30 个行情步未恢复则强平，低于 50% 立即强平。净值为负会结束对局，只有现金为负时才有默认 60 秒自救窗口。借款同时增加现金与欠款。
 
