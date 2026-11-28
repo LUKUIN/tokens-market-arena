@@ -831,7 +831,9 @@ class Engine:
                 self._save()
             archived = settlement_path(self.home, self.s["session_id"])
             if not self.s.get("finished") and archived.is_file():
-                settled = read_settlement(archived)["state"]
+                record = read_settlement(archived)
+                self._verify_snapshot(record)
+                settled = record["state"]
                 self._verify_snapshot(settled)
                 if settled["session_id"] != self.s["session_id"] or not settled.get("finished"):
                     raise SessionRecoveryError("结算快照与存档对局不匹配")
@@ -1973,6 +1975,7 @@ class Engine:
                 "simulated": self._simulated,
             }
             archive = settlement_path(self.home, self.s["session_id"])
+            snapshot["_sig"] = _sign(snapshot)
             atomic_write(archive, json_bytes(snapshot))
         except Exception:
             self._restore_runtime(before)
@@ -1989,6 +1992,8 @@ class Engine:
         out["report_status"] = status
         out["report"] = status.get("html", {}).get("path")
         self.s["last_settle"]["report_status"] = status
+        if any(not result["ok"] for result in status.values()):
+            print(f"[战报] 导出失败。退出后运行 python run.py report-retry {self.s['session_id']} 补导。")
         self._clear_running()
         purge_agent_dir(self.home)
         out["state"] = self.state()
@@ -3284,6 +3289,7 @@ class Engine:
     @classmethod
     def reexport_report(cls, home, session_id):
         record = read_settlement(settlement_path(home, session_id))
+        cls._verify_snapshot(record)
         snapshot = record["state"]
         cls._verify_snapshot(snapshot)
         if not snapshot.get("finished") or snapshot.get("session_id") != session_id:

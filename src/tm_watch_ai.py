@@ -1449,13 +1449,13 @@ def _warn_already_open():
 
 
 def main(api_url=None):
-    global API
-    if api_url is not None:
-        API = api_url.rstrip("/")
     """返回 True 表示观众席窗口正常关闭，False 表示没能打开。
 
     调用方（run.py）据此决定是否继续跑服务：窗口只是显示层，不是对局宿主。
     """
+    global API
+    if api_url is not None:
+        API = api_url.rstrip("/")
     if not _acquire_single_instance():
         _warn_already_open()
         return False
