@@ -623,7 +623,6 @@ def main(argv=None):
         return 0 if all(item["ok"] for item in status.values()) else 1
 
     if mode == "state":
-        import json
         from tm_engine import Engine
         home = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "data")
         # readonly: read-only queries must not write .running or bump the abnormal-exit counter
