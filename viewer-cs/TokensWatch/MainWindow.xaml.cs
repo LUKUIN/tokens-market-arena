@@ -212,6 +212,14 @@ public partial class MainWindow : Window
             if (st is null) return;
             _state = st;
             Render(st);
+            _slotWindow?.UpdateState(st);
+            if (st.Finished)
+            {
+                _closing = true;
+                _uiTimer.Stop();
+                await Task.Delay(3000);
+                Application.Current.Shutdown();
+            }
         }
         catch (Exception ex)
         {
@@ -960,6 +968,7 @@ public partial class MainWindow : Window
 
     private void OnQuitClick(object sender, RoutedEventArgs e)
     {
+        if (_closing) return;
         var r = MessageBox.Show(
             "这会把本局服务一起结束，对局将记一次异常退出。\n\n确定要结束吗？",
             "结束相关进程",

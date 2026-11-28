@@ -13,12 +13,12 @@ namespace TokensWatch.Panels;
 /// 前置条件（未满足时主窗口会直接拦下，不打开本窗口）：
 ///  - 本局开启了【老虎机】（special.slot == true）
 ///  - 还有剩余次数（slot_left &gt; 0）
-/// 单次投入 1~200000，且不超过当前权益。
+/// 单次投入 1~200000，且不超过现金余额。
 /// </summary>
 public partial class SlotWindow : Window
 {
     private readonly StateClient _client;
-    private readonly WatchState _state;
+    private WatchState _state;
 
     public SlotWindow(StateClient client, WatchState state)
     {
@@ -28,14 +28,20 @@ public partial class SlotWindow : Window
 
         SourceInitialized += (_, _) => WindowChrome.Apply(this);
 
-        int left = state.Special?.SlotLeft ?? 0;
-        TxtSubtitle.Text = $"剩余 {left} 次 · 当前权益 {state.Equity:N0}";
+        UpdateState(state);
 
         Loaded += (_, _) =>
         {
             TxtAmount.Focus();
             TxtAmount.SelectAll();
         };
+    }
+
+    public void UpdateState(WatchState state)
+    {
+        _state = state;
+        int left = state.Special?.SlotLeft ?? 0;
+        TxtSubtitle.Text = $"剩余 {left} 次 · 现金余额 {state.Balance:N0}";
     }
 
     private async void OnPlayClick(object sender, RoutedEventArgs e)
@@ -47,15 +53,15 @@ public partial class SlotWindow : Window
             return;
         }
 
-        if (amt < 1 || amt > 200_000)
+        if (!double.IsFinite(amt) || amt < 1 || amt > 200_000)
         {
             Say("金额必须在 1 ~ 200,000 之间", Theme.Red);
             return;
         }
 
-        if (amt > _state.Equity)
+        if (amt > _state.Balance)
         {
-            Say("投入不能超过当前权益", Theme.Red);
+            Say("投入不能超过现金余额", Theme.Red);
             return;
         }
 

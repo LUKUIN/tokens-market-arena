@@ -17,6 +17,7 @@
 
 import json
 import os
+import socket
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -25,8 +26,19 @@ from urllib.parse import urlparse, parse_qs
 from tm_engine import Engine, TICK_SECONDS
 
 HOME = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-ENGINE = Engine(HOME)
+ENGINE = None
 SERVER = None
+
+
+MAX_BODY_BYTES = 1 << 20
+
+
+class _BodyTooLarge(ValueError):
+    pass
+
+
+class _InvalidBody(ValueError):
+    pass
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -47,14 +59,26 @@ class Handler(BaseHTTPRequestHandler):
         ENGINE.note_ua(self.headers.get("User-Agent", ""))
 
     def _body(self):
-        n = int(self.headers.get("Content-Length") or 0)
-        if n <= 0:
-            return {}
         try:
-            obj = json.loads(self.rfile.read(n).decode("utf-8"))
-        except Exception:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError as exc:
+            raise _InvalidBody("请求体必须是 UTF-8 JSON 对象") from exc
+        if length < 0 or self.headers.get("Transfer-Encoding"):
+            raise _InvalidBody("请求体必须是 UTF-8 JSON 对象")
+        if length == 0:
             return {}
-        return obj if isinstance(obj, dict) else {}
+        if length > MAX_BODY_BYTES:
+            raise _BodyTooLarge("请求体过大: %d > %d" % (length, MAX_BODY_BYTES))
+        body = self.rfile.read(length)
+        if len(body) != length:
+            raise _InvalidBody("请求体必须是 UTF-8 JSON 对象")
+        try:
+            obj = json.loads(body.decode("utf-8"))
+        except (UnicodeError, ValueError, RecursionError) as exc:
+            raise _InvalidBody("请求体必须是 UTF-8 JSON 对象") from exc
+        if not isinstance(obj, dict):
+            raise _InvalidBody("请求体必须是 UTF-8 JSON 对象")
+        return obj
 
     def do_GET(self):
         self._note()
@@ -86,6 +110,9 @@ class Handler(BaseHTTPRequestHandler):
             path = urlparse(self.path).path.rstrip("/") or "/"
             b = self._body()
             return self._route_post(path, b)
+        except (_InvalidBody, _BodyTooLarge) as exc:
+            self.close_connection = True
+            self._send({"ok": False, "error": str(exc)}, 413 if isinstance(exc, _BodyTooLarge) else 400)
         except Exception as exc:
             try:
                 self._send({"ok": False, "error": "请求处理失败：%s" % exc}, 500)
@@ -106,10 +133,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(ENGINE.repay(b.get("amount")))
         if path == "/quit":
             resp = ENGINE.quit_session()
-            self._send(resp)
-            # 玩家结束游戏后，服务与游戏窗口随之退出
-            threading.Timer(3.0, lambda: SERVER and SERVER.shutdown()).start()
-            return
+            try:
+                return self._send(resp)
+            finally:
+                if resp.get("ok"):
+                    threading.Timer(3.0, self.server.shutdown).start()
         if path == "/shutdown":
             # 立即停止服务（不结算、不清数据），供界面上的「结束相关进程」按钮使用。
             # 但「非正常退出」也要在 reports/ 里留一份快照，方便事后翻账。
@@ -194,7 +222,33 @@ def _roll_printer():
         _t.sleep(1.0)
 
 
-def serve(host="127.0.0.1", port=8734):
+class _Server(ThreadingHTTPServer):
+    allow_reuse_address = os.name != "nt"
+
+    def server_bind(self):
+        if os.name == "nt":
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
+def serve(host="127.0.0.1", port=8734, *, started=None):
+    try:
+        srv = _Server((host, port), Handler)
+    except OSError as exc:
+        if started is None:
+            raise
+        started.set_exception(exc)
+        return
+    global ENGINE, SERVER
+    try:
+        ENGINE = Engine(HOME)
+    except Exception as exc:
+        srv.server_close()
+        if started is None:
+            raise
+        started.set_exception(exc)
+        return
+    SERVER = srv
     # 人类版：服务起来后由 tm_watch 走「分辨率 → 难度盲盒 → 规则窗 → 主界面」，
     # 盲盒本身也是 GUI 里的按钮触发的（POST /roll/start、/roll/stop）。
     # 这里不主动 start_roll，避免服务先于窗口开始计时。
@@ -206,11 +260,12 @@ def serve(host="127.0.0.1", port=8734):
     print("")
     threading.Thread(target=_auto_tick, daemon=True).start()
     threading.Thread(target=_roll_printer, daemon=True).start()
-    global SERVER
-    srv = ThreadingHTTPServer((host, port), Handler)
-    SERVER = srv
-    print("Tokens 交易市场已启动： http://%s:%d" % (host, port), flush=True)
+    print("Tokens 交易市场已启动： http://%s:%d" % (host, srv.server_port), flush=True)
+    if started is not None:
+        started.set_result(None)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        srv.server_close()

@@ -82,8 +82,8 @@ class TestFastForwardYieldsLock(_Base):
         """
         import inspect
         src = inspect.getsource(T.Engine.fast_forward)
-        self.assertIn("for _ in range(n):", src, "快进循环结构变了，这个断言需要同步更新")
-        loop = src.split("for _ in range(n):", 1)[1]
+        self.assertIn("for _ in range(steps):", src, "快进循环结构变了，这个断言需要同步更新")
+        loop = src.split("for _ in range(steps):", 1)[1]
         head = loop[:240]
         self.assertIn("with LOCK:", head,
                       "快进循环体没有单独取锁：整段持锁会把读者饿死")

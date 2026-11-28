@@ -25,7 +25,7 @@
         <TextBlock Grid.Row="1" x:Name="TxtSubtitle" Text="" FontSize="14"
                    Foreground="{StaticResource Muted}" Margin="0,4,0,0" />
 
-        <TextBlock Grid.Row="2" Text="投入金额（1 ~ 200,000，且不超过当前权益）"
+        <TextBlock Grid.Row="2" Text="投入金额（1 ~ 200,000，且不超过现金余额）"
                    Style="{StaticResource Caption}" Margin="0,16,0,6" />
 
         <StackPanel Grid.Row="3">

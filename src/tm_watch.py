@@ -1218,9 +1218,13 @@ class Watch:
     def _do_loan_abort(self):
         """放弃自救：直接结算本局。"""
         try:
-            post("/quit")
-        except Exception:
-            pass
+            r = post("/quit")
+        except Exception as exc:
+            self._loan_msg.config(text="结束失败：%s" % exc, fg=RED)
+            return
+        if not r.get("ok"):
+            self._loan_msg.config(text="结束失败：%s" % r.get("error", "未知错误"), fg=RED)
+            return
         if self._loan_win is not None:
             try:
                 self._loan_win.destroy()
@@ -1835,7 +1839,7 @@ class Watch:
         return True
 
     def _open_slot(self):
-        """老虎机：投入 1~200000 Tokens（不超过当前权益），整局 3 次。"""
+        """老虎机：投入 1~200000 Tokens（不超过现金余额），整局 3 次。"""
         st = self.st or {}
         sp = st.get("special") or {}
         if not sp.get("slot"):
@@ -1847,7 +1851,7 @@ class Watch:
             messagebox.showinfo("老虎机", "本局老虎机次数已用完（%d/%d）。" % (
                 sp.get("slot_plays", 0), 3))
             return
-        eq = float(st.get("equity") or 0.0)
+        cash = float(st.get("balance") or 0.0)
         win = tk.Toplevel(self.root)
         win.title("老虎机 · Tokens 交易市场")
         _apply_icon(win)
@@ -1857,10 +1861,10 @@ class Watch:
         win.geometry("%dx%d+%d+%d" % (w, h, (sw - w) // 2, (sh - h) // 3))
         win.transient(self.root)
         tk.Label(win, text="老虎机", font=FONT_BIG, bg=BG, fg=TEXT).pack(anchor="w", padx=20, pady=(16, 4))
-        tk.Label(win, text="剩余 %s 次 · 当前权益 %s" % (
-            left if left is not None else "—", "{:,.0f}".format(eq)),
+        tk.Label(win, text="剩余 %s 次 · 现金余额 %s" % (
+            left if left is not None else "—", "{:,.0f}".format(cash)),
             font=FONT_SMALL, bg=BG, fg=MUTED).pack(anchor="w", padx=20)
-        tk.Label(win, text="投入金额（1 ~ 200,000，且不超过当前权益）",
+        tk.Label(win, text="投入金额（1 ~ 200,000，且不超过现金余额）",
                  font=FONT_SMALL, bg=BG, fg=MUTED).pack(anchor="w", padx=20, pady=(14, 4))
         var = tk.StringVar(value="10000")
         ent = tk.Entry(win, textvariable=var, font=FONT, justify="right")
@@ -2360,8 +2364,11 @@ class Watch:
                                    "将平掉全部持仓、清算贷款并生成报告，\n随后服务和游戏窗口会关闭。确定吗？"):
             return
         try:
-            post("/quit")
-            self._tp_say("已结算，服务将在 3 秒后退出", GREEN)
+            r = post("/quit")
+            if r.get("ok"):
+                self._tp_say("已结算，服务将在 3 秒后退出", GREEN)
+            else:
+                self._tp_say("结束失败：%s" % r.get("error", "未知错误"), RED)
         except Exception as exc:
             self._tp_say("结束失败：%s" % exc, RED)
 

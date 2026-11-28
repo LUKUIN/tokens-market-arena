@@ -109,9 +109,16 @@ public partial class LoanRescueWindow : Window
 
         _busy = true;
         SetButtons(false);
-        await _client.QuitAsync();
+        var (ok, err) = await _client.QuitAsync();
 
         _busy = false;
+        if (!ok)
+        {
+            SetButtons(true);
+            Say(string.IsNullOrEmpty(err) ? "结算失败" : err, Theme.Red);
+            return;
+        }
+
         _allowClose = true;
         Close();
     }

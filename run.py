@@ -20,7 +20,6 @@ AI 版只有只读观众席，没有投资界面，所有操作走 HTTP 接口�
 
 import os
 import sys
-import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "src"))
@@ -90,7 +89,7 @@ def _interactive_setup():
         "（必抬高，永不减免）；只能在开局前开启")
     slot_on = _ask_special(
         "TM_SLOT", "是否开启全局事件【老虎机】？",
-        "整局可投 3 次（每次 1~200000，且不超过当前权益）；"
+        "整局可投 3 次（每次 1~200000，且不超过现金余额）；"
         "80% 空 / 15% 返还 5 倍 / 5% 返还 10 倍；中奖金额的 -5%~100% 推高目标")
     os.environ["TM_FR"] = "1" if fr_on else "0"
     os.environ["TM_SLOT"] = "1" if slot_on else "0"
@@ -110,20 +109,17 @@ def _interactive_setup():
 
 def _start_server(host="127.0.0.1", port=8734):
     """在后台线程里起 HTTP 服务，主线程留给 GUI。"""
+    from concurrent.futures import Future
     import threading
     from tm_api import serve
 
-    t = threading.Thread(target=serve, args=(host, port), daemon=True)
-    t.start()
-
-    import urllib.request
-    for _ in range(40):
-        try:
-            urllib.request.urlopen("http://%s:%d/health" % (host, port), timeout=0.5).read()
-            return True
-        except Exception:
-            time.sleep(0.05)
-    return False
+    started = Future()
+    threading.Thread(target=serve, args=(host, port), kwargs={"started": started}, daemon=True).start()
+    try:
+        started.result(timeout=5)
+    except (OSError, TimeoutError):
+        return False
+    return True
 
 
 def _run_human(port=None):

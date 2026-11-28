@@ -164,7 +164,7 @@ public sealed class StateClient : IDisposable
         return doc.RootElement.Clone();
     }
 
-    /// <summary>老虎机：amount 限 1~200000 且不超过当前权益，整局 3 次。</summary>
+    /// <summary>老虎机：amount 限 1~200000 且不超过现金余额，整局 3 次。</summary>
     public async Task<SlotResult> SlotAsync(double amount, CancellationToken ct = default)
     {
         var body = JsonSerializer.Serialize(new { amount });

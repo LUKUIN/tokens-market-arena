@@ -760,6 +760,7 @@ class Engine:
     def __init__(self, home, readonly=False):
         self.home = home
         self._elapsed_watch = 0.0
+        self._fast_forward_active = False
         os.makedirs(home, exist_ok=True)
         if not readonly:
             purge_agent_dir(home)   # 只读实例（run.py state）不得删文件
@@ -1335,9 +1336,9 @@ class Engine:
             del s["events"][:-300]
 
     # ---------------- 计算 ----------------
-    def _position_pnl(self, pos, price):
+    def _position_pnl(self, pos, price, lots=None):
         diff = (price - pos["entry"]) if pos["side"] == "LONG" else (pos["entry"] - price)
-        return diff * pos["lots"] * LOTS_SIZE
+        return diff * (pos["lots"] if lots is None else lots) * LOTS_SIZE
 
     def _virtual_tick(self):
         """游戏内 tick：按墙钟折算，且不超过实际 tick 数。
@@ -1482,7 +1483,7 @@ class Engine:
         pair = pos["pair"]
         fill, half, slip = self._close_fill(pair, pos["side"], qty)
         ref = self.s["prices"][pair]
-        pnl = self._position_pnl(pos, fill)
+        pnl = self._position_pnl(pos, fill, qty)
         fee = qty * LOTS_SIZE * fill * FEE_RATE * self._mod("fee_mult")
         self.s["balance"] += pnl - fee
         self.s["total_fees"] += fee
@@ -2334,7 +2335,7 @@ class Engine:
         last_cd = float(self.s.get("ff_last_cd") or 0.0)
         cool = max(0.0, last_cd - (time.time() - float(self.s.get("ff_last_at") or 0.0)))             if last_cd > 0 else 0.0
         recs = [int(x) for x in (self.s.get("ff_records") or [])]
-        ok_cool = cool <= 0.0
+        ok_cool = cool <= 0.0 and not self._fast_forward_active
         return {
             "total": FF_TOTAL_SECONDS,
             "used": round(used, 1),
@@ -2373,6 +2374,8 @@ class Engine:
                 return {"ok": False,
                         "error": "只支持 300 秒（5 分钟）或 180 秒（3 分钟）"}
             p = self.ff_plan()
+            if self._fast_forward_active:
+                return {"ok": False, "error": "正在快进，请等待本次完成", "ff": p}
             if p["cool_left"] > 0:
                 return {"ok": False, "ff": p,
                         "error": "快进冷却中，还需 %.0f 秒" % p["cool_left"]}
@@ -2380,35 +2383,36 @@ class Engine:
                 return {"ok": False, "ff": p,
                         "error": "额度不足：剩余 %.0f 秒，本档需要 %d 秒（该次不执行）" % (
                             p["remain"], sec)}
-            n = max(1, int(round(sec / TICK_SECONDS)))
-        # 快进逐 tick 释放锁：一次推进 60 tick 若全程持锁，观众席 300ms 的轮询
-        # 会被饿死 2-3 秒，被它判成「服务无响应」并停更。RLock 可重入，
-        # tick() 内部自己的 with LOCK 不会死锁。
+            steps = sec // TICK_SECONDS
+            self._fast_forward_active = True
         done = 0
-        st = self.state()
-        for _ in range(n):
+        try:
+            # 逐步释放锁，让状态轮询保持响应。
+            for _ in range(steps):
+                with LOCK:
+                    if self.s.get("finished"):
+                        break
+                    # 先记快进账，再推进可能写出结算报告的行情步。
+                    if done == 0:
+                        self.s.setdefault("ff_records", []).append(0)
+                    done += 1
+                    self.s["ff_used"] += TICK_SECONDS
+                    self.s["ff_records"][-1] = done * TICK_SECONDS
+                    self.tick(manual=True)
+                time.sleep(0)
+        finally:
             with LOCK:
-                if self.s.get("finished"):
-                    break
-                st = self.tick(manual=True)
-                done += 1
-            time.sleep(0)          # 让出 GIL，给 HTTP 线程插队的机会
-        with LOCK:
-            real = done * TICK_SECONDS
-            self.s["ff_used"] = float(self.s.get("ff_used") or 0.0) + real
-            self.s["ff_last_at"] = time.time()
-            self.s["ff_last_cd"] = FF_CHUNKS[sec]
-            recs = list(self.s.get("ff_records") or [])
-            recs.append(real)
-            self.s["ff_records"] = recs
-            self._save()
-            # 中途结算必须如实报失败：否则调用方会以为快进成功，继续按 state 里的 ff 规划，
-            # 而局面其实已经结束了。
-            if done < int(n):
-                return {"ok": False, "ticks": done, "seconds": real,
-                        "error": "本局在快进过程中已结束", "state": st, "ff": self.ff_plan()}
-            return {"ok": True, "ticks": done, "seconds": real,
-                    "state": st, "ff": self.ff_plan()}
+                self._fast_forward_active = False
+                if done:
+                    self.s["ff_last_at"] = time.time()
+                    self.s["ff_last_cd"] = FF_CHUNKS[sec]
+                    self._save()
+                state = self.state()
+        response = {"ok": not state["finished"], "ticks": done,
+                    "seconds": done * TICK_SECONDS, "state": state, "ff": state["ff"]}
+        if state["finished"]:
+            response["error"] = "本局在快进过程中已结束"
+        return response
 
     # ---------------- 全局开关型特殊事件 ----------------
     def _special(self):
@@ -2684,8 +2688,8 @@ class Engine:
         with LOCK:
             if self.s.get("finished"):
                 return {"ok": False, "error": "本局已结束"}
-            pair = (pair or "").upper()
-            side = (side or "").upper()
+            pair = pair.strip().upper() if isinstance(pair, str) else ""
+            side = side.strip().upper() if isinstance(side, str) else ""
             if not self.s.get("difficulty"):
                 return {"ok": False,
                         "error": "难度尚未定档，请先 POST /roll/stop 或等抽选结束再下单"}
@@ -2704,7 +2708,7 @@ class Engine:
                 leverage = int(leverage)
             except (TypeError, ValueError, OverflowError):
                 return {"ok": False, "error": "手数/杠杆必须是数字"}
-            if not math.isfinite(lots) or not math.isfinite(leverage):
+            if not math.isfinite(lots):
                 return {"ok": False, "error": "手数/杠杆必须是有限数值"}
             if leverage < 1:
                 return {"ok": False, "error": "杠杆必填且至少为 1：leverage 字段，例 100"}
@@ -2716,10 +2720,14 @@ class Engine:
             price = self.s["prices"][pair]
             half = self._eff_spread(pair) / 2
             gross = lots * LOTS_SIZE * price
+            if not math.isfinite(gross):
+                return {"ok": False, "error": "手数超出可计算范围"}
             before = self._account_notional()
             slip = self._slip_rate(before, before + gross, pair)
             fill = price * (1 + half + slip) if side == "LONG" else price * (1 - half - slip)
             notional = lots * LOTS_SIZE * fill
+            if not math.isfinite(notional):
+                return {"ok": False, "error": "手数超出可计算范围"}
             # 与 _position_margin 口径一致：事件把保证金放大/缩小后，校验必须同乘
             margin = notional / leverage * self._mod("margin_mult")
             fee = notional * FEE_RATE * self._mod("fee_mult")
@@ -2734,7 +2742,8 @@ class Engine:
             # 缺了它就可以「先开满、等追缴通知」，把风控变成事后告知。
             if MAINT_MARGIN_RATE > 0:
                 maint_after = (before + gross) * MAINT_MARGIN_RATE * self._mod("margin_mult")
-                eq_after = self.equity() - fee
+                spread_and_slippage = abs(round(fill, 6) - price) * lots * LOTS_SIZE
+                eq_after = self.equity() - fee - spread_and_slippage
                 if maint_after > 0 and eq_after < maint_after * OPEN_MARGIN_RATIO:
                     return {"ok": False,
                             "error": "维持保证金不足：开这笔后名义敞口 %.0f，"
@@ -2794,7 +2803,7 @@ class Engine:
                 return {"ok": False,
                         "error": "交易所维护中，暂停平仓（还剩 %d 个 tick）" % (
                             int(self.s.get("halt_close_until", 0)) - self.s["tick"])}
-            pair = (pair or "").upper()
+            pair = pair.strip().upper() if isinstance(pair, str) else ""
             price = self.s["prices"].get(pair)
             if price is None:
                 return {"ok": False,
@@ -2802,22 +2811,23 @@ class Engine:
                                  % (pair, "、".join(PAIRS.keys()))}
             # side 缺省时与旧行为完全一致（同 pair 全部候选、按数组倒序先平最新一笔）；
             # 传了 side 才按方向过滤 —— 同品种多空并存时能指定平哪一边。
-            _side = (side or "").strip().upper()
-            if _side not in ("LONG", "SHORT"):
-                _side = None
+            _side = side.strip().upper() if isinstance(side, str) else None
+            if side is not None and _side not in ("LONG", "SHORT"):
+                return {"ok": False, "error": "方向只能是 LONG 或 SHORT"}
             idxs = [i for i, p in enumerate(self.s["positions"])
                     if p["pair"] == pair and (_side is None or p["side"] == _side)]
             if not idxs:
                 return {"ok": False, "error": "没有 %s 的持仓" % pair}
-            if lots in (None, "", 0, "0"):
-                remaining = None          # 不传或 0 = 全部平掉
-            else:
+            remaining = None
+            if lots is not None and lots != "":
                 try:
                     remaining = float(lots)
                 except (TypeError, ValueError, OverflowError):
-                    return {"ok": False, "error": "手数必须是数字（不传或 0 表示全平）"}
+                    return {"ok": False, "error": "手数必须是数字"}
                 if not math.isfinite(remaining) or remaining < 0:
-                    return {"ok": False, "error": "手数不能为负数（不传或 0 表示全平）"}
+                    return {"ok": False, "error": "手数必须是非负有限数值"}
+                if remaining == 0:
+                    remaining = None
             closed = []
             # 倒序遍历并在末尾 pop，避免删除元素后索引错位
             for i in sorted(idxs, reverse=True):
@@ -3833,6 +3843,8 @@ footer {{ color: var(--muted); font-size: 13px; text-align: center; padding-bloc
         """开新局。seed=None 时沿用 TM_SEED 或随机生成；显式传 seed / roll_index 用于配对评测。"""
         with LOCK:
             now = time.time()
+            if self._fast_forward_active:
+                return {"ok": False, "error": "正在快进，请等待本次完成", "state": self._state_light()}
             if count:
                 last = self.s.get("last_reset_at", 0.0)
                 wait = RESET_COOLDOWN - (now - last)
@@ -4035,7 +4047,7 @@ footer {{ color: var(--muted); font-size: 13px; text-align: center; padding-bloc
                         "（必上抬、永不减免，最小值 0.01%%）；"
                         "只能在开局前开启，开局后不再提供" % (LOAN_POOL / 10000.0)
                         ).replace("%%", "%"),
-            SPECIAL_SLOT_NAME: ("开局全局开关：开启后整局可投 %d 次，单次 1~%.0f 且不超过当前权益；"
+            SPECIAL_SLOT_NAME: ("开局全局开关：开启后整局可投 %d 次，单次 1~%.0f 且不超过现金余额；"
                        "80%% 无所得 / 15%% 返还 5 倍 / 5%% 返还 10 倍（期望返还 1.25 倍）；"
                        "中奖金额进入现金，同时目标按返还金额的 -5%%~100%% 上浮（最坏情况目标翻倍）；"
                        "只能在开局前开启，开局后不再提供" % (
@@ -4064,7 +4076,7 @@ footer {{ color: var(--muted); font-size: 13px; text-align: center; padding-bloc
                 GAP_CHANCE * 100, GAP_MIN * 100, GAP_MAX * 100,
                 GAP_CHANCE * 100, GAP_LEVELS[0][1] * 100, GAP_LEVELS[-1][1] * 100),
             "手续费": "名义价值 %.3f%% / 次" % (FEE_RATE * 100),
-            "贷款": "贷款池 %.0f Tokens（可能被「信贷紧缩 / 央行放水」临时缩放）；利率 %.2f%%/tick（%s）；每借一笔：总目标 = 原目标 + 该笔金额 × 随机比例（比例随累计借款额上升，首借 30 万约 4%%~8%%，一次借满约 35%%~66%%；按累计额做梯形积分，拆成十笔与一次借满等价；借完才定）" % (
+            "贷款": "贷款池 %.0f Tokens（可能被「信贷紧缩 / 央行放水」临时缩放）；利率 %.2f%%/tick（%s）；每借一笔：总目标 = 原目标 + 该笔金额 × 随机比例（比例随累计借款额上升，首借 30 万约 4%%~8%%，一次借满约 35%%~66%%；按累计额做梯形积分，每笔另行抽样，拆单实际结果可能不同）" % (
                 LOAN_POOL, LOAN_RATE_PER_TICK * 100, "随借随还，到期强制清算"),
             "挑战任务": ("开局先答复挑战，定档时从 %d 条候选中抽取一条结果任务、两条不同类型的过程任务。"
                         "过程任务破功立即记录，净值目标在清算后判定。"
@@ -4075,13 +4087,16 @@ footer {{ color: var(--muted); font-size: 13px; text-align: center; padding-bloc
             "无活动自动收尾": _idle_rule_text(),
             "tick 间隔": "%d 秒" % TICK_SECONDS,
             "接口": {
+                "POST /challenge/accept": {},
+                "POST /challenge/decline": {},
                 "GET /state": "当前局面：权益、持仓、报价、盘口深度、事件流、快进额度",
                 "GET /rules": "本规则表（含这份接口清单）",
                 "POST /open": {"pair": "AURA/CORE", "side": "LONG 或 SHORT",
                                "lots": 10, "leverage": 100},
-                "POST /close": {"pair": "AURA/CORE", "lots": "可选，缺省全平该品种"},
+                "POST /close": {"pair": "AURA/CORE", "lots": "省略或填 0 则全平匹配持仓", "side": "可选，LONG 或 SHORT"},
                 "POST /close_all": {},
-                "POST /fastforward": {"seconds": "300（5 分钟）或 180（3 分钟），必填"},
+                "POST /roll/start": {},
+                "POST /fastforward": {"seconds": "300（5 分钟）或 180（3 分钟），默认 300"},
                 "POST /loan": {"amount": 100000},
                 "POST /repay": {"amount": 100000},
                 "POST /slot": {"amount": 1000},
@@ -4090,32 +4105,20 @@ footer {{ color: var(--muted); font-size: 13px; text-align: center; padding-bloc
                 "POST /quit": {"说明": "提前离场：达标且无持仓→达标离场（算达成）；达标但有持仓→ok:false，"
                                        "须先 POST /close_all；未达标→主动弃权（不算达成，引擎先强制清仓）"},
                 "GET /prices": {},
-                "GET /assist/inbox": {},
-                "POST /assist/ask": {"text": "需要观众席帮忙看的内容"},
                 "GET /roll/state": {},
-                "POST /roll/start": {},
                 "GET /scratchpad": {},
-                "POST /scratchpad": {"text": "记一条", "clear": "传 true 则清空"},
+                "POST /scratchpad": {"text": "记一条"},
                 "POST /begin": {},
-                "GET /health": "存活探针：tick / equity / finished / 协议与引擎版本",
+                "GET /health": "存活探针：tick / equity / finished",
                 "POST /reset": "开新的一局（清空本局存档并重新抽难度）",
-                "POST /pause": "暂停 / 继续（无参数，每调一次切换一次）",
+                "POST /pause": "开局前暂停，调用 /begin 恢复",
                 "POST /trader": {"name": "参赛标识，≤60 字符；只保留中英文、数字、空格与 -_.()（）·"},
                 "POST /shutdown": "立即停止服务（观众席「结束相关进程」用），会先留一份异常退出快照",
-                "POST /assist/enable": "v1.2.23 起已取消：场外援助只能在开局前开启，调用恒返回错误",
-                "GET /assist/pending": "看当前待观众席回复的求助工单",
-                "POST /assist/reply": {"ticket": "工单号", "text": "回复内容（观众席侧调用）"},
-                "POST /assist/reject": {"ticket": "工单号（观众席侧调用）"},
             },
-            "求助回执": ("观众席的回复不会出现在 /state 的事件流里，"
-                        "必须 GET /assist/inbox 主动取，取走即标记已读；"
-                        "POST /assist/ask 只在有剩余次数时可用"),
-            "草稿纸": ("对局期间 src/*.py 已被封存成不可执行的诱饵，"
-                      "请用 GET/POST /scratchpad，不要执行仓库里的 .py 文件"),
-            "查询省 token": "GET /state?history=0 不返回 price_history（每品种最多 2000 点）；只要局面时用它，别整包拉",
-            "平仓": "POST /close 的 lots 可省略（全平该品种）；给多了按实际持仓全平，不报错",
+            "查询省 token": "GET /state?history=0 将 price_history 置为 {}，仍返回权益曲线与近期事件",
+            "平仓": "POST /close 可用 side 指定 LONG 或 SHORT；省略 lots 或填 0 会平掉全部匹配持仓",
             "收工": ("POST /quit 是正常结算，不扣分、不计异常退出。净值 ≥ 目标且已无持仓 → 记「达标离场」（算达成）；"
-                     "达标但仍有持仓 → 返回 ok:false，须先 POST /close_all 落袋再退；未达标 → 记「主动弃权（未达标）」"
+                     "达标但仍有持仓 → 返回 ok:false，对局继续，请先平仓；未达标 → 记「主动弃权（未达标）」"
                      "（不算达成，引擎先强制清仓）。达标后继续持有也允许，首次达标时刻见 /state 的 hit_at_tick；"
                      "若之后回吐，最终判定仍是未达成"),
             "货币对": {s: PAIR_NAMES[s] for s in PAIRS},
