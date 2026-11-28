@@ -38,4 +38,4 @@ curl.exe http://127.0.0.1:8734/state
 
 ## 异常中断后的恢复
 
-确认当前目录的对局进程已退出后，若仍有遗留文件，在 Windows 项目根执行 `powershell -NoProfile -ExecutionPolicy Bypass -File tools\deep-clean.ps1`。历史战报会保留。
+确认当前目录的对局进程已退出。要续局，保留存档并从同一目录重启，见[存档恢复](docs/ai-protocol.md#存档恢复)。要放弃该局，在 Windows 项目根运行 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/deep-clean.ps1`，它会清理本局存档并保留历史战报。

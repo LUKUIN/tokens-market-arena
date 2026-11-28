@@ -19,7 +19,7 @@ curl -X POST http://127.0.0.1:8734/roll/stop
 curl http://127.0.0.1:8734/state
 ```
 
-启动前设置 `TM_TRADER` 可记录参赛者，并避免因使用未命名身份失去达标资格。异常中断后先退出同一目录的对局，再按 [AGENTS.md](../AGENTS.md) 清理遗留文件。
+启动前设置 `TM_TRADER`，以便记录参赛者。引擎标记为未命名的对局不计达标成绩。异常中断后需要续局时，请保留存档，见下文。
 
 ## GET 接口
 
@@ -42,7 +42,7 @@ curl http://127.0.0.1:8734/state
 | 接口 | 请求体与行为 |
 |---|---|
 | `/open` | `{"pair":"AURA/CORE","side":"LONG","lots":1,"leverage":20}`，四项必填。 |
-| `/close` | `{"pair":"AURA/CORE","side":"LONG","lots":1}`。省略 `lots` 或填 0 会平掉全部匹配持仓。省略 `side` 会同时匹配多空，传入其他方向会拒绝。部分平仓时先处理最新匹配仓位，只结算本次成交手数的盈亏。 |
+| `/close` | `{"pair":"AURA/CORE","side":"LONG","lots":1}`。省略 `lots` 或填 0 会平掉全部匹配持仓。省略 `side` 会同时匹配多空，传入其他方向会拒绝。部分平仓时从持仓列表尾部处理匹配仓位，只结算本次成交手数的盈亏。 |
 | `/close_all` | 无参数。按正常平仓规则逐笔尝试，遇到平仓限制可能失败，调用后要核对持仓。 |
 | `/loan` | `{"amount":100000}`，受可贷额度与当前限制约束，返回本笔贷款造成的目标上浮。 |
 | `/repay` | `{"amount":50000}`，省略 `amount` 申请全还，实际还款不超过欠款和现金。 |
@@ -86,14 +86,24 @@ curl http://127.0.0.1:8734/state
 
 调用 `/quit` 前先查 `/state`。达到目标且有持仓时，先平仓并核对最新净值。平仓成本若把净值压回目标以下，提前退出会记为弃权。未达标时直接退出会正常清算剩余仓位和债务。计入达成还要求有参赛资格。
 
-**`/quit` 返回 `ok:true` 后约三秒停服。返回 `ok:false` 时，对局继续，可以平仓后重试。** 时间到时会按平仓成本自动清算。`hit_at_tick` 记录首次达标，最终结算仍可能低于目标。
+**`/quit` 返回 `ok:true` 后约三秒停服。返回 `ok:false` 时，对局继续。** 时间到时会按平仓成本自动清算。`hit_at_tick` 记录首次达标，最终净值仍可能低于目标。
 
-成功回包有 `final_equity`、`report`、`settled` 和 `warnings`。HTML 和 JSON 分别保存在 `src/data/reports/HTML Reports/` 和 `src/data/reports/JSON Reports/`。`settled:false` 时查看 `warnings`。然后启动下一局前，先确认旧服务退出。report_status 分别记录 html 和 json 的导出状态，render 表示渲染阶段失败。结算已保存但战报导出失败时，终局后运行 python run.py report-retry <session_id> 补导。原始结算快照保存在 reports/Settlement Snapshots 中。
+用 `settled` 和 `warnings` 检查账本清算。`report` 为可用的 HTML 路径。`report_status` 分别记录 HTML 和 JSON 的导出结果，其中 `render` 表示导出前的渲染失败。两种格式分别保存于 `src/data/reports/HTML Reports/` 和 `src/data/reports/JSON Reports/`。
 
-存档恢复会验证 session.json.previous。若使用备份续局，state.storage_recovery 会说明原因，本局不计为达成。损坏的主档副本留在 reports/Recovery。两份存档都不可用时，启动会报错并保留原文件。
+结算已保存而战报导出失败时，等服务退出，在项目根目录运行 `python run.py report-retry <session_id>` 补导。结算快照留在 `src/data/reports/Settlement Snapshots/`。
 
 ## 草稿纸与公平参赛
 
 对局中使用草稿纸 HTTP 接口。`src/scratchpad.py` 属于守卫封存的源码，对局中执行诱饵会触发终止。战报记录实际提交的草稿，观众席回复通过 `/assist/inbox` 另行读取。
 
-参赛期间使用接口数据和自己的分析。交易有先后依赖时按顺序请求。交易重试可用可选 HTTP 头 Idempotency-Key（1–128 个 ASCII 可见字符）。适用于 /open、/close、/close_all、/loan 和 /repay。超时后用同一键、同一路由及同一参数重发，同一局只执行一次。已成交的重试返回原成交结果、当前 state 和 replayed:true。重复键用于不同操作返回 HTTP 409。建议请求体同时带上 /state 的 session_id，防止新局接到旧局请求。未带键的旧客户端超时后仍应先查局面。
+参赛期间使用接口数据和自己的分析。交易有先后依赖时按顺序请求。
+
+## 交易重试
+
+`/open`、`/close`、`/close_all`、`/loan` 和 `/repay` 支持可选 HTTP 请求头 `Idempotency-Key`，取值为 1–128 个 ASCII 可见字符。超时后用同一键、同一路由和相同参数重试。同一局内，已提交的操作只会执行一次。重放回包含原操作结果、当前 `state` 和 `replayed:true`。
+
+请求体可携带 `GET /state` 返回的 `session_id`，防止迟到的请求进入下一局。同键用于不同操作或对局不匹配时，返回 HTTP 409。键格式无效返回 HTTP 400。未带键时，超时后应先查局面再决定是否重发。
+
+## 存档恢复
+
+异常中断后，先确认原进程已退出，再保留存档从同一目录重启。主档缺失或损坏时，引擎会校验 `session.json.previous`。使用备份续局时，`state.storage_recovery` 会说明原因，本局不计为达成。损坏的主档副本保存在 `src/data/reports/Recovery/`。无法恢复时，程序会停止启动并保留文件。清理脚本会移除主档与备份，确定放弃该局时再使用。

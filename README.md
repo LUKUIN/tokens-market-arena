@@ -25,9 +25,7 @@
 
 > **中文** · [English](README.en.md)
 >
-> **EN**: A 45-minute trading simulator where LLMs trade with real friction — spread,
-> slippage, gap risk and overnight interest. One model made +106%, another blew up at
-> −229%. Python 3.14 with the standard library.
+> **EN**: Open-source 45-minute trading simulator with an HTTP API for LLMs and a desktop GUI for human players. Simulates spreads, slippage, price gaps, and financing costs, with HTML reports and JSON summaries after each match.
 
 > 发行包见 [GitHub Releases](https://github.com/LUKUIN/tokens-market-arena/releases)。参赛模型通过 HTTP 接口交易，观众席提供行情查看和求助回复。
 > **与人类版（`TokensMarket-OpenSource-Human`）不通用、不可混用**：本版没有投资界面、
@@ -73,7 +71,7 @@
 
 | 设置 | 脚本入口默认值及用途 |
 |---|---|
-| `TM_TRADER` | 启动前填写模型、思考强度、平台。未命名会失去达标资格。 |
+| `TM_TRADER` | 启动前填写模型、思考强度、平台。引擎将本局标记为未命名时，达标不计入成绩。 |
 | `TM_EVENTS` | `1`。设 `0` 关闭普通新闻与「一大波」，仍有基础跳空及市场深度冲击。 |
 | `TM_FR`、`TM_SLOT`、`TM_ASSIST` | `1`。启动前设 `0` 可关闭相应功能，交互演示入口会另行询问。 |
 | `TM_PORT`、`TM_IDLE_ABORT` | `8734` 与 `0`。Windows 五秒确认入口的无活动保护默认 12 分钟。 |
@@ -87,16 +85,13 @@
 
 交易走 HTTP。观众席可查看账户、行情、活动流和 AI 草稿，也可回复或驳回求助。
 
-AI 每发一次求助（`POST /assist/ask`），屏幕正中会弹一个**系统原生**提示框（`messagebox.showwarning`）并响提示音，标题是「外部的怜悯」，正文写明当前有几条求助。
-
-它是模态的：不点掉就会挡住观众席的刷新，所以看到就点「确定」。右上角的 × 也能关，但求助不会因此消失——按钮上的红色计数会一直保留，直到在「外部的怜悯」窗口里回复或驳回。
+观众席收到求助时可能弹出提示。关闭提示框后，求助仍保留在「外部的怜悯」窗口，直到有人回复或驳回。观众席也可以请求停服。
 
 分区从上到下：
 
 | 区域 | 内容 |
 |---|---|
 | 顶栏（浅色卡片，56 px） | 市场名「TOKENS 交易市场」、参赛模型标识、模式徽章、全局事件状态（优惠融资 / 老虎机）、结束进程 / 最小化 / AI 行为 / 外部的怜悯 |
-
 | 指标卡 | 账户权益、累计盈亏、保证金水平、目标进度 |
 | 状态条 | 可贷额度 / 现金 / 已借 / 欠款 / 利息；目标 / 回撤 / 夏普 / 笔数 / 盈利因子 / 费息；账本自检告警位；上局异常退出提示 |
 | 权益曲线 | 主视觉，Y 轴自适应（按本局极值留白，始终把本金线与目标线纳入量程） |
@@ -107,32 +102,17 @@ AI 每发一次求助（`POST /assist/ask`），屏幕正中会弹一个**系统
 
 窗口尺寸会按显示器自动选档（`viewer-cs/TokensWatch/Helpers/DisplayProfile.cs`）：2K 及以上用 **1920×1080**，1080p 用 **1600×900**，更小的屏按可用区等比收（不低于 1280×720）。标题栏末尾会标出当前档位，方便反馈问题时说明分辨率。想固定尺寸就设 `TM_WATCH_SIZE=1600x900`（`宽x高`，DIP）。
 
-> 界面上所有数字都来自 `/state`，没有任何模拟值。明细看 HTML 报告。
+> 账户和行情数据来自模拟引擎，经 `/state` 刷新。成交和成本明细见 HTML 战报。
 
-### 观众席掉线时（v1.2.21）
+### 观众席掉线时
 
-观众席是**独立子进程**，靠每 300ms 一次的 `GET /state` 刷新。它掉线**不影响对局**：
-服务端继续按 tick 推进、继续倒计时，结算照常写报告。窗口红条只说明「这一个读者连不上」，不是比赛停了。
+常规启动时，观众席在独立子进程中通过 HTTP 刷新。在服务仍运行时，单独关闭窗口或观众席轮询失败不会中断对局。若窗口反复显示连接错误，先确认正确端口上的服务在运行。tkinter 版会把诊断写入 `src/data/watch.log`。
 
-v1.2.21 之前，这条轮询链路有三个问题会让窗口误报「服务无响应」并停更：
-
-| 问题 | 后果 |
-|---|---|
-| `/state` 整段下发 `price_history`（每品种 2000 点）与 `equity_curve`（2000 点） | 体积随对局推进线性增长，序列化 + 解析 + 渲染越来越重 |
-| `state()` 在 return 里两次调用 `_metrics()` | 每次轮询白算两遍 MDD / 夏普 |
-| `fast_forward()` 整段持 `LOCK` 推进 60 个 tick | 期间所有 HTTP 读取排队，观众席超时 |
-
-三处都已修（导出只发尾部、`_metrics` 只算一次、快进逐 tick 释放锁）；另外 HTTP 服务的
-`request_queue_size` 从默认 5 提到 64，`/state` 响应不再带缩进。现在掉线时窗口会写
-「观众席连接中断（对局仍在继续）」，具体异常落盘到 `src/data/watch.log`，
-状态栏不再冒充「服务无响应」。
-
-窗口一直停在红条时，双击 `launchers\只开观众席.bat` 补挂一个即可——有对局在跑时它
-只开窗口，不起服务、不封存源码。
+确认服务仍在运行后，用 `launchers/只开观众席.bat` 补挂 tkinter，或用下节的 WPF 入口补挂 WPF。
 
 ## C# 观众席（默认界面，tkinter 为回退）
 
-`viewer-cs/` 里是一个独立的 WPF 观众席，用来替代 `src/tm_watch_ai.py` 那个 tkinter 窗口。**Python 引擎一行没改**，它只经 HTTP 轮询既有的 `/state`。
+`viewer-cs/` 里是一个独立的 WPF 观众席，用来替代 `src/tm_watch_ai.py` 那个 tkinter 窗口。它通过本地 HTTP 刷新行情、账户与活动流，也可回复求助和请求停服。交易由 Agent 通过 HTTP 接口发起。
 
 ### 为什么会有这个
 
@@ -153,13 +133,13 @@ launchers\构建观众席(新版).bat
 
 ### 怎么启动
 
-先按原来的方式开局（`launchers\开一局.bat`），然后：
+常规启动会自动打开 WPF 观众席。已有对局且需补挂 WPF 窗口时，从项目根运行：
 
 ```bat
 launchers\只开观众席(新版).bat
 ```
 
-两个观众席可以同时开：新版的单实例锁是 `Global\TokensWatchViewerCs`，不占 tkinter 版用的 8735 端口。
+自定义端口时，补挂 WPF 前将 `TM_WATCH_API` 设为该对局的 HTTP 地址。两个观众席可以同时开：WPF 的单实例锁是 `Global\TokensWatchViewerCs`，不占 tkinter 版用的 8735 端口。
 
 ### 与 tkinter 版的关系
 
@@ -193,11 +173,10 @@ launchers\只开观众席(新版).bat
 
 ## 进程深度清理
 
-异常中断后，确认该目录的对局已经停止，再运行：
+此操作会移除本局主档及备份。需要续局时请先保留存档并重启。确定放弃该局后，先确认本目录的对局已停止，再从项目根运行下列命令。
 
 ```bash
-cd <项目目录>
-powershell -NoProfile -ExecutionPolicy Bypass -File tools\deep-clean.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/deep-clean.ps1
 ```
 
 > **由 AI 或脚本调用时请用上面这条命令**，不要直接跑 `launchers\进程深度清理.bat`：
@@ -212,8 +191,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\deep-clean.ps1
 ## 目录结构
 
 ```
-TokensMarket-OpenSource-AI-v97/
-├── run.py                  统一入口（ai / --interactive 仅演示 / server / --headless / state）
+项目根目录/
+├── run.py                  统一入口（常规开局 / --interactive / server / --headless / spectator / state / report-retry）
 ├── bench.py                配对多轮评测：同组 seed 跑多局并输出统计
 ├── guard.py                源码封存守卫（run.py 自己调用，不要手动起）
 ├── requirements.txt        无第三方依赖（占位文件）
@@ -221,21 +200,21 @@ TokensMarket-OpenSource-AI-v97/
 ├── README.md / README.en.md
 ├── AGENTS.md               给 Agent 的单页入口 + 项目地图（AI 先读这个）
 ├── launchers/              所有双击入口（内部自动切回仓库根）
-│   ├── launchers\开一局.bat                双击入口（5 秒内按 Y 才启动，不按就取消开局）
-│   ├── launchers\AI-Start.bat              无人值守入口（不做确认；脚本 / Agent 专用）
-│   ├── launchers\只开观众席.bat            tkinter 观众席：窗口被误关时补挂
-│   ├── launchers\构建观众席(新版).bat      C# 观众席的构建入口（需要 .NET 8 SDK）
-│   ├── launchers\只开观众席(新版).bat      C# 观众席的启动入口
-│   └── launchers\进程深度清理.bat          人工双击用（含 pause）
+│   ├── 开一局.bat                双击入口（5 秒内按 Y 才启动，不按就取消开局）
+│   ├── AI-Start.bat              无人值守入口（不做确认；脚本 / Agent 专用）
+│   ├── 只开观众席.bat            tkinter 观众席：窗口被误关时补挂
+│   ├── 构建观众席(新版).bat      C# 观众席的构建入口（需要 .NET 8 SDK）
+│   ├── 只开观众席(新版).bat      C# 观众席的启动入口
+│   └── 进程深度清理.bat          人工双击用（含 pause）
 ├── tools/
-│   └── tools\deep-clean.ps1      清理本体；AI 请直接调用它（非交互，退出码 0 即成功）
+│   └── deep-clean.ps1      清理本体；AI 请直接调用它（非交互，退出码 0 即成功）
 ├── src/
 │   ├── tm_engine.py        引擎（纯逻辑）
 │   ├── tm_api.py           HTTP 接口
 │   ├── tm_watch_ai.py      只读观众席
 │   ├── scratchpad.py       草稿纸终端
 │   ├── app.ico / warn.ico  图标
-│   └── data/               运行时生成：session.json、reports/、.scratchpad.jsonl
+│   └── data/               运行时生成：存档、备份、草稿和战报
 ├── viewer-cs/TokensWatch/  C# / WPF 观众席（默认界面；tkinter 为回退）
 │   ├── Controls/           权益曲线与迷你走势线（纯 WPF 矢量自绘，无第三方库）
 │   ├── Services/           HTTP 客户端（显式绕过系统代理）
@@ -246,7 +225,7 @@ TokensMarket-OpenSource-AI-v97/
 │   ├── rules.md            完整规则      · rules.en.md 英文版
 │   ├── cost-model.md       成本模型      · cost-model.en.md 英文版
 │   ├── ai-protocol.md      接入协议      · ai-protocol.en.md 英文版
-│   └── docs\给AI的启动提示词.txt  可直接粘贴给 Agent 的启动文本
+│   └── 给AI的启动提示词.txt  可直接粘贴给 Agent 的启动文本
 └── examples/reports/       6 份代表性报告 · README.en.md 英文版
 ```
 
@@ -268,7 +247,7 @@ TokensMarket-OpenSource-AI-v97/
 
 ## 实测数据
 
-6 个大模型在历史记录中各有单局结果（45 分钟 / 100 万本金 / 目标 200 万）：
+以下是六份历史单局记录（45 分钟 / 100 万本金 / 基础目标 200 万）。版本、设置和行情路径可能不同。
 
 | 模型 | 最终权益 | 盈亏 | 结果 |
 |---|---:|---:|---|
@@ -287,7 +266,7 @@ TokensMarket-OpenSource-AI-v97/
 
 保证金水平低于 100% 进入追缴，恢复到 100% 可解除；30 个行情步未恢复则强平，低于 50% 立即强平。净值为负会结束对局，只有现金为负时才有默认 60 秒自救窗口。借款同时增加现金与欠款。
 
-已达标时先平仓并核对净值，再请求 `/quit`。未达标时正常退出会按弃权记录。自动结算按正常成交成本清仓并清偿贷款，回包里的 `settled` 与 `warnings` 可核查结算。详见[成本模型](docs/cost-model.md)。
+已达标且仍持仓时，先平仓并核对净值，再请求 `/quit`。未达标时正常退出会按弃权记录。自动结算按正常成交成本清仓并清偿贷款，回包里的 `settled` 与 `warnings` 可核查结算。详见[成本模型](docs/cost-model.md)。战报导出失败时，按[接入协议](docs/ai-protocol.md#结算与战报)补导。
 
 ## 账本自检与配对评测
 
@@ -355,6 +334,5 @@ python bench.py run --seeds 1-5 --policy probe --out benchmark-output
 ## 已知限制
 
 - 桌面观众席面向 Windows（观众席的窗口图标、提示音走 Win32 API）。
-- 观众席是独立子进程：窗口崩溃、被关闭、或打不开（8734/8735 冲突）都不会中断对局；
-  但它仍依赖同一台机器的桌面环境，纯无头环境请用 `--headless`。
+- 观众席是独立子进程：关闭观众席或观众席自身启动失败不会中断已启动的对局。窗口需要桌面环境，无桌面环境请用 `--headless`。服务端口被占用会阻止开局。
 - 源码版不含成品包的 `.pyd` 与 manifest 校验；`TM_SIGN_KEY` 默认是 dev 占位值，正式比赛请自行设置。

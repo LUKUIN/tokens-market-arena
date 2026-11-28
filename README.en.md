@@ -8,12 +8,11 @@
 >
 > Swapping in another AI: open [`docs/给AI的启动提示词.txt`](docs/给AI的启动提示词.txt), copy everything between the dashed lines into it, and fix the path on the first line.
 
-[![CI](https://github.com/LUKUIN/tokens-market-arena/actions/workflows/ci.yml/badge.svg?branch=english)](https://github.com/LUKUIN/tokens-market-arena/actions/workflows/ci.yml)
+[![CI](https://github.com/LUKUIN/tokens-market-arena/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/LUKUIN/tokens-market-arena/actions/workflows/ci.yml)
 
-> See [GitHub Releases](https://github.com/LUKUIN/tokens-market-arena/releases) for downloads.
-> **read-only spectator**. **Not interchangeable with the Human edition**
-> (`TokensMarket-OpenSource-Human`): this edition has no investment panel, no buy/sell buttons,
-> no fast-forward buttons. Do not copy UI files between the two.
+> This is the English guide for the Chinese AI branch. For an English UI, use the [English branch](https://github.com/LUKUIN/tokens-market-arena/tree/english). See [GitHub Releases](https://github.com/LUKUIN/tokens-market-arena/releases) for downloads.
+> The [Human edition](https://github.com/LUKUIN/tokens-market-arena/tree/human) provides a trading panel with buy/sell and fast-forward controls. Use each edition with its own UI files.
+
 
 ---
 
@@ -64,16 +63,7 @@ Follow [AGENTS.md](AGENTS.md) for the exact order and working PowerShell command
 
 ## Spectator window
 
-The spectator is **read-only**: apart from the "AI Notes" and "Outside Mercy" viewers it operates
-nothing.
-
-Every time the AI asks for help (`POST /assist/ask`), a **native** system prompt
-(`messagebox.showwarning`) pops up in the centre of the screen together with a beep: title
-"Outside Mercy", body stating how many requests are pending.
-
-It is modal — until it is dismissed it blocks the spectator refresh, so click OK when you see it.
-The X in the title bar also closes it, but the request itself stays: the red counter on the
-button remains until you reply or reject it in the Outside Mercy window.
+Trading goes through HTTP. The spectator displays the market, account and AI notes. It can also answer assistance requests and request a service shutdown. Assistance may show a dialog. Dismissing the dialog leaves the request pending until a spectator replies or rejects it.
 
 Sections, top to bottom:
 
@@ -84,15 +74,15 @@ Sections, top to bottom:
 | Status row | credit / cash / borrowed / owed / interest; target / drawdown / Sharpe / trades / win rate / fees; ledger-audit slot; previous-run abnormal-exit banner |
 | Equity curve | primary visual, an adaptive range that includes the capital and target lines |
 | Runtime status | ledger audit, black-swan rate, liquidity, fast-forward, global events, Huge Wave (rolled / fired / pending) |
-| Positions | fixed 7 rows with a scrollbar; a `More` button appears above 7 rows and opens a live full table; explicit empty state when flat |
+| Positions | fixed 7 rows with a scrollbar; a `More` button appears at two positions and opens a live full table; explicit empty state when flat |
 | Prices | 7 pairs with price, change and a sparkline drawn from `price_history` |
 | Event feed | filters: all / black swan / liquidity / random events / open-close / risk |
 
-> Every number comes from `/state`; nothing is simulated. Full detail lives in the HTML report.
+> The spectator refreshes account and market data from the simulator via `/state`. See the HTML report for fills and costs.
 
-## C# spectator (optional, replaces the tkinter window)
+## C# spectator (default UI, with a tkinter fallback)
 
-`viewer-cs/` holds a standalone WPF spectator that replaces the tkinter window in `src/tm_watch_ai.py`. **Not a single line of the Python engine changed** — it only polls the existing `/state` over HTTP.
+`viewer-cs/` holds a standalone WPF spectator that replaces the tkinter window in `src/tm_watch_ai.py`. It connects to the service over local HTTP.
 
 ### Why it exists
 
@@ -105,20 +95,15 @@ The tkinter Canvas has no antialiasing, so the equity curve always carries jagge
 
 ### Build
 
-```bat
-launchers\\Build Spectator (C#).bat
-```
+~~~powershell
+dotnet build viewer-cs/TokensWatch/TokensWatch.csproj -c Release
+~~~
 
-### Run
+The executable is in `viewer-cs/TokensWatch/bin/Release/net8.0-windows`. This branch also includes `launchers/构建观众席(新版).bat` for building WPF.
 
-Start a match the usual way (`launchers\\Start Match.bat`), then launch the exe above.
-Both spectators can run at once: the new build uses the `Global\\TokensWatchViewerCs` mutex and does not touch port 8735 used by the tkinter build.
+### Reattach
 
-### Relationship to the tkinter build
-
-- They coexist; use whichever looks better
-- Read-only — it never writes engine state
-- Zero extra dependencies (no NuGet packages, the chart is hand-drawn WPF vectors), so `requirements.txt` is untouched
+Standard startup launches the preferred spectator automatically. With a match already running, use `launchers/只开观众席(新版).bat` for WPF or `launchers/只开观众席.bat` for tkinter. Pass the match's actual port to `python run.py spectator 127.0.0.1 8734` to reattach a tkinter window from the terminal. For a WPF viewer on a custom port, set `TM_WATCH_API` to the match URL before launching.
 
 ## How a match runs
 
@@ -146,11 +131,12 @@ Regular match startup seals `src/tm_engine.py`, `src/tm_api.py` and `src/scratch
 
 ## Deep process cleanup
 
-Run this after a match, or when startup misbehaves (port taken, window never appears):
+Cleanup removes the current save and its backup. To resume after an interruption, keep the files and restart from the same directory.
+
+To discard the interrupted match, first make sure its service has exited, then run this from the project root:
 
 ```bash
-cd <project-directory>
-powershell -NoProfile -ExecutionPolicy Bypass -File tools\deep-clean.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/deep-clean.ps1
 ```
 
 > **When calling from an AI agent or a script, use the command above.** Do not run
@@ -166,8 +152,8 @@ The script checks this checkout's running marker, restores sealed sources if nee
 ## Repository layout
 
 ```
-TokensMarket-OpenSource-AI-v97/
-├── run.py                  entry point (ai / --interactive demo / server / --headless / state)
+Project root/
+├── run.py                  entry point (match / --interactive / server / --headless / spectator / state / report-retry)
 ├── bench.py                paired multi-round benchmark over a fixed seed set
 ├── guard.py                source-sealing guard (called by run.py, never start it yourself)
 ├── requirements.txt        no third-party dependencies (placeholder)
@@ -175,25 +161,25 @@ TokensMarket-OpenSource-AI-v97/
 ├── README.md
 ├── AGENTS.md               one-page agent entry + project map (agents read this first)
 ├── launchers/              every double-click entry (each cds back to the repo root)
-│   ├── launchers\开一局.bat     double-click entry (5-second confirm; cleanup on timeout)
-│   ├── launchers\AI-Start.bat        unattended launcher (no confirm; scripts / agents)
-│   ├── launchers\只开观众席.bat       recovery window when you closed the spectator
-│   └── launchers\进程深度清理.bat  interactive cleanup for humans (contains pause)
+│   ├── 开一局.bat     double-click entry (cancels after five seconds without confirmation)
+│   ├── AI-Start.bat        unattended launcher (no confirm; scripts / agents)
+│   ├── 只开观众席.bat       recovery window when you closed the spectator
+│   └── 进程深度清理.bat  interactive cleanup for humans (contains pause)
 ├── tools/
-│   └── tools\deep-clean.ps1      cleanup implementation (non-interactive; call from a script)
+│   └── deep-clean.ps1      cleanup implementation (non-interactive; call from a script)
 ├── src/
 │   ├── tm_engine.py        engine (pure logic)
 │   ├── tm_api.py           HTTP layer
 │   ├── tm_watch_ai.py      read-only spectator
 │   ├── scratchpad.py       scratchpad CLI
 │   ├── app.ico / warn.ico  icons
-│   └── data/               generated at runtime: session.json, reports/, .scratchpad.jsonl
+│   └── data/               runtime saves, backup, scratchpad and reports
 ├── tests/                  unittest suite (python -m unittest discover -s tests)
 ├── docs/
 │   ├── rules.md            full rules
 │   ├── cost-model.md       cost model
 │   ├── ai-protocol.md      agent integration protocol
-│   └── docs\给AI的启动提示词.txt  paste-ready startup text for an agent
+│   └── 给AI的启动提示词.txt  paste-ready startup text for an agent
 └── examples/reports/       6 representative reports
 ```
 
@@ -215,7 +201,7 @@ TokensMarket-OpenSource-AI-v97/
 
 ## Measured results
 
-Six large models, one match each, same rules (45 minutes / 1,000,000 capital / double the target):
+Six historical single-match examples (45 minutes / 1,000,000 starting capital / 2,000,000 base target). Engine versions, settings and market paths may differ.
 
 | Model | Final equity | P&L | Outcome |
 |---|---:|---:|---|
@@ -226,8 +212,7 @@ Six large models, one match each, same rules (45 minutes / 1,000,000 capital / d
 | DeepSeek-Flash | 163,587 | −83.64% | Missed |
 | (one model, single match) | −1,298,657 | −229.87% | Blown out |
 
-> **Sample size is tiny.** Variance between matches is extreme, and doubling the target is close to
-> a fair coin. Treat this as a demonstration of the mechanics, **not** a model ranking.
+Use [paired benchmarks](#paired-benchmark-benchpy) for controlled comparisons.
 
 ---
 
@@ -237,7 +222,7 @@ Opening margin plus commission must fit within equity less occupied margin. Equi
 
 A maintenance level below 100% starts a margin call. It clears at 100%; 30 market steps without recovery can liquidate positions. Below 50%, liquidation is immediate. Negative equity ends the match. If cash alone is negative, the engine offers a default 60-second rescue window. Borrowing adds equal amounts of cash and debt.
 
-At or above the target with open positions, close first and recheck equity before `/quit`. Below target, normal quitting is recorded as abandonment. Automatic settlement uses regular fill costs and clears debt. Read `settled` and `warnings` in the response. See the [cost model](docs/cost-model.en.md).
+At or above the target with open positions, close first and recheck equity before `/quit`. Below target, normal quitting is recorded as abandonment. Automatic settlement uses regular fill costs and clears debt. Read `settled` and `warnings` in the response. See the [cost model](docs/cost-model.en.md) and the [report recovery instructions](docs/ai-protocol.en.md#settlement-and-reports).
 
 ## Ledger audit and paired benchmark
 
@@ -307,12 +292,7 @@ python bench.py run --seeds 1-5 --policy probe --out benchmark-output
 
 ## Known limits
 
-- **Windows desktop** (the spectator's window icon and notification sound go through Win32 APIs).
-- Engine and spectator share one process; if the spectator crashes, the match ends.
+- The desktop spectator targets Windows. Use headless mode for an HTTP-only service.
+- Standard AI startup runs the spectator as a child process. Closing the window or losing its connection leaves a running match active. An occupied service port prevents the match from starting.
 - This source edition has no `.pyd` and no manifest signature check; `TM_SIGN_KEY` defaults to a dev
   placeholder — set your own for real competitions.
-- A full 45-minute stress run has not been performed; only short matches were verified.
-- This edition is fully English: README, docs, source comments, and all runtime output
-  (error messages, event names, the HTML report).
-- The Chinese edition lives in the same repository on the `main` branch:
-  `https://github.com/LUKUIN/tokens-market-arena/tree/main`
