@@ -4,7 +4,6 @@
         xmlns:controls="clr-namespace:TokensWatch.Controls"
         Title="Tokens 交易市场 · 观众席"
         Width="1920" Height="1080"
-        MinWidth="1280" MinHeight="760"
         ResizeMode="NoResize"
         Background="{StaticResource Bg}"
         WindowStartupLocation="CenterScreen"
@@ -12,72 +11,81 @@
         SnapsToDevicePixels="True">
 
     <Grid>
-        <Grid Margin="16">
+        <Grid x:Name="MainLayout" Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- ============================================================
-             顶栏 56px：品牌 / 身份 / 模式徽章 / 运行状态 / 按钮，一行放完。
-             原版拆成「红色标题栏 + 深蓝工具栏」两行，做了同一件事。
-             ============================================================ -->
         <Border Grid.Row="0" Background="{StaticResource Card}" CornerRadius="8"
                 BorderBrush="{StaticResource Line}" BorderThickness="1"
-                Height="56" Padding="18,0" Margin="0,0,0,10">
+                Padding="18,0" Margin="0,0,0,10">
             <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition x:Name="HeaderRow" Height="Auto" MinHeight="54" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition x:Name="ColHeaderStatus" Width="420" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="TOKENS" FontSize="19" FontWeight="Bold"
-                               Foreground="{StaticResource Ink}" VerticalAlignment="Center" />
-                    <TextBlock Text=" 交易市场" FontSize="19" FontWeight="Bold"
-                               Foreground="{StaticResource Muted}" VerticalAlignment="Center" />
+                <Grid Grid.Column="0" VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="TOKENS" FontSize="19" FontWeight="Bold"
+                                   Foreground="{StaticResource Ink}" VerticalAlignment="Center" />
+                        <TextBlock Text=" 交易市场" FontSize="19" FontWeight="Bold"
+                                   Foreground="{StaticResource Muted}" VerticalAlignment="Center" />
 
-                    <Border Width="1" Height="20" Background="{StaticResource Line}"
-                            Margin="16,0" VerticalAlignment="Center" />
+                        <Border Width="1" Height="20" Background="{StaticResource Line}"
+                                Margin="16,0" VerticalAlignment="Center" />
+                    </StackPanel>
 
-                    <TextBlock x:Name="TxtTrader" Text="访客" FontSize="16"
+                    <TextBlock Grid.Column="1" x:Name="TxtTrader" Text="访客" FontSize="16"
                                FontWeight="SemiBold" Foreground="{StaticResource Ink}"
-                               VerticalAlignment="Center" />
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
 
-                    <Border x:Name="ChipMode" Background="#EAF4FF" CornerRadius="11"
-                            Padding="10,3" Margin="12,0,0,0" VerticalAlignment="Center">
-                        <TextBlock x:Name="TxtMode" Text="已开启随机事件" FontSize="13"
-                                   Foreground="{StaticResource Accent}" />
-                    </Border>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                        <Border x:Name="ChipMode" Background="#EAF4FF" CornerRadius="11"
+                                Padding="10,3" Margin="12,0,0,0" VerticalAlignment="Center">
+                            <TextBlock x:Name="TxtMode" Text="已开启随机事件" FontSize="13"
+                                       Foreground="{StaticResource Accent}" />
+                        </Border>
 
-                    <!-- 每个全局事件一个独立胶囊，不拼成一条 -->
-                    <Border x:Name="ChipFr" Background="#F1F1F1" CornerRadius="11"
-                            Padding="10,3" Margin="6,0,0,0" VerticalAlignment="Center"
-                            Visibility="Collapsed">
-                        <TextBlock x:Name="TxtFr" Text="优惠融资" FontSize="13"
-                                   Foreground="{StaticResource Warn}" />
-                    </Border>
+                        <!-- 每个全局事件一个独立胶囊，不拼成一条 -->
+                        <Border x:Name="ChipFr" Background="#F1F1F1" CornerRadius="11"
+                                Padding="10,3" Margin="6,0,0,0" VerticalAlignment="Center"
+                                Visibility="Collapsed">
+                            <TextBlock x:Name="TxtFr" Text="优惠融资" FontSize="13"
+                                       Foreground="{StaticResource Warn}" />
+                        </Border>
 
-                    <Border x:Name="ChipSlot" Background="#F1F1F1" CornerRadius="11"
-                            Padding="10,3" Margin="6,0,0,0" VerticalAlignment="Center"
-                            Visibility="Collapsed">
-                        <TextBlock x:Name="TxtSlot" Text="老虎机" FontSize="13"
-                                   Foreground="{StaticResource Warn}" />
-                    </Border>
+                        <Border x:Name="ChipSlot" Background="#F1F1F1" CornerRadius="11"
+                                Padding="10,3" Margin="6,0,0,0" VerticalAlignment="Center"
+                                Visibility="Collapsed">
+                            <TextBlock x:Name="TxtSlot" Text="老虎机" FontSize="13"
+                                       Foreground="{StaticResource Warn}" />
+                        </Border>
 
-                    <Border x:Name="ChipSpecial" Background="#F1F1F1" CornerRadius="11"
-                            Padding="10,3" Margin="6,0,0,0" VerticalAlignment="Center">
-                        <TextBlock x:Name="TxtSpecial" Text="无全局事件" FontSize="13"
-                                   Foreground="{StaticResource Muted}" />
-                    </Border>
-                </StackPanel>
+                        <Border x:Name="ChipSpecial" Background="#F1F1F1" CornerRadius="11"
+                                Padding="10,3" Margin="6,0,0,0" VerticalAlignment="Center">
+                            <TextBlock x:Name="TxtSpecial" Text="无全局事件" FontSize="13"
+                                       Foreground="{StaticResource Muted}" />
+                        </Border>
+                    </StackPanel>
+                </Grid>
 
-                <!-- 运行状态居中：1920 下这里是视觉重心，也是每秒都在变的一行 -->
                 <TextBlock Grid.Column="1" x:Name="TxtRunState" Text="等待服务启动"
                            FontSize="15" Foreground="{StaticResource Muted}"
                            HorizontalAlignment="Center" VerticalAlignment="Center"
-                           TextTrimming="CharacterEllipsis" Margin="24,0" />
+                           TextWrapping="Wrap" Margin="12,4" />
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button Content="AI 行为" Style="{StaticResource GhostButton}"
@@ -99,7 +107,6 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="12" />
-                <!-- 宽度由 DisplayProfile 按窗口档位设置：1920 档 400，1600 档 360 -->
                 <ColumnDefinition x:Name="ColRight" Width="400" />
             </Grid.ColumnDefinitions>
 
@@ -109,13 +116,13 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />  <!-- 指标卡 -->
                     <RowDefinition Height="Auto" />  <!-- 状态条 -->
-                    <RowDefinition Height="*" />     <!-- 权益曲线：吃剩余高度，最小 200 -->
+                    <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />  <!-- 持仓明细 -->
                     <RowDefinition Height="Auto" />  <!-- 报价台 -->
                 </Grid.RowDefinitions>
 
                 <!-- 指标卡：1920 下宽度充裕，四格对称 -->
-                <UniformGrid Grid.Row="0" Columns="4" Margin="0,0,0,10">
+                <UniformGrid x:Name="MetricCards" Grid.Row="0" Columns="4" Margin="0,0,0,10">
                     <Border Style="{StaticResource CardBorder}" Margin="0,0,5,0" Padding="18,14">
                         <StackPanel>
                             <TextBlock Text="账户权益（Tokens）" Style="{StaticResource Caption}" />
@@ -151,7 +158,7 @@
                 </UniformGrid>
 
                 <!-- 资金 + 目标统计合并成一条紧凑信息带（原版是两条各占一整行） -->
-                <Border Grid.Row="1" Style="{StaticResource CardBorder}" Padding="16,10" Margin="0,0,0,10">
+                <Border x:Name="FundsCard" Grid.Row="1" Style="{StaticResource CardBorder}" Padding="16,10" Margin="0,0,0,10">
                     <StackPanel>
                         <TextBlock x:Name="TxtFunds" Text="—" FontSize="14" TextWrapping="Wrap" />
                         <TextBlock x:Name="TxtStats" Text="—" FontSize="12"
@@ -161,9 +168,8 @@
                 </Border>
 
                 <!-- 权益曲线：主视觉 -->
-                <Border Grid.Row="2" Style="{StaticResource CardBorder}" Padding="14" Margin="0,0,0,10">
-                    <!-- 原来固定 420：1600×900 下会把报价台顶出窗口。改成最小 200 + 自适应。 -->
-                    <Grid MinHeight="200">
+                <Border x:Name="ChartCard" Grid.Row="2" Style="{StaticResource CardBorder}" Padding="14" Margin="0,0,0,10">
+                    <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
@@ -179,7 +185,7 @@
                 </Border>
 
                 <!-- 持仓明细：空态自动塌缩 -->
-                <Border Grid.Row="3" Style="{StaticResource CardBorder}" Padding="14" Margin="0,0,0,10">
+                <Border x:Name="HoldCard" Grid.Row="3" Style="{StaticResource CardBorder}" Padding="14" Margin="0,0,0,10">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -214,7 +220,7 @@
                 </Border>
 
                 <!-- 报价台：7 品种一排，每格约 200px，不再 4+3 留空洞 -->
-                <Border Grid.Row="4" Style="{StaticResource CardBorder}" Padding="14">
+                <Border x:Name="QuoteCard" Grid.Row="4" Style="{StaticResource CardBorder}" Padding="14">
                     <StackPanel>
                         <TextBlock Text="报价台" Style="{StaticResource SectionTitle}" Margin="4,0,0,10" />
                         <UniformGrid x:Name="PriceGrid" Columns="7" />
@@ -226,14 +232,14 @@
             <Grid Grid.Column="2">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="12" />
+                    <RowDefinition x:Name="ChallengeGap" Height="12" />
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="12" />
+                    <RowDefinition x:Name="ActivityGap" Height="12" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
                 <!-- 运行状态 -->
-                <Border Grid.Row="0" Style="{StaticResource CardBorder}" Padding="16,14">
+                <Border x:Name="StatusCard" Grid.Row="0" Style="{StaticResource CardBorder}" Padding="16,14">
                     <StackPanel>
                         <TextBlock Text="运行状态" Style="{StaticResource SectionTitle}" Margin="0,0,0,10" />
 
@@ -255,42 +261,42 @@
 </Grid.RowDefinitions>
 
                             <TextBlock Grid.Row="0" Grid.Column="0" Text="账本自检"
-                                       Style="{StaticResource Caption}" Margin="0,0,14,9" />
+                                       Style="{StaticResource Caption}" Margin="0,0,14,6" />
                             <TextBlock Grid.Row="0" Grid.Column="1" x:Name="TxtAudit" Text="—"
-                                       FontSize="15" Margin="0,0,0,9" TextWrapping="Wrap" />
+                                       FontSize="15" Margin="0,0,0,6" TextWrapping="Wrap" />
 
                             <TextBlock Grid.Row="1" Grid.Column="0" Text="黑天鹅"
-                                       Style="{StaticResource Caption}" Margin="0,0,14,9" />
+                                       Style="{StaticResource Caption}" Margin="0,0,14,6" />
                             <TextBlock Grid.Row="1" Grid.Column="1" x:Name="TxtGap" Text="—"
-                                       FontSize="15" Margin="0,0,0,9" />
+                                       FontSize="15" Margin="0,0,0,6" />
 
                             <TextBlock Grid.Row="2" Grid.Column="0" Text="流动性"
-                                       Style="{StaticResource Caption}" Margin="0,0,14,9" />
+                                       Style="{StaticResource Caption}" Margin="0,0,14,6" />
                             <TextBlock Grid.Row="2" Grid.Column="1" x:Name="TxtLiq" Text="—"
-                                       FontSize="15" Margin="0,0,0,9" />
+                                       FontSize="15" Margin="0,0,0,6" />
 
                             <TextBlock Grid.Row="3" Grid.Column="0" Text="快进"
-                                       Style="{StaticResource Caption}" Margin="0,0,14,9" />
+                                       Style="{StaticResource Caption}" Margin="0,0,14,6" />
                             <TextBlock Grid.Row="3" Grid.Column="1" x:Name="TxtFf" Text="—"
-                                       FontSize="15" Margin="0,0,0,9" />
+                                       FontSize="15" Margin="0,0,0,6" />
 
                             <TextBlock Grid.Row="4" Grid.Column="0" Text="全局事件"
-                                       Style="{StaticResource Caption}" Margin="0,0,14,9" />
+                                       Style="{StaticResource Caption}" Margin="0,0,14,6" />
                             <TextBlock Grid.Row="4" Grid.Column="1" x:Name="TxtSpecialState" Text="无"
-                                       FontSize="14" Margin="0,0,0,9" TextWrapping="Wrap" />
+                                       FontSize="14" Margin="0,0,0,6" TextWrapping="Wrap" />
 
                             <TextBlock Grid.Row="5" Grid.Column="0" Text="峰值"
-                                       Style="{StaticResource Caption}" Margin="0,0,14,9" />
+                                       Style="{StaticResource Caption}" Margin="0,0,14,6" />
                             <TextBlock Grid.Row="5" Grid.Column="1" x:Name="TxtPeak" Text="—"
-                                       FontSize="15" Margin="0,0,0,9" />
+                                       FontSize="15" Margin="0,0,0,6" />
 
                             <TextBlock Grid.Row="6" Grid.Column="0" Text="谷值"
-                                       Style="{StaticResource Caption}" Margin="0,0,14,9" />
+                                       Style="{StaticResource Caption}" Margin="0,0,14,6" />
                             <TextBlock Grid.Row="6" Grid.Column="1" x:Name="TxtTrough" Text="—"
-                                       FontSize="15" Margin="0,0,0,9" />
+                                       FontSize="15" Margin="0,0,0,6" />
 
                             <TextBlock Grid.Row="7" Grid.Column="0" Text="回撤|夏普"
-                                       Style="{StaticResource Caption}" Margin="0,0,14,9" />
+                                       Style="{StaticResource Caption}" Margin="0,0,14,6" />
                             <TextBlock Grid.Row="7" Grid.Column="1" x:Name="TxtRisk" Text="—"
                                        FontSize="15" TextWrapping="Wrap" />
 
@@ -320,7 +326,7 @@
 
                    <!-- 挑战任务：难度定档后询问参赛者是否开启；开启则实时显示三条目标的达成状态。
                      PvZ2 的 Level Objectives 移植：√ 达成 / × 破功 / · 进行中。 -->
-                <Border Grid.Row="2" Style="{StaticResource CardBorder}" Padding="16,14">
+                <Border x:Name="ChallengeCard" Grid.Row="2" Style="{StaticResource CardBorder}" Padding="16,14">
                     <StackPanel>
                         <Grid Margin="0,0,0,10">
                             <TextBlock Text="挑战任务" Style="{StaticResource SectionTitle}"
@@ -328,14 +334,16 @@
                             <TextBlock x:Name="TxtChallengeCount" HorizontalAlignment="Right"
                                        VerticalAlignment="Center" FontSize="13" Foreground="#6B6B6B" />
                         </Grid>
-                        <StackPanel x:Name="ChallengeList" />
+                        <ScrollViewer x:Name="ChallengeScroll" VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="ChallengeList" />
+                        </ScrollViewer>
                         <TextBlock x:Name="TxtChallengeHint" Style="{StaticResource Caption}"
                                    TextWrapping="Wrap" Text="本局游戏参赛者未开启挑战任务" />
                     </StackPanel>
                 </Border>
 
              <!-- 活动流：整列剩余高度，最新在上，可滚动 -->
-                <Border Grid.Row="4" Style="{StaticResource CardBorder}" Padding="16,14">
+                <Border x:Name="ActivityCard" Grid.Row="4" Style="{StaticResource CardBorder}" Padding="16,14">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />

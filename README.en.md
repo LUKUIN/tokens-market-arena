@@ -69,7 +69,7 @@ Sections, top to bottom:
 
 | Area | Content |
 |---|---|
-| Top bar (light card, 56 px) | market name, contestant identity, mode chips, global event switches (Preferred Financing / Slot Machine), End processes / Minimize / AI Notes / Outside Mercy |
+| Top bar (light card) | market name, contestant identity, mode chips, global event switches (Preferred Financing / Slot Machine), End processes / Minimize / AI Notes / Outside Mercy |
 | KPI cards | equity, total P&L, margin level, progress to target |
 | Status row | credit / cash / borrowed / owed / interest; target / drawdown / Sharpe / trades / win rate / fees; ledger-audit slot; previous-run abnormal-exit banner |
 | Equity curve | primary visual, an adaptive range that includes the capital and target lines |
@@ -84,13 +84,15 @@ Sections, top to bottom:
 
 `viewer-cs/` holds a standalone WPF spectator that replaces the tkinter window in `src/tm_watch_ai.py`. It connects to the service over local HTTP.
 
+The WPF window uses the monitor's physical resolution: **1920×1080** on 2560×1440 and above, **1600×900** on 1920×1080 and above, and **1280×720** on smaller displays. Windows scaling keeps these outer window dimensions in physical pixels. If the work area is smaller, the window scales down to fit. The caption reports the actual size. Set `TM_WATCH_SIZE=1600x900` to request a specific size in pixels.
+
 ### Why it exists
 
 The tkinter Canvas has no antialiasing, so the equity curve always carries jagged edges on diagonals; Fluent translucency, shadows and Mica are out of reach. C# + WPF renders vectors, so those come for free.
 
 ### Requirements
 
-- Windows x64; the release was verified on Windows 11
+- Windows x64
 - .NET 8 SDK (to build) or .NET 8 Desktop Runtime (to run only)
 
 ### Build
@@ -194,7 +196,7 @@ Project root/
 | Opening positions | HTTP `/open` | Buttons |
 | Fast-forward | `/fastforward` | Two step buttons (5 min / 3 min) |
 | Scratchpad | Yes | No |
-| Resolution | Picked from the display (1920×1080 / 1600×900 / proportional) | Same, both editions share `DisplayProfile.cs` |
+| Resolution | Picked from the display (1920×1080 / 1600×900 / 1280×720) | Same, both editions share `DisplayProfile.cs` |
 | Process cleanup script | Yes | No |
 
 ---
