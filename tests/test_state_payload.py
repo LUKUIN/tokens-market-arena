@@ -86,9 +86,9 @@ class TestFastForwardYieldsLock(_Base):
         """
         import inspect
         src = inspect.getsource(T.Engine.fast_forward)
-        self.assertIn("for _ in range(n):", src,
+        self.assertIn("for _ in range(steps):", src,
                       "fast-forward loop shape changed; update this assertion")
-        loop = src.split("for _ in range(n):", 1)[1]
+        loop = src.split("for _ in range(steps):", 1)[1]
         head = loop[:240]
         self.assertIn("with LOCK:", head,
                       "the jump loop does not take the lock per tick; holding it for the "

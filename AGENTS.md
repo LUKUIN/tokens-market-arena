@@ -32,9 +32,9 @@ curl.exe http://127.0.0.1:8734/state
 
 ## Trade and settle
 
-Use the [HTTP protocol](docs/ai-protocol.md), [game rules](docs/rules.md) and [cost model](docs/cost-model.md). The protocol identifies v1.2.28's outdated `/rules` descriptions. Use API data and your own analysis during a competition. Send notes through `POST /scratchpad`. The local scratchpad script is one of the files sealed during a match.
+Use the [HTTP protocol](docs/ai-protocol.md), [game rules](docs/rules.md) and [cost model](docs/cost-model.md). `GET /rules` provides the in-game rule summary. Use API data and your own analysis during a competition. Send notes through `POST /scratchpad`. The local scratchpad script is one of the files sealed during a match.
 
-Check state before `POST /quit`. At or above target with open positions, close them first and check the resulting equity. **v1.2.28 schedules shutdown even when `/quit` is rejected.** Check the response and the report under `src/data/reports/HTML Reports/`.
+Check state before `POST /quit`. At or above target with open positions, close them first and check the resulting equity. **A rejected `/quit` leaves the match running.** Check the response and the report under `src/data/reports/HTML Reports/`.
 
 ## Recover after an interrupted match
 

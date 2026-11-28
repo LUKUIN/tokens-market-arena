@@ -771,6 +771,7 @@ class Engine:
         self._simulated = simulated
         self.home = home
         self._elapsed_watch = 0.0
+        self._fast_forward_active = False
         os.makedirs(home, exist_ok=True)
         if not readonly:
             purge_agent_dir(home)   # read-only instances (run.py state) must not delete files
@@ -1346,9 +1347,9 @@ class Engine:
             del s["events"][:-300]
 
     # ---------------- computation ----------------
-    def _position_pnl(self, pos, price):
+    def _position_pnl(self, pos, price, lots=None):
         diff = (price - pos["entry"]) if pos["side"] == "LONG" else (pos["entry"] - price)
-        return diff * pos["lots"] * LOTS_SIZE
+        return diff * (pos["lots"] if lots is None else lots) * LOTS_SIZE
 
     def _virtual_tick(self):
         """In-game tick: derived from wall clock, never exceeding the real tick count.
@@ -1498,7 +1499,7 @@ class Engine:
         pair = pos["pair"]
         fill, half, slip = self._close_fill(pair, pos["side"], qty)
         ref = self.s["prices"][pair]
-        pnl = self._position_pnl(pos, fill)
+        pnl = self._position_pnl(pos, fill, qty)
         fee = qty * LOTS_SIZE * fill * FEE_RATE * self._mod("fee_mult")
         self.s["balance"] += pnl - fee
         self.s["total_fees"] += fee
@@ -2359,7 +2360,7 @@ class Engine:
         last_cd = float(self.s.get("ff_last_cd") or 0.0)
         cool = max(0.0, last_cd - (time.time() - float(self.s.get("ff_last_at") or 0.0)))             if last_cd > 0 else 0.0
         recs = [int(x) for x in (self.s.get("ff_records") or [])]
-        ok_cool = cool <= 0.0
+        ok_cool = cool <= 0.0 and not self._fast_forward_active
         return {
             "total": FF_TOTAL_SECONDS,
             "used": round(used, 1),
@@ -2398,6 +2399,8 @@ class Engine:
                 return {"ok": False,
                         "error": "Only 300 s (5 minutes) or 180 s (3 minutes) is supported"}
             p = self.ff_plan()
+            if self._fast_forward_active:
+                return {"ok": False, "error": "Fast-forward is already in progress", "ff": p}
             if p["cool_left"] > 0:
                 return {"ok": False, "ff": p,
                         "error": "Fast-forward cooling down, %.0f s left" % p["cool_left"]}
@@ -2405,36 +2408,36 @@ class Engine:
                 return {"ok": False, "ff": p,
                         "error": "Quota too low: %.0f s left, this step needs %d s (nothing executed)" % (
                             p["remain"], sec)}
-            n = max(1, int(round(sec / TICK_SECONDS)))
-        # Advance one tick at a time and release the lock between ticks. Holding it
-        # for the whole 60-tick jump starved the spectator's 300 ms polling for 2-3
-        # seconds, and it reported "service not responding" while the match ran on.
-        # RLock is re-entrant, so tick()'s own `with LOCK` cannot deadlock here.
+            steps = sec // TICK_SECONDS
+            self._fast_forward_active = True
         done = 0
-        st = self.state()
-        for _ in range(n):
+        try:
+            # Release the lock between steps so state polling stays responsive.
+            for _ in range(steps):
+                with LOCK:
+                    if self.s.get("finished"):
+                        break
+                    # Account for the step before tick() can write the settlement report.
+                    if done == 0:
+                        self.s.setdefault("ff_records", []).append(0)
+                    done += 1
+                    self.s["ff_used"] += TICK_SECONDS
+                    self.s["ff_records"][-1] = done * TICK_SECONDS
+                    self.tick(manual=True)
+                time.sleep(0)
+        finally:
             with LOCK:
-                if self.s.get("finished"):
-                    break
-                st = self.tick(manual=True)
-                done += 1
-            time.sleep(0)          # yield the GIL so HTTP threads can get in
-        with LOCK:
-            real = done * TICK_SECONDS
-            self.s["ff_used"] = float(self.s.get("ff_used") or 0.0) + real
-            self.s["ff_last_at"] = time.time()
-            self.s["ff_last_cd"] = FF_CHUNKS[sec]
-            recs = list(self.s.get("ff_records") or [])
-            recs.append(real)
-            self.s["ff_records"] = recs
-            self._save()
-            # A mid-way settlement must report failure: otherwise the caller believes the
-            # fast-forward succeeded and keeps planning from ff while the match is over.
-            if done < int(n):
-                return {"ok": False, "ticks": done, "seconds": real,
-                        "error": "The match ended during fast-forward", "state": st, "ff": self.ff_plan()}
-            return {"ok": True, "ticks": done, "seconds": real,
-                    "state": st, "ff": self.ff_plan()}
+                self._fast_forward_active = False
+                if done:
+                    self.s["ff_last_at"] = time.time()
+                    self.s["ff_last_cd"] = FF_CHUNKS[sec]
+                    self._save()
+                state = self.state()
+        response = {"ok": not state["finished"], "ticks": done,
+                    "seconds": done * TICK_SECONDS, "state": state, "ff": state["ff"]}
+        if state["finished"]:
+            response["error"] = "The match ended during fast-forward"
+        return response
 
     # ---------------- global switch special events ----------------
     def _special(self):
@@ -2711,8 +2714,8 @@ class Engine:
         with LOCK:
             if self.s.get("finished"):
                 return {"ok": False, "error": "Session ended"}
-            pair = (pair or "").upper()
-            side = (side or "").upper()
+            pair = pair.strip().upper() if isinstance(pair, str) else ""
+            side = side.strip().upper() if isinstance(side, str) else ""
             if not self.s.get("difficulty"):
                 return {"ok": False,
                         "error": "Difficulty is not locked in yet; POST /roll/stop or wait for the "
@@ -2732,7 +2735,7 @@ class Engine:
                 leverage = int(leverage)
             except (TypeError, ValueError, OverflowError):
                 return {"ok": False, "error": "Lots/leverage must be numbers"}
-            if not math.isfinite(lots) or not math.isfinite(leverage):
+            if not math.isfinite(lots):
                 return {"ok": False, "error": "Lots/leverage must be finite numbers"}
             if leverage < 1:
                 return {"ok": False, "error": "leverage is required and must be at least 1, e.g. 100"}
@@ -2744,10 +2747,14 @@ class Engine:
             price = self.s["prices"][pair]
             half = self._eff_spread(pair) / 2
             gross = lots * LOTS_SIZE * price
+            if not math.isfinite(gross):
+                return {"ok": False, "error": "Lots exceed the supported range"}
             before = self._account_notional()
             slip = self._slip_rate(before, before + gross, pair)
             fill = price * (1 + half + slip) if side == "LONG" else price * (1 - half - slip)
             notional = lots * LOTS_SIZE * fill
+            if not math.isfinite(notional):
+                return {"ok": False, "error": "Lots exceed the supported range"}
             # Same basis as _position_margin: if an event scales margin, the check must scale too.
             margin = notional / leverage * self._mod("margin_mult")
             fee = notional * FEE_RATE * self._mod("fee_mult")
@@ -2762,7 +2769,8 @@ class Engine:
             # Without it you could fill to the brim and let the margin call be a post-hoc notice.
             if MAINT_MARGIN_RATE > 0:
                 maint_after = (before + gross) * MAINT_MARGIN_RATE * self._mod("margin_mult")
-                eq_after = self.equity() - fee
+                spread_and_slippage = abs(round(fill, 6) - price) * lots * LOTS_SIZE
+                eq_after = self.equity() - fee - spread_and_slippage
                 if maint_after > 0 and eq_after < maint_after * OPEN_MARGIN_RATIO:
                     return {"ok": False,
                             "error": "Insufficient maintenance margin: notional exposure after this order %.0f, "
@@ -2823,7 +2831,7 @@ class Engine:
                 return {"ok": False,
                         "error": "Exchange maintenance in progress, closing paused (%d ticks left)" % (
                             int(self.s.get("halt_close_until", 0)) - self.s["tick"])}
-            pair = (pair or "").upper()
+            pair = pair.strip().upper() if isinstance(pair, str) else ""
             price = self.s["prices"].get(pair)
             if price is None:
                 return {"ok": False,
@@ -2831,24 +2839,23 @@ class Engine:
                                  % (pair, ", ".join(PAIRS.keys()))}
             # Without side this behaves exactly as before (every position on the pair, newest
             # first); passing side narrows it so a hedged pair can be closed directionally.
-            _side = (side or "").strip().upper()
-            if _side not in ("LONG", "SHORT"):
-                _side = None
+            _side = side.strip().upper() if isinstance(side, str) else None
+            if side is not None and _side not in ("LONG", "SHORT"):
+                return {"ok": False, "error": "Side must be LONG or SHORT"}
             idxs = [i for i, p in enumerate(self.s["positions"])
                     if p["pair"] == pair and (_side is None or p["side"] == _side)]
             if not idxs:
                 return {"ok": False, "error": "No position in %s" % pair}
-            if lots in (None, "", 0, "0"):
-                remaining = None          # omitted or 0 = close everything
-            else:
+            remaining = None
+            if lots is not None and lots != "":
                 try:
                     remaining = float(lots)
                 except (TypeError, ValueError, OverflowError):
-                    return {"ok": False,
-                            "error": "lots must be a number (omit it or pass 0 to close all)"}
+                    return {"ok": False, "error": "Lots must be a number"}
                 if not math.isfinite(remaining) or remaining < 0:
-                    return {"ok": False,
-                            "error": "lots cannot be negative (omit it or pass 0 to close all)"}
+                    return {"ok": False, "error": "Lots must be finite and nonnegative"}
+                if remaining == 0:
+                    remaining = None
             closed = []
             # Iterate in reverse and pop at the end to avoid index drift after removals
             for i in sorted(idxs, reverse=True):
@@ -3868,6 +3875,8 @@ footer {{ color: var(--muted); font-size: 13px; text-align: center; padding-bloc
         """Start a new match. seed=None reuses TM_SEED or rolls a random one; passing seed / roll_index explicitly is for paired benchmarks."""
         with LOCK:
             now = time.time()
+            if self._fast_forward_active:
+                return {"ok": False, "error": "Fast-forward is already in progress", "state": self._state_light()}
             if count:
                 last = self.s.get("last_reset_at", 0.0)
                 wait = RESET_COOLDOWN - (now - last)
@@ -4071,7 +4080,7 @@ footer {{ color: var(--muted); font-size: 13px; text-align: center; padding-bloc
             "Lots": "1 lot = %.0f units of base currency" % LOTS_SIZE,
             SPECIAL_FR_NAME: ("Run-wide switch (not a random event): once on, loans are unlimited (still bounded by the %.1fM pool) and the target uplift range shifts from +1%%~+100%% to +0.01%%~+100%% (it always goes up, never reduces the target; minimum 0.01%%); can only be enabled before the match starts" % (LOAN_POOL / 1000000.0)
                         ).replace("%%", "%"),
-            SPECIAL_SLOT_NAME: ("Run-wide switch: once on, %d plays per run, each 1~%.0f and never above current equity; 80%% nothing / 15%% 5x / 5%% 10x (expected return 1.25x); the payout goes to cash while the target rises by -5%%~100%% of that payout (worst case the target doubles); can only be enabled before the match starts" % (
+            SPECIAL_SLOT_NAME: ("Run-wide switch: once on, %d plays per run, each 1~%.0f and never above available cash; 80%% nothing / 15%% 5x / 5%% 10x (expected return 1.25x); the payout goes to cash while the target rises by -5%%~100%% of that payout (worst case the target doubles); can only be enabled before the match starts" % (
                            SLOT_MAX_PLAYS, SLOT_MAX_STAKE)
                        ).replace("%%", "%"),
             "Leverage": "Selectable %d - %d x (the cap can be temporarily lowered by events; trust the error message)" % (MIN_LEVERAGE, MAX_LEVERAGE),
@@ -4099,7 +4108,7 @@ footer {{ color: var(--muted); font-size: 13px; text-align: center; padding-bloc
                 GAP_CHANCE * 100, GAP_MIN * 100, GAP_MAX * 100,
                 GAP_CHANCE * 100, GAP_LEVELS[0][1] * 100, GAP_LEVELS[-1][1] * 100),
             "Commission": "%.3f%% of notional per order" % (FEE_RATE * 100),
-            "Loan": "Loan pool %.0f Tokens (may be temporarily scaled by \"Credit crunch / Central bank easing\"); interest %.2f%%/tick (%s); each loan: total target = old target + loan amount × random ratio (the ratio rises with cumulative borrowing: about 4%%~8%% on the first 300k, about 35%%~66%% when borrowing the pool dry; trapezoid integration over the cumulative amount, so ten small loans cost exactly the same as one big one, decided once borrowed)" % (
+            "Loan": "Loan pool %.0f Tokens (may be temporarily scaled by \"Credit crunch / Central bank easing\"); interest %.2f%%/tick (%s); each loan: total target = old target + loan amount × random ratio (the ratio rises with cumulative borrowing: about 4%%~8%% on the first 300k, about 35%%~66%% when borrowing the pool dry; trapezoid integration over the cumulative amount, with a separate draw for each loan)" % (
                 LOAN_POOL, LOAN_RATE_PER_TICK * 100, "Borrow and repay at will; forced clearance at maturity"),
             "Challenge tasks": ("Answer before the difficulty draw. At the lock, each enabled match draws "
                                 "one result objective and two different process constraints from %d candidates. "
@@ -4111,12 +4120,15 @@ footer {{ color: var(--muted); font-size: 13px; text-align: center; padding-bloc
             "Idle abort": _idle_rule_text(),
             "tick interval": "%d seconds" % TICK_SECONDS,
             "Endpoints": {
+                "POST /challenge/accept": {},
+                "POST /challenge/decline": {},
                 "GET /state": "current board: equity, positions, quotes, book depth, event feed, fast-forward",
                 "GET /rules": "this rule sheet (includes the endpoint list)",
                 "POST /open": {"pair": "AURA/CORE", "side": "LONG or SHORT",
                                "lots": 10, "leverage": 100},
-                "POST /close": {"pair": "AURA/CORE", "lots": "optional, defaults to closing the whole pair"},
+                "POST /close": {"pair": "AURA/CORE", "lots": "omit or set to 0 to close all matches", "side": "optional: LONG or SHORT"},
                 "POST /close_all": {},
+                "POST /roll/start": {},
                 "POST /fastforward": {"seconds": "300 (5 min) or 180 (3 min), required"},
                 "POST /loan": {"amount": 100000},
                 "POST /repay": {"amount": 100000},
@@ -4124,22 +4136,21 @@ footer {{ color: var(--muted); font-size: 13px; text-align: center; padding-bloc
                 "POST /special": {"name": "%s or %s" % (SPECIAL_SLOT_NAME, SPECIAL_FR_NAME), "on": True},
                 "POST /roll/stop": {},
                 "POST /quit": {"note": "Early exit: at/above target with nothing open -> Target reached - early exit "
-                                       "(counts); at/above with positions -> ok:false, call POST /close_all first; below "
+                                       "(counts); at/above with positions -> ok:false, the match continues; close the positions first; below "
                                        "target -> Abandoned below target (does not count, positions force-closed)"},
                 "GET /prices": {},
                 "GET /assist/inbox": {},
                 "POST /assist/ask": {"text": "what you want the spectators to look at"},
                 "GET /roll/state": {},
-                "POST /roll/start": {},
-                "GET /scratchpad": {},
+                "GET /scratchpad": {"count": "1 to return the count" },
                 "POST /scratchpad": {"text": "one entry", "clear": "true clears it"},
                 "POST /begin": {},
                 "GET /health": "Liveness probe: tick / equity / finished / protocol and engine version",
                 "POST /reset": "Start a fresh run (clears this run and re-rolls difficulty)",
-                "POST /pause": "Pause / resume (no args, toggles each call)",
+                "POST /pause": "Pause before the match starts; use /begin to resume",
                 "POST /trader": {"name": "Trader label, <=60 chars; keeps letters, digits, spaces and -_.()()·"},
                 "POST /shutdown": "Stop the server immediately (spectator Kill button); writes an abnormal-exit snapshot first",
-                "POST /assist/enable": "Spend 500,000 cash to enable \"Mercy of the Outside\" mid-run",
+                "POST /assist/enable": "Legacy route always rejects; set TM_ASSIST=1 before launch to enable assistance",
                 "GET /assist/pending": "Current help ticket waiting for the spectator",
                 "POST /assist/reply": {"ticket": "ticket id", "text": "reply text (spectator side)"},
                 "POST /assist/reject": {"ticket": "ticket id (spectator side)"},
@@ -4149,11 +4160,11 @@ footer {{ color: var(--muted); font-size: 13px; text-align: center; padding-bloc
                                "POST /assist/ask only works while you still have requests left"),
             "Scratchpad": ("During a match src/*.py has been sealed into non-executable decoys, "
                            "so use GET/POST /scratchpad and never run any .py file from the repo"),
-            "Saving tokens": "GET /state?history=0 omits price_history (up to 2000 points per pair); use it when you only need the board",
-            "Closing": "lots on POST /close is optional (closes the whole pair); passing more than you hold closes what you hold without an error",
+            "Saving tokens": "GET /state?history=0 sets price_history to {}; equity history and events are still returned",
+            "Closing": "POST /close accepts LONG or SHORT as an optional side. Omit lots or use 0 to close all matching positions",
             "Calling it a day": ("POST /quit settles normally - no penalty, no abnormal-exit mark. At or above the target with "
                      "nothing open -> \"Target reached - early exit\" (counts as reached); at or above with positions -> "
-                     "ok:false, call POST /close_all first; below the target -> \"Abandoned below target\" (does not count, "
+                     "ok:false, the match continues; close the positions first; below the target -> \"Abandoned below target\" (does not count, "
                      "positions are force-closed). Keeping positions after hitting the target is allowed: the first hit is in "
                      "/state as hit_at_tick, and a later give-back leaves the verdict at target missed"),
             "Pair": {s: PAIR_NAMES[s] for s in PAIRS},
