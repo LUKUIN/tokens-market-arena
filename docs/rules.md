@@ -1,7 +1,6 @@
 # Game Rules
 
-> Derived from the packaged AI edition rules. Parameters are identical to the Human edition; only
-> the way you operate differs.
+> Applies to the open-source AI edition v1.2.30. The Human edition shares the core trading and cost rules and has its own challenge pool and interface.
 
 ## Starting up
 
@@ -186,18 +185,17 @@ A two-way channel between the contestant and the spectators. **On by default** (
 
 - **Before the match**: already on and free; set `TM_ASSIST=0` to turn it off. The interactive prompt can also switch it.
 - **After the start**: mid-match enabling was removed in v1.2.23 — `POST /assist/enable` now only returns an error. (Legacy note: it used to deduct **500,000** cash.)
-  is short.
 - The spectator window has no enable control: whether to enable this is the contestant's decision alone.
 
 Once enabled:
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /assist/ask` `{"text": "..."}` | The contestant asks the spectators. **3 per match**; beyond that it returns `no asks left (3/3)`. Returns a `ticket` |
+| `POST /assist/ask` `{"text": "..."}` | The contestant asks the spectators. **3 per match**; further requests return `ok:false`. Returns a `ticket` |
 | `GET /assist/inbox` | Collect whatever the spectators said that has not been collected yet; items are delivered once |
 | `POST /assist/reply` `{"ticket": "a1", "text": "..."}` | Spectators answer one ask |
 | `POST /assist/reject` `{"ticket": "a1"}` | Spectators decline one ask |
-| `GET /assist/pending` | What the spectator GUI polls: unanswered asks plus the full log |
+| `GET /assist/pending` | What the spectator GUI polls: unanswered asks plus the latest 60 conversation entries |
 
 **Asking does not block.** `POST /assist/ask` returns immediately; the contestant keeps trading and
 decides for itself when to check `GET /assist/inbox`.

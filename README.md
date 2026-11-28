@@ -15,7 +15,7 @@ One game engine, three ways to use it. The three branches have unrelated commit 
 | [`human`](https://github.com/LUKUIN/tokens-market-arena/tree/human) | **Human edition (Chinese)** | A person clicks the buttons | Full interactive GUI: trading panel, difficulty blind box, rules window |
 
 The Human and AI editions share trading and market rules. The Human edition provides trading controls and leaves audience assistance out of the challenge pool.
-If you would rather not read source, download the packaged Human edition: [Releases · human-v1.2.29](https://github.com/LUKUIN/tokens-market-arena/releases/tag/human-v1.2.29).
+If you would rather not read source, download the packaged Human edition: [Human edition v1.2.30](https://github.com/LUKUIN/tokens-market-arena/releases/tag/human-v1.2.30).
 
 > **Want to enter an agent? Read [`AGENTS.md`](AGENTS.md) — one page is enough.** It covers the launch command, difficulty locking and
 > the API entry points.
@@ -27,12 +27,11 @@ If you would rather not read source, download the packaged Human edition: [Relea
 
 > **English** · [Chinese](https://github.com/LUKUIN/tokens-market-arena/blob/main/README.md)
 >
-> **EN**: A 45-minute trading simulator where LLMs trade with real friction — spread, slippage, gap risk and overnight interest.
-> One model made +106%, another blew up at −229%. Python 3.14 with the standard library.
+> Open-source 45-minute trading simulator with an HTTP API for LLMs and a desktop GUI for human players. Simulates spreads, slippage, price gaps, and financing costs, with HTML reports and JSON summaries after each match.
 
 > See [GitHub Releases](https://github.com/LUKUIN/tokens-market-arena/releases) for downloads.
 
-Version 1.2.29 has 40 random events and 20 challenge objectives. Each enabled match draws one result objective and two process constraints.
+Version 1.2.30 has 40 random events and 20 challenge objectives. Each enabled match draws one result objective and two process constraints.
 > **It is not interchangeable with the Human edition (`TokensMarket-OpenSource-Human`)**: this build has no trading panel,
 > no open-position button and no fast-forward button. The Human edition has the full interactive UI; do not copy UI files between the two.
 
@@ -80,7 +79,7 @@ Follow [AGENTS.md](AGENTS.md) for the exact order and working PowerShell command
 
 | Setting | Scripted default and meaning |
 |---|---|
-| `TM_TRADER` | Set to model, reasoning effort and platform before startup. An unnamed session is ineligible for a target hit. |
+| `TM_TRADER` | Set to model, reasoning effort and platform before startup. A session the engine marks as unnamed is ineligible for a recorded win. |
 | `TM_EVENTS` | `1`. With `0`, ordinary news and Huge Waves are off; baseline gaps and depth shocks still occur. |
 | `TM_FR`, `TM_SLOT`, `TM_ASSIST` | `1`. Set a feature to `0` before startup to disable it. The interactive demo prompts separately. |
 | `TM_PORT`, `TM_IDLE_ABORT` | `8734` and `0`. The Windows confirmation launcher defaults the idle limit to 12 minutes. |
@@ -94,11 +93,7 @@ Follow [AGENTS.md](AGENTS.md) for the exact order and working PowerShell command
 
 Trades go through HTTP. The spectator displays the market, account and notes, and lets spectators answer assistance requests.
 
-Every time the AI asks for help (`POST /assist/ask`), a **native system** dialog (`messagebox.showwarning`) pops up in the centre of the
-screen with a sound. The title is "Outside Mercy" and the body states how many requests are pending.
-
-It is modal: until dismissed it blocks the spectator refresh, so click OK when you see it. The × in the top-right also closes it, but the
-request does not disappear — the red counter on the button stays until you reply or reject in the "Outside Mercy" window.
+Assistance requests may show a dialog. Dismissing it leaves the request pending until a spectator replies or rejects it. The spectator also offers a service shutdown control.
 
 Sections, top to bottom:
 
@@ -119,37 +114,15 @@ of the title bar so that bug reports can state the resolution. To pin the size, 
 
 > Every number in the UI comes from `/state`; none of them is simulated. For details, read the HTML report.
 
-### When the spectator disconnects (v1.2.21)
+### When the spectator disconnects
 
-The spectator is a **separate child process** that refreshes through `GET /state` every 300 ms. Losing it **does not affect the match**:
-the service keeps advancing ticks, keeps counting down, and still writes the report at settlement. The red bar only means "this one reader
-cannot connect", not that the match has stopped.
+Standard startup runs the spectator as a child process. A closed window or a polling failure leaves an already running match active. Check the service at its configured port before reattaching. The tkinter spectator writes diagnostics to `src/data/watch.log`.
 
-Before v1.2.21 this polling path had three problems that made the window falsely report "service not responding" and stop updating:
-
-| Problem | Consequence |
-|---|---|
-| `/state` shipped the whole `price_history` (2000 points per pair) and `equity_curve` (2000 points) | Payload grew linearly with the match, and serialization + parsing + rendering got heavier and heavier |
-| `state()` called `_metrics()` twice in its return | Every poll wasted two recomputations of MDD and Sharpe |
-| `fast_forward()` held `LOCK` for all 60 ticks | Every HTTP read queued meanwhile and the spectator timed out |
-
-All three are fixed (exports send only the tail, `_metrics` is computed once, fast-forward releases the lock per tick); additionally the HTTP
-server's `request_queue_size` went from the default 5 to 64, and `/state` responses carry no indentation. A disconnect now writes
-"Spectator connection lost (match still running)" in the window, logs the exception to `src/data/watch.log`, and the status bar no longer
-pretends the service is unresponsive.
-
-If the window stays on the red bar, double-click `launchers\Spectator.bat` to attach another one — with a match running it only opens the
-window, starts no service and seals no source.
+With a match already running, open `launchers/Spectator.bat` to reattach tkinter or `launchers/Spectator (C#).bat` for WPF.
 
 ## C# spectator (the default UI; tkinter is the fallback)
 
-`viewer-cs/` holds a standalone WPF spectator that replaces the tkinter window in `src/tm_watch_ai.py`. **Not a line of the Python engine
-changed**; it only polls the existing `/state` over HTTP.
-
-### Why it exists
-
-tkinter's Canvas has no antialiasing, so curves always show jagged edges on shallow slopes, and Fluent translucency, shadows and Mica are
-out of reach. C# + WPF renders vectors, and all of that comes for free.
+The WPF spectator uses vector charts and connects to the service over local HTTP.
 
 ### What it needs
 
@@ -166,19 +139,19 @@ The build output is `viewer-cs/TokensWatch/bin/Release/net8.0-windows/TokensWatc
 
 ### How to launch
 
-Start a match the usual way (`launchers\Start Match.bat`), then:
+Standard startup opens the WPF spectator. To reattach WPF to an already running match, run:
 
 ```bat
 launchers\Spectator (C#).bat
 ```
 
-Both spectators can run at once: the new one's single-instance lock is `Global\TokensWatchViewerCs` and it does not take the 8735 port the
+For a custom port, set `TM_WATCH_API` to the match URL before reattaching WPF. Both spectators can run at once: the WPF single-instance lock is `Global\TokensWatchViewerCs` and it does not take the 8735 port the
 tkinter version uses.
 
 ### Relationship to the tkinter version
 
-- They coexist, they are not mutually exclusive; use whichever you prefer
-- Read-only, never writes engine state
+- Both spectator implementations can connect to the same match.
+- Both show account and market data, answer assistance requests and can request a service shutdown. Trading controls are available in the Human edition.
 - Zero-install dependencies (no NuGet packages; the chart is drawn as WPF vectors), and `requirements.txt` is unaffected
 
 ## The flow of one match
@@ -207,11 +180,12 @@ Regular match startup seals `src/tm_engine.py`, `src/tm_api.py` and `src/scratch
 
 ## Deep process cleanup
 
-Use this to remove runtime files left by an interrupted match after its process has exited:
+Cleanup removes the current save and its backup. To resume after an interruption, keep the files and restart from the same directory.
+
+To discard the interrupted match, first make sure its service has exited, then run this from the project root:
 
 ```bash
-cd <project directory>
-powershell -NoProfile -ExecutionPolicy Bypass -File tools\deep-clean.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/deep-clean.ps1
 ```
 
 > **When calling from an AI or a script, use the command above** and not `launchers\DeepClean Process.bat` directly:
@@ -226,8 +200,8 @@ The script checks this checkout's running marker, restores sealed sources if nee
 ## Directory layout
 
 ```
-TokensMarket-OpenSource-AI-v97/
-├── run.py                  single entry point (ai / --interactive demo only / server / --headless / state)
+Project root/
+├── run.py                  single entry point (match / --interactive / server / --headless / spectator / state / report-retry)
 ├── bench.py                paired multi-round evaluation: several matches per seed group, with statistics
 ├── guard.py                source sealing guard (called by run.py; do not start it by hand)
 ├── requirements.txt        no third-party dependencies (placeholder file)
@@ -235,21 +209,21 @@ TokensMarket-OpenSource-AI-v97/
 ├── README.md
 ├── AGENTS.md               one-page agent entry point + project map (AIs read this first)
 ├── launchers/              all double-click entry points (they switch back to the repo root internally)
-│   ├── launchers\Start Match.bat                double-click entry (press Y within 5 s or the launch is canceled)
-│   ├── launchers\AI Start.bat              unattended entry (no confirmation; for scripts / agents)
-│   ├── launchers\Spectator.bat            tkinter spectator: reattach when the window was closed by accident
-│   ├── launchers\Build Spectator (C#).bat      build entry for the C# spectator (needs the .NET 8 SDK)
-│   ├── launchers\Spectator (C#).bat      launch entry for the C# spectator
-│   └── launchers\DeepClean Process.bat          for manual double-click use (contains pause)
+│   ├── Start Match.bat                double-click entry (press Y within 5 s or the launch is canceled)
+│   ├── AI Start.bat              unattended entry (no confirmation; for scripts / agents)
+│   ├── Spectator.bat            tkinter spectator: reattach when the window was closed by accident
+│   ├── Build Spectator (C#).bat      build entry for the C# spectator (needs the .NET 8 SDK)
+│   ├── Spectator (C#).bat      launch entry for the C# spectator
+│   └── DeepClean Process.bat          for manual double-click use (contains pause)
 ├── tools/
-│   └── tools\deep-clean.ps1      the cleanup itself; AIs call this directly (non-interactive, exit code 0 = success)
+│   └── deep-clean.ps1      the cleanup itself; AIs call this directly (non-interactive, exit code 0 = success)
 ├── src/
 │   ├── tm_engine.py        engine (pure logic)
 │   ├── tm_api.py           HTTP API
 │   ├── tm_watch_ai.py      read-only spectator
 │   ├── scratchpad.py       scratchpad terminal
 │   ├── app.ico / warn.ico  icons
-│   └── data/               generated at runtime: session.json, reports/, .scratchpad.jsonl
+│   └── data/               runtime saves, backup, scratchpad and reports
 ├── viewer-cs/TokensWatch/  C# / WPF spectator (the default UI; tkinter is the fallback)
 │   ├── Controls/           equity curve and mini sparklines (pure WPF vector drawing, no third-party libraries)
 │   ├── Services/           HTTP client (bypasses the system proxy explicitly)
@@ -260,8 +234,8 @@ TokensMarket-OpenSource-AI-v97/
 │   ├── rules.md            full rules
 │   ├── cost-model.md       cost model
 │   ├── ai-protocol.md      integration protocol
-│   └── docs\Startup-Prompt-For-The-AI.txt  startup text you can paste straight into an agent
-└── examples/reports/       2 representative reports (README.md explains them)
+│   └── Startup-Prompt-For-The-AI.txt  startup text you can paste straight into an agent
+└── examples/reports/       1 historical sample (see README.md)
 ```
 
 ---
@@ -282,7 +256,7 @@ TokensMarket-OpenSource-AI-v97/
 
 ## Measured results
 
-Historical single-match examples (45 minutes / 1,000,000 principal / 2,000,000 target):
+Historical single-match examples (45 minutes / 1,000,000 principal / 2,000,000 base target). Engine versions, settings and market paths may differ.
 
 | Model | Final equity | P&L | Result |
 |---|---:|---:|---|
@@ -301,7 +275,7 @@ Opening margin plus commission must fit within equity less occupied margin. Equi
 
 A maintenance level below 100% starts a margin call. It clears at 100%; 30 market steps without recovery can liquidate positions. Below 50%, liquidation is immediate. Negative equity ends the match. If cash alone is negative, the engine offers a default 60-second rescue window. Borrowing adds equal amounts of cash and debt.
 
-At or above the target with open positions, close first and recheck equity before `/quit`. Below target, normal quitting is recorded as abandonment. Automatic settlement uses regular fill costs and clears debt. Read `settled` and `warnings` in the response. See the [cost model](docs/cost-model.md).
+At or above the target with open positions, close first and recheck equity before `/quit`. Below target, normal quitting is recorded as abandonment. Automatic settlement uses regular fill costs and clears debt. Read `settled` and `warnings` in the response. See the [cost model](docs/cost-model.md) and the [report recovery instructions](docs/ai-protocol.md#settlement-and-reports).
 
 ## Ledger audit and paired evaluation
 
@@ -373,7 +347,7 @@ python bench.py run --seeds 1-5 --policy probe --out benchmark-output
 ## Known limitations
 
 - Windows desktop (the spectator's window icons and alert sound go through Win32 APIs).
-- The spectator is a separate child process: a crash, a close, or a failure to open (a 8734/8735 conflict) never interrupts the match; but it
-  still depends on a desktop session on the same machine, so use `--headless` on genuinely headless hosts.
+- The spectator is a separate child process: a crash, a close, or a failure to open leaves an already running match active. An occupied service port prevents startup.
+  The spectator still needs a desktop session on the same machine. Use `--headless` on genuinely headless hosts.
 - The source edition does not include the packaged build's `.pyd` or manifest verification; `TM_SIGN_KEY` defaults to a dev placeholder, so set
   your own for a formal competition.

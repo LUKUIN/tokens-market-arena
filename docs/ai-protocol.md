@@ -40,7 +40,7 @@ Use a UTF-8 JSON object for bodies. Example bodies appear below. Malformed bodie
 | Endpoint | Body and behavior |
 |---|---|
 | `/open` | `{"pair":"AURA/CORE","side":"LONG","lots":1,"leverage":20}`. All four fields are required. |
-| `/close` | `{"pair":"AURA/CORE","side":"LONG","lots":1}`. Omit `lots` or pass 0 to close all matching positions. Omit `side` to match both sides. An explicit side must be `LONG` or `SHORT`. Partial closes process the most recent match first and realize P&L only on the quantity filled. |
+| `/close` | `{"pair":"AURA/CORE","side":"LONG","lots":1}`. Omit `lots` or pass 0 to close all matching positions. Omit `side` to match both sides. An explicit side must be `LONG` or `SHORT`. Partial closes process matches from the end of the position list and realize P&L only on the quantity filled. |
 | `/close_all` | No body. Attempts every open position using normal close rules and can fail during a close restriction. Check the resulting state. |
 | `/loan` | `{"amount":100000}`. Subject to the remaining pool and current restrictions. Returns the target increase for this loan. |
 | `/repay` | `{"amount":50000}`, or omit `amount` to request full repayment. The payment is limited by debt and available cash. |
@@ -82,22 +82,26 @@ The total budget is 900 seconds. A 300-second advance starts a 120-second real-t
 
 ## Settlement and reports
 
-Read `/state` before `/quit`. At or above the current target, close open positions first and read the updated equity. If closing costs push equity below target, quitting counts as abandonment. Below target, quitting settles remaining positions and debt. Eligibility also matters to a recorded target hit.
+Read `/state` before `/quit`. At or above the current target, close open positions first and check the updated equity. If closing costs push equity below target, quitting counts as abandonment. Below target, quitting settles remaining positions and debt. A recorded target hit also requires eligibility.
 
-**The service shuts down about three seconds after `/quit` returns `ok:true`. If it returns `ok:false`, the match continues and you can close positions before retrying.** When time expires, the engine applies regular close costs in automatic settlement. `hit_at_tick` records the first observed target hit, and the final result can still be a miss.
+**The service stops about three seconds after `/quit` returns `ok:true`. If it returns `ok:false`, the match continues.** Automatic settlement at time expiry uses the regular closing costs. `hit_at_tick` records the first observed target hit. Final equity can still be below target.
 
-A successful response contains `final_equity`, `report`, `settled` and `warnings`. Reports are under `src/data/reports/HTML Reports/` and `src/data/reports/JSON Reports/`. A false `settled` flag calls for checking `warnings`. Wait for a normal shutdown to finish before starting a new service from the same directory.
+Check `settled` and `warnings` for ledger settlement. `report` is the HTML path when available. `report_status` records HTML and JSON export outcomes separately. A `render` entry indicates failure before either file was exported. HTML goes to `src/data/reports/HTML Reports/`, and JSON goes to `src/data/reports/JSON Reports/`.
+
+If export fails after the settlement is saved, wait for the service to exit and run `python run.py report-retry <session_id>` from the project root. The settlement snapshot is stored in `src/data/reports/Settlement Snapshots/`.
 
 ## Notes and fair play
 
 During a match use the scratchpad HTTP endpoints. The packaged `src/scratchpad.py` is one of the files sealed by the guard, and executing a decoy can terminate the match. Only notes submitted to the scratchpad are included there in the report. Spectator replies arrive via `/assist/inbox`, separate from the event stream.
 
-Use API data and your own analysis during a competition. Run integrations as a single writer when the order matters. Serialization of engine operations does not make a repeated POST safe to retry after a timeout, so read back the state before resending a trade.
+Use API data and your own analysis during a competition. Issue dependent trades in order.
 
-### Safe trade retries and report recovery
+## Safe trade retries
 
-Send an optional Idempotency-Key header (1–128 visible ASCII characters) on /open, /close, /close_all, /loan or /repay. After a timeout, repeat the same route, parameters and key. A completed trade is executed once per session. The replay returns its original outcome, current state and replayed:true. Reusing a key for a different operation returns HTTP 409. Include the current session_id in the body to keep a delayed retry from reaching a new match. Without a key, check the state before resending.
+Send the optional `Idempotency-Key` header on `/open`, `/close`, `/close_all`, `/loan` or `/repay`. Use 1–128 visible ASCII characters. After a timeout, retry with the same key, route and parameters. A committed action executes once in the same session. A replay returns the original action result, the current `state` and `replayed:true`.
 
-The settlement's report_status records HTML and JSON export results separately. A render entry denotes failure before either export. After the match exits, run python run.py report-retry <session_id> to regenerate both files from the archived settlement snapshot.
+Include the `session_id` from `GET /state` to keep a delayed retry from reaching a new match. A different operation using the same key or a mismatched session returns HTTP 409. An invalid key returns HTTP 400. Without a key, check state before resending.
 
-If the main save is damaged, the engine preserves it and tries the verified session.json.previous backup. A resumed backup is ineligible for a win and includes storage_recovery in its state. If neither file is usable, startup stops and preserves both files.
+## Save recovery
+
+After an interruption, close the original service and start again from the same directory with the saves in place. If the main save is missing or damaged, the engine checks the signed `session.json.previous` backup. Resuming from a backup marks the match ineligible for a win and exposes the reason in `state.storage_recovery`. A damaged primary file is preserved under `src/data/reports/Recovery/`. If recovery is impossible, startup stops and preserves the files. The cleanup script removes both active save files. Use it only when discarding that session.

@@ -38,4 +38,4 @@ Check state before `POST /quit`. At or above target with open positions, close t
 
 ## Recover after an interrupted match
 
-Wait for that checkout's process to exit. On Windows, run `powershell -NoProfile -ExecutionPolicy Bypass -File tools\deep-clean.ps1` from the project root if stale runtime files remain. The script preserves reports.
+Make sure the match process for this directory has stopped. To resume, keep the saves and restart from the same directory. See [save recovery](docs/ai-protocol.md#save-recovery). To discard the match, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/deep-clean.ps1` from the project root. It removes the session saves and preserves past reports.
